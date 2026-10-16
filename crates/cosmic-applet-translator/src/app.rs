@@ -93,7 +93,7 @@ impl cosmic::Application for AppModel {
                 self.capture_active = val;
             }
             Message::SelectRoiRequested => {
-                // Will trigger layer-shell overlay ROI selector in Phase 3
+                let _ = std::process::Command::new("cosmic-translator-overlay").arg("--selector").spawn();
             }
         }
         Task::none()

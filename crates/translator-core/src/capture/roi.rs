@@ -2,7 +2,7 @@ use image::RgbaImage;
 use crate::error::CaptureError;
 
 /// Defines a rectangular Region of Interest on the captured screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Roi {
     pub x: u32,
     pub y: u32,
@@ -45,13 +45,6 @@ impl Roi {
     }
 
     /// Efficiently crops and copies only the ROI pixels from a raw 32-bit RGBA/BGRA/RGBx frame.
-    ///
-    /// # Arguments
-    /// * `buffer` - Slice of raw frame memory from PipeWire.
-    /// * `frame_width` - Full frame width.
-    /// * `frame_height` - Full frame height.
-    /// * `stride` - Row stride in bytes (often `frame_width * 4`, but can have alignment padding).
-    /// * `is_bgr` - True if byte order is BGRA/BGRx, false if RGBA.
     pub fn crop_to_rgba(
         &self,
         buffer: &[u8],
@@ -94,18 +87,16 @@ impl Roi {
             let dst_row = &mut output_bytes[dst_start..dst_end];
 
             if is_bgr {
-                // Convert BGRA -> RGBA in place
                 for chunk_idx in 0..roi_width {
                     let s_i = chunk_idx * 4;
                     let d_i = chunk_idx * 4;
                     dst_row[d_i] = src_row[s_i + 2];     // R
                     dst_row[d_i + 1] = src_row[s_i + 1]; // G
                     dst_row[d_i + 2] = src_row[s_i];     // B
-                    dst_row[d_i + 3] = 255;              // A (force opaque for text OCR)
+                    dst_row[d_i + 3] = 255;              // A
                 }
             } else {
                 dst_row.copy_from_slice(src_row);
-                // Ensure alpha is 255
                 for chunk_idx in 0..roi_width {
                     dst_row[chunk_idx * 4 + 3] = 255;
                 }
@@ -142,12 +133,11 @@ mod tests {
         let stride = 10 * 4;
         let mut buffer = vec![0u8; width * height * 4];
 
-        // Fill pixel at (2, 3) with Red (RGBA: 255, 0, 0, 255)
         let idx = (3 * width + 2) * 4;
-        buffer[idx] = 255;     // R
-        buffer[idx + 1] = 0;   // G
-        buffer[idx + 2] = 0;   // B
-        buffer[idx + 3] = 255; // A
+        buffer[idx] = 255;
+        buffer[idx + 1] = 0;
+        buffer[idx + 2] = 0;
+        buffer[idx + 3] = 255;
 
         let roi = Roi::new(2, 3, 2, 2);
         let cropped = roi.crop_to_rgba(&buffer, width as u32, height as u32, stride, false).unwrap();
