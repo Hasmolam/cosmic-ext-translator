@@ -126,9 +126,10 @@ impl cosmic::Application for AppModel {
             }
 
             Message::SelectRoiRequested => {
+                let bin = overlay_binary_path();
                 return Task::perform(
                     async move {
-                        let output = tokio::process::Command::new("cosmic-translator-overlay")
+                        let output = tokio::process::Command::new(bin)
                             .arg("--selector")
                             .output()
                             .await;
@@ -164,7 +165,8 @@ impl cosmic::Application for AppModel {
                 self.capture_active = true;
 
                 // Ensure the HUD overlay is running
-                let _ = std::process::Command::new("cosmic-translator-overlay")
+                let bin = overlay_binary_path();
+                let _ = std::process::Command::new(bin)
                     .arg("--hud")
                     .spawn();
 
@@ -271,4 +273,20 @@ impl cosmic::Application for AppModel {
 
         self.core.applet.popup_container(content_list).into()
     }
+}
+
+fn overlay_binary_path() -> std::path::PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let candidate = parent.join("cosmic-translator-overlay");
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    let target_debug = std::path::PathBuf::from("target/debug/cosmic-translator-overlay");
+    if target_debug.exists() {
+        return target_debug;
+    }
+    std::path::PathBuf::from("cosmic-translator-overlay")
 }
