@@ -1,0 +1,11 @@
+app-title = Screen Translator
+app-comment = Real-time Screen and Game Translator for COSMIC
+app-keywords = translate;translator;screen;game;cosmic;ocr;lingua;
+about = About
+status = Status
+active = Active
+paused = Paused
+select-roi = Select Capture Area
+settings = Settings
+profile = Game Profile
+example-row = Enable Overlay

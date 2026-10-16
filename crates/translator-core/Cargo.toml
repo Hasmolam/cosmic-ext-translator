@@ -1,0 +1,17 @@
+[package]
+name = "translator-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ashpd = { workspace = true }
+pipewire = { workspace = true }
+tokio = { workspace = true }
+image = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

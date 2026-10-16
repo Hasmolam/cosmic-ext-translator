@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/translator-core",
+    "crates/cosmic-applet-translator",
+    "crates/cosmic-translator-overlay",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/hasmolam/cosmic-ext-lingua"
+
+[workspace.dependencies]
+tokio = { version = "1.43", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2.0"
+anyhow = "1.0"
+image = "0.25"
+ashpd = { version = "0.13", features = ["screencast"] }
+pipewire = "0.10"

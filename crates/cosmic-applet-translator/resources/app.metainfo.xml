@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.system76.CosmicExtLingua</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Screen Translator</name>
+  <summary>Real-time Screen and Game Translator for COSMIC</summary>
+  <launchable type="desktop-id">com.system76.CosmicExtLingua.desktop</launchable>
+  <provides>
+    <id>com.system76.CosmicApplet</id>
+    <binaries>
+      <binary>cosmic-applet-translator</binary>
+    </binaries>
+  </provides>
+  <categories>
+    <category>COSMIC</category>
+  </categories>
+  <keywords>
+    <keyword>COSMIC</keyword>
+    <keyword>translator</keyword>
+    <keyword>game</keyword>
+    <keyword>ocr</keyword>
+  </keywords>
+  <content_rating type="oars-1.1" />
+</component>

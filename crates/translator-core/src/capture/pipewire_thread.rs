@@ -1,0 +1,312 @@
+use std::os::fd::OwnedFd;
+use std::sync::{Arc, RwLock};
+use std::time::Instant;
+use image::RgbaImage;
+use pipewire as pw;
+use pw::spa;
+use spa::pod::Pod;
+use tracing::{debug, info, warn};
+
+use crate::capture::roi::Roi;
+use crate::error::{CaptureError, Result};
+
+#[derive(Clone, Debug)]
+pub struct CapturedFrame {
+    pub image: RgbaImage,
+    pub timestamp: Instant,
+    pub original_width: u32,
+    pub original_height: u32,
+}
+
+pub enum PipewireCommand {
+    UpdateRoi(Option<Roi>),
+    Stop,
+}
+
+struct StreamUserData {
+    format: spa::param::video::VideoInfoRaw,
+    roi: Arc<RwLock<Option<Roi>>>,
+    frame_sender: tokio::sync::watch::Sender<Option<CapturedFrame>>,
+}
+
+pub struct PipewireCaptureHandle {
+    command_sender: pw::channel::Sender<PipewireCommand>,
+    thread_handle: Option<std::thread::JoinHandle<Result<()>>>,
+    pub frame_receiver: tokio::sync::watch::Receiver<Option<CapturedFrame>>,
+    roi: Arc<RwLock<Option<Roi>>>,
+}
+
+impl PipewireCaptureHandle {
+    pub fn update_roi(&self, roi: Option<Roi>) {
+        if let Ok(mut current) = self.roi.write() {
+            *current = roi;
+        }
+        let _ = self.command_sender.send(PipewireCommand::UpdateRoi(roi));
+    }
+
+    pub fn stop(&mut self) -> Result<()> {
+        let _ = self.command_sender.send(PipewireCommand::Stop);
+        if let Some(handle) = self.thread_handle.take() {
+            handle
+                .join()
+                .map_err(|e| CaptureError::ThreadDied(format!("{e:?}")))?
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for PipewireCaptureHandle {
+    fn drop(&mut self) {
+        let _ = self.stop();
+    }
+}
+
+pub fn spawn_pipewire_capture_thread(
+    fd: OwnedFd,
+    node_id: u32,
+    initial_roi: Option<Roi>,
+) -> (
+    PipewireCaptureHandle,
+    tokio::sync::watch::Receiver<Option<CapturedFrame>>,
+) {
+    let (frame_sender, frame_receiver) = tokio::sync::watch::channel(None);
+    let (pw_sender, pw_receiver) = pw::channel::channel::<PipewireCommand>();
+    let roi = Arc::new(RwLock::new(initial_roi));
+    let roi_clone = Arc::clone(&roi);
+
+    let thread_handle = std::thread::Builder::new()
+        .name("pw-capture-loop".into())
+        .spawn(move || run_pipewire_loop(fd, node_id, roi_clone, pw_receiver, frame_sender))
+        .expect("Failed to spawn PipeWire capture thread");
+
+    let handle = PipewireCaptureHandle {
+        command_sender: pw_sender,
+        thread_handle: Some(thread_handle),
+        frame_receiver: frame_receiver.clone(),
+        roi,
+    };
+
+    (handle, frame_receiver)
+}
+
+fn run_pipewire_loop(
+    fd: OwnedFd,
+    node_id: u32,
+    roi: Arc<RwLock<Option<Roi>>>,
+    pw_receiver: pw::channel::Receiver<PipewireCommand>,
+    frame_sender: tokio::sync::watch::Sender<Option<CapturedFrame>>,
+) -> Result<()> {
+    pw::init();
+
+    let mainloop = pw::main_loop::MainLoopRc::new(None)
+        .map_err(|e| CaptureError::PipeWire(format!("MainLoop creation error: {e}")))?;
+    let context = pw::context::ContextRc::new(&mainloop, None)
+        .map_err(|e| CaptureError::PipeWire(format!("Context creation error: {e}")))?;
+    let core = context
+        .connect_fd_rc(fd, None)
+        .map_err(|e| CaptureError::PipeWire(format!("Connect FD error: {e}")))?;
+
+    // Attach command receiver to mainloop
+    let mainloop_weak = mainloop.clone();
+    let _receiver = pw_receiver.attach(mainloop.loop_(), move |command| match command {
+        PipewireCommand::UpdateRoi(_) => {
+            debug!("ROI updated in PipeWire loop");
+        }
+        PipewireCommand::Stop => {
+            info!("Stop command received, exiting PipeWire loop");
+            mainloop_weak.quit();
+        }
+    });
+
+    let user_data = StreamUserData {
+        format: Default::default(),
+        roi,
+        frame_sender,
+    };
+
+    let stream = pw::stream::StreamBox::new(
+        &core,
+        "cosmic-ext-lingua-capture",
+        pw::properties::properties! {
+            *pw::keys::MEDIA_TYPE => "Video",
+            *pw::keys::MEDIA_CATEGORY => "Capture",
+            *pw::keys::MEDIA_ROLE => "Screen",
+        },
+    )
+    .map_err(|e| CaptureError::PipeWire(format!("StreamBox error: {e}")))?;
+
+    let _listener = stream
+        .add_local_listener_with_user_data(user_data)
+        .state_changed(|_, _, old, new| {
+            info!("PipeWire stream state: {old:?} -> {new:?}");
+        })
+        .param_changed(|_, user_data, id, param| {
+            let Some(param) = param else { return };
+            if id != pw::spa::param::ParamType::Format.as_raw() {
+                return;
+            }
+
+            let (media_type, media_subtype) =
+                match pw::spa::param::format_utils::parse_format(param) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+
+            if media_type != pw::spa::param::format::MediaType::Video
+                || media_subtype != pw::spa::param::format::MediaSubtype::Raw
+            {
+                return;
+            }
+
+            if user_data.format.parse(param).is_ok() {
+                info!(
+                    "Negotiated video format: {:?}, size: {}x{}",
+                    user_data.format.format(),
+                    user_data.format.size().width,
+                    user_data.format.size().height
+                );
+            }
+        })
+        .process(|stream, user_data| {
+            let Some(mut buffer) = stream.dequeue_buffer() else {
+                return;
+            };
+
+            let datas = buffer.datas_mut();
+            if datas.is_empty() {
+                return;
+            }
+
+            let frame_w = user_data.format.size().width;
+            let frame_h = user_data.format.size().height;
+            if frame_w == 0 || frame_h == 0 {
+                return;
+            }
+
+            let is_bgr = matches!(
+                user_data.format.format(),
+                pw::spa::param::video::VideoFormat::BGRx
+                    | pw::spa::param::video::VideoFormat::BGRA
+                    | pw::spa::param::video::VideoFormat::BGR
+            );
+
+            let data = &mut datas[0];
+            let stride = data.chunk().stride();
+            let effective_stride = if stride > 0 {
+                stride as usize
+            } else {
+                frame_w as usize * 4
+            };
+
+            let Some(slice) = data.data() else {
+                return;
+            };
+
+            let current_roi = user_data.roi.read().ok().and_then(|r| *r);
+            let target_roi = current_roi.unwrap_or(Roi::new(0, 0, frame_w, frame_h));
+
+            match target_roi.crop_to_rgba(slice, frame_w, frame_h, effective_stride, is_bgr) {
+                Ok(image) => {
+                    let frame = CapturedFrame {
+                        image,
+                        timestamp: Instant::now(),
+                        original_width: frame_w,
+                        original_height: frame_h,
+                    };
+                    // Non-blocking watch send: Drops previous unread frame automatically
+                    let _ = user_data.frame_sender.send(Some(frame));
+                }
+                Err(err) => {
+                    warn!("Failed to crop ROI from PipeWire frame: {err}");
+                }
+            }
+
+            // Buffer is dropped here, which releases it back to PipeWire immediately!
+        })
+        .register()
+        .map_err(|e| CaptureError::PipeWire(format!("Register listener error: {e}")))?;
+
+    // Video format parameters
+    let obj = pw::spa::pod::object!(
+        pw::spa::utils::SpaTypes::ObjectParamFormat,
+        pw::spa::param::ParamType::EnumFormat,
+        pw::spa::pod::property!(
+            pw::spa::param::format::FormatProperties::MediaType,
+            Id,
+            pw::spa::param::format::MediaType::Video
+        ),
+        pw::spa::pod::property!(
+            pw::spa::param::format::FormatProperties::MediaSubtype,
+            Id,
+            pw::spa::param::format::MediaSubtype::Raw
+        ),
+        pw::spa::pod::property!(
+            pw::spa::param::format::FormatProperties::VideoFormat,
+            Choice,
+            Enum,
+            Id,
+            pw::spa::param::video::VideoFormat::BGRx,
+            pw::spa::param::video::VideoFormat::BGRx,
+            pw::spa::param::video::VideoFormat::BGRA,
+            pw::spa::param::video::VideoFormat::RGBx,
+            pw::spa::param::video::VideoFormat::RGBA,
+        ),
+        pw::spa::pod::property!(
+            pw::spa::param::format::FormatProperties::VideoSize,
+            Choice,
+            Range,
+            Rectangle,
+            pw::spa::utils::Rectangle {
+                width: 1920,
+                height: 1080
+            },
+            pw::spa::utils::Rectangle {
+                width: 1,
+                height: 1
+            },
+            pw::spa::utils::Rectangle {
+                width: 8192,
+                height: 8192
+            }
+        ),
+        pw::spa::pod::property!(
+            pw::spa::param::format::FormatProperties::VideoFramerate,
+            Choice,
+            Range,
+            Fraction,
+            pw::spa::utils::Fraction { num: 60, denom: 1 },
+            pw::spa::utils::Fraction { num: 0, denom: 1 },
+            pw::spa::utils::Fraction {
+                num: 1000,
+                denom: 1
+            }
+        ),
+    );
+
+    let values: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &pw::spa::pod::Value::Object(obj),
+    )
+    .map_err(|e| CaptureError::PipeWire(format!("Serialize format error: {e:?}")))?
+    .0
+    .into_inner();
+
+    let mut params = [Pod::from_bytes(&values)
+        .ok_or_else(|| CaptureError::PipeWire("Pod from_bytes failed".into()))?];
+
+    stream
+        .connect(
+            spa::utils::Direction::Input,
+            Some(node_id),
+            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
+            &mut params,
+        )
+        .map_err(|e| CaptureError::PipeWire(format!("Connect stream error: {e}")))?;
+
+    info!("PipeWire stream connected to node {node_id}, entering mainloop");
+    mainloop.run();
+    info!("PipeWire mainloop exited cleanly");
+
+    Ok(())
+}

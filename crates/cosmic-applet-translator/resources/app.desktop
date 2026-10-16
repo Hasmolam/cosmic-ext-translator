@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Screen Translator
+Comment=Real-time Screen and Game Translator for COSMIC
+Type=Application
+Icon=com.system76.CosmicExtLingua
+Exec=cosmic-applet-translator %F
+Terminal=false
+StartupNotify=true
+Categories=COSMIC
+Keywords=COSMIC;translator;game;ocr;
+NoDisplay=true
+X-CosmicApplet=true
+X-CosmicHoverPopup=Auto

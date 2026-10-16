@@ -1,0 +1,12 @@
+[package]
+name = "cosmic-translator-overlay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+translator-core = { path = "../translator-core" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
