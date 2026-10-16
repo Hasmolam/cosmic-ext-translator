@@ -18,7 +18,7 @@ pub fn default_socket_path() -> PathBuf {
 }
 
 /// Message payload communicated between the translation engine and the HUD overlay.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "payload")]
 pub enum HudMessage {
     ShowSubtitle {
@@ -31,6 +31,11 @@ pub enum HudMessage {
     SetStatus {
         active: bool,
         text: String,
+    },
+    UpdateStyle {
+        font_size: u16,
+        opacity: f32,
+        duration_ms: u64,
     },
 }
 

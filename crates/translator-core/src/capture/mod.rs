@@ -2,7 +2,7 @@ pub mod roi;
 pub mod screencast;
 pub mod pipewire_thread;
 
-use roi::Roi;
+use roi::{CaptureRegion, Roi};
 use screencast::{ScreencastManager, ScreencastStreamInfo};
 use pipewire_thread::{spawn_pipewire_capture_thread, CapturedFrame, PipewireCaptureHandle};
 use crate::error::Result;
@@ -21,13 +21,14 @@ impl CaptureSession {
     pub async fn start(
         restore_token: Option<&str>,
         persist: bool,
-        initial_roi: Option<Roi>,
+        initial_region: impl Into<CaptureRegion>,
     ) -> Result<Self> {
+        let region = initial_region.into();
         let stream_info = ScreencastManager::create_stream(restore_token, persist).await?;
         let (capture_handle, frame_receiver) = spawn_pipewire_capture_thread(
             stream_info.pipewire_fd.try_clone().map_err(|e| crate::error::CaptureError::PipeWire(e.to_string()))?,
             stream_info.node_id,
-            initial_roi,
+            region,
         );
 
         Ok(Self {
@@ -35,6 +36,10 @@ impl CaptureSession {
             capture_handle,
             frame_receiver,
         })
+    }
+
+    pub fn update_region(&self, region: CaptureRegion) {
+        self.capture_handle.update_region(region);
     }
 
     pub fn update_roi(&self, roi: Option<Roi>) {

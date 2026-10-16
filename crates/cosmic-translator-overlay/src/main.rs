@@ -74,13 +74,20 @@ impl cosmic::Application for OverlayApp {
         let selector_id = Id::unique();
         let hud_id = Id::unique();
 
+        let initial_text = if mode == AppMode::Hud {
+            "🎮 cosmic-ext-lingua: Altyazı Katmanı Aktif".to_string()
+        } else {
+            String::new()
+        };
+
         let app = Self {
             core,
             mode,
             hud: SubtitleHudState {
                 surface_id: hud_id,
-                current_text: String::new(),
+                current_text: initial_text,
                 visible: true,
+                ..Default::default()
             },
             selector_id,
             hud_id,
@@ -102,7 +109,12 @@ impl cosmic::Application for OverlayApp {
             AppMode::Hud => {
                 let mut settings = app.hud.layer_settings();
                 settings.id = hud_id;
-                get_layer_surface(settings)
+                let layer_task = get_layer_surface(settings);
+                let clear_task = Task::perform(
+                    tokio::time::sleep(Duration::from_millis(30000)),
+                    |_| cosmic::Action::from(Message::ClearSubtitle),
+                );
+                Task::batch([layer_task, clear_task])
             }
         };
 
@@ -118,6 +130,7 @@ impl cosmic::Application for OverlayApp {
     }
 
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
+        eprintln!("OverlayApp::update received: {:?}", message);
         match message {
             Message::Selector(SelectorMessage::Selected(roi)) => {
                 println!(
@@ -133,15 +146,18 @@ impl cosmic::Application for OverlayApp {
             }
 
             Message::Hud(HudMessage::ShowSubtitle { text, duration_ms, .. }) => {
+                eprintln!("HUD updating text to: '{}'", text);
                 self.hud.current_text = text;
                 self.hud.visible = true;
+                let duration = if duration_ms == 0 { self.hud.duration_ms } else { duration_ms };
                 Task::perform(
-                    tokio::time::sleep(Duration::from_millis(duration_ms)),
+                    tokio::time::sleep(Duration::from_millis(duration)),
                     |_| cosmic::Action::from(Message::ClearSubtitle),
                 )
             }
 
             Message::Hud(HudMessage::ClearSubtitle) | Message::ClearSubtitle => {
+                eprintln!("HUD clearing subtitle");
                 self.hud.current_text.clear();
                 Task::none()
             }
@@ -155,6 +171,14 @@ impl cosmic::Application for OverlayApp {
                 Task::none()
             }
 
+            Message::Hud(HudMessage::UpdateStyle { font_size, opacity, duration_ms }) => {
+                eprintln!("HUD style updated: font_size={}, opacity={}, duration_ms={}", font_size, opacity, duration_ms);
+                self.hud.font_size = font_size;
+                self.hud.opacity = opacity;
+                self.hud.duration_ms = duration_ms;
+                Task::none()
+            }
+
             Message::Close => match self.mode {
                 AppMode::Selector => destroy_layer_surface(self.selector_id),
                 AppMode::Hud => destroy_layer_surface(self.hud_id),
@@ -163,16 +187,19 @@ impl cosmic::Application for OverlayApp {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
+        eprintln!("OverlayApp::view called (main window)");
         widget::text("").into()
     }
 
     fn view_window(&self, id: Id) -> Element<'_, Self::Message> {
+        eprintln!("OverlayApp::view_window called for id {:?}", id);
         if id == self.selector_id {
             let canvas_widget = cosmic::iced::widget::canvas(SelectorProgram)
                 .width(Length::Fill)
                 .height(Length::Fill);
             Element::from(canvas_widget).map(Message::Selector)
         } else if id == self.hud_id {
+            eprintln!("Rendering HUD element with text: '{}'", self.hud.current_text);
             self.hud.view()
         } else {
             widget::text("").into()
@@ -181,6 +208,7 @@ impl cosmic::Application for OverlayApp {
 }
 
 fn main() -> cosmic::iced::Result {
+    let _ = tracing_subscriber::fmt::try_init();
     let mode = if env::args().any(|arg| arg == "--selector") {
         AppMode::Selector
     } else {

@@ -185,6 +185,27 @@ impl OllamaTranslationBackend {
     pub fn default_local() -> Self {
         Self::new(Self::DEFAULT_ENDPOINT, Self::DEFAULT_MODEL)
     }
+
+    /// Queries the Ollama instance (/api/tags) to verify connectivity and list installed models.
+    pub async fn test_connection(&self) -> anyhow::Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct TagsResponse {
+            #[serde(default)]
+            models: Vec<ModelTag>,
+        }
+        #[derive(Deserialize)]
+        struct ModelTag {
+            name: String,
+        }
+
+        let url = format!("{}/api/tags", self.endpoint);
+        let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("Ollama returned HTTP error status: {}", resp.status());
+        }
+        let tags: TagsResponse = resp.json().await?;
+        Ok(tags.models.into_iter().map(|m| m.name).collect())
+    }
 }
 
 impl TranslationBackend for OllamaTranslationBackend {

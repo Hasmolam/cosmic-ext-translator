@@ -7,8 +7,8 @@ use pw::spa;
 use spa::pod::Pod;
 use tracing::{debug, info, warn};
 
-use crate::capture::roi::Roi;
 use crate::error::{CaptureError, Result};
+use super::roi::{CaptureRegion, Roi, RoiPreset};
 
 #[derive(Clone, Debug)]
 pub struct CapturedFrame {
@@ -18,14 +18,16 @@ pub struct CapturedFrame {
     pub original_height: u32,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum PipewireCommand {
+    UpdateRegion(CaptureRegion),
     UpdateRoi(Option<Roi>),
     Stop,
 }
 
 struct StreamUserData {
     format: spa::param::video::VideoInfoRaw,
-    roi: Arc<RwLock<Option<Roi>>>,
+    region: Arc<RwLock<CaptureRegion>>,
     frame_sender: tokio::sync::watch::Sender<Option<CapturedFrame>>,
 }
 
@@ -33,15 +35,27 @@ pub struct PipewireCaptureHandle {
     command_sender: pw::channel::Sender<PipewireCommand>,
     thread_handle: Option<std::thread::JoinHandle<Result<()>>>,
     pub frame_receiver: tokio::sync::watch::Receiver<Option<CapturedFrame>>,
-    roi: Arc<RwLock<Option<Roi>>>,
+    region: Arc<RwLock<CaptureRegion>>,
 }
 
 impl PipewireCaptureHandle {
-    pub fn update_roi(&self, roi: Option<Roi>) {
-        if let Ok(mut current) = self.roi.write() {
-            *current = roi;
+    pub fn update_region(&self, region: CaptureRegion) {
+        if let Ok(mut current) = self.region.write() {
+            *current = region;
         }
-        let _ = self.command_sender.send(PipewireCommand::UpdateRoi(roi));
+        let _ = self.command_sender.send(PipewireCommand::UpdateRegion(region));
+    }
+
+    pub fn update_roi(&self, roi: Option<Roi>) {
+        let region = CaptureRegion {
+            preset: if roi.is_some() {
+                RoiPreset::Custom
+            } else {
+                RoiPreset::FullScreen
+            },
+            custom: roi,
+        };
+        self.update_region(region);
     }
 
     pub fn stop(&mut self) -> Result<()> {
@@ -65,26 +79,26 @@ impl Drop for PipewireCaptureHandle {
 pub fn spawn_pipewire_capture_thread(
     fd: OwnedFd,
     node_id: u32,
-    initial_roi: Option<Roi>,
+    initial_region: CaptureRegion,
 ) -> (
     PipewireCaptureHandle,
     tokio::sync::watch::Receiver<Option<CapturedFrame>>,
 ) {
     let (frame_sender, frame_receiver) = tokio::sync::watch::channel(None);
     let (pw_sender, pw_receiver) = pw::channel::channel::<PipewireCommand>();
-    let roi = Arc::new(RwLock::new(initial_roi));
-    let roi_clone = Arc::clone(&roi);
+    let region = Arc::new(RwLock::new(initial_region));
+    let region_clone = Arc::clone(&region);
 
     let thread_handle = std::thread::Builder::new()
         .name("pw-capture-loop".into())
-        .spawn(move || run_pipewire_loop(fd, node_id, roi_clone, pw_receiver, frame_sender))
+        .spawn(move || run_pipewire_loop(fd, node_id, region_clone, pw_receiver, frame_sender))
         .expect("Failed to spawn PipeWire capture thread");
 
     let handle = PipewireCaptureHandle {
         command_sender: pw_sender,
         thread_handle: Some(thread_handle),
         frame_receiver: frame_receiver.clone(),
-        roi,
+        region,
     };
 
     (handle, frame_receiver)
@@ -93,7 +107,7 @@ pub fn spawn_pipewire_capture_thread(
 fn run_pipewire_loop(
     fd: OwnedFd,
     node_id: u32,
-    roi: Arc<RwLock<Option<Roi>>>,
+    region: Arc<RwLock<CaptureRegion>>,
     pw_receiver: pw::channel::Receiver<PipewireCommand>,
     frame_sender: tokio::sync::watch::Sender<Option<CapturedFrame>>,
 ) -> Result<()> {
@@ -110,6 +124,9 @@ fn run_pipewire_loop(
     // Attach command receiver to mainloop
     let mainloop_weak = mainloop.clone();
     let _receiver = pw_receiver.attach(mainloop.loop_(), move |command| match command {
+        PipewireCommand::UpdateRegion(_) => {
+            debug!("Region updated in PipeWire loop");
+        }
         PipewireCommand::UpdateRoi(_) => {
             debug!("ROI updated in PipeWire loop");
         }
@@ -121,7 +138,7 @@ fn run_pipewire_loop(
 
     let user_data = StreamUserData {
         format: Default::default(),
-        roi,
+        region,
         frame_sender,
     };
 
@@ -203,8 +220,8 @@ fn run_pipewire_loop(
                 return;
             };
 
-            let current_roi = user_data.roi.read().ok().and_then(|r| *r);
-            let target_roi = current_roi.unwrap_or(Roi::new(0, 0, frame_w, frame_h));
+            let region = user_data.region.read().ok().map(|r| *r).unwrap_or_default();
+            let target_roi = region.compute(frame_w, frame_h).unwrap_or_else(|| Roi::new(0, 0, frame_w, frame_h));
 
             match target_roi.crop_to_rgba(slice, frame_w, frame_h, effective_stride, is_bgr) {
                 Ok(image) => {

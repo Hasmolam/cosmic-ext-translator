@@ -109,6 +109,127 @@ impl Roi {
     }
 }
 
+/// Standard game genre and screen region presets for dialogue capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RoiPreset {
+    /// Standard RPG Maker / Retro JRPG dialogue box (Bottom 25% of height, 5% horizontal margins)
+    #[default]
+    Bottom25,
+    /// Visual Novel / Adventure game dialogue box (Bottom 33% of height, 4% horizontal margins)
+    Bottom33,
+    /// Full screen / entire window capture
+    FullScreen,
+    /// Custom manually-drawn ROI box
+    Custom,
+}
+
+impl RoiPreset {
+    pub const ALL: [Self; 4] = [Self::Bottom25, Self::Bottom33, Self::FullScreen, Self::Custom];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Bottom25 => "rpg_bottom_25",
+            Self::Bottom33 => "vn_bottom_33",
+            Self::FullScreen => "fullscreen",
+            Self::Custom => "custom",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Bottom25 => "RPG Maker / JRPG (Alt %25)",
+            Self::Bottom33 => "Visual Novel (Alt %33)",
+            Self::FullScreen => "Tam Ekran",
+            Self::Custom => "Özel Seçim",
+        }
+    }
+
+    pub fn from_str_name(name: &str) -> Self {
+        match name {
+            "rpg_bottom_25" | "bottom25" => Self::Bottom25,
+            "vn_bottom_33" | "bottom33" => Self::Bottom33,
+            "fullscreen" => Self::FullScreen,
+            _ => Self::Custom,
+        }
+    }
+
+    /// Computes the pixel ROI dynamically scaled for the given frame dimensions.
+    /// Eliminates resolution mismatches (e.g. 1080p -> 1440p -> 4K).
+    pub fn compute_for_frame(&self, frame_w: u32, frame_h: u32, custom: Option<Roi>) -> Option<Roi> {
+        if frame_w == 0 || frame_h == 0 {
+            return None;
+        }
+
+        match self {
+            Self::Bottom25 => {
+                let h = ((frame_h as f32) * 0.25).round() as u32;
+                let y = frame_h.saturating_sub(h);
+                let margin_x = ((frame_w as f32) * 0.05).round() as u32;
+                let w = frame_w.saturating_sub(margin_x * 2);
+                Roi::new(margin_x, y, w, h).clamp(frame_w, frame_h)
+            }
+            Self::Bottom33 => {
+                let h = ((frame_h as f32) * 0.33).round() as u32;
+                let y = frame_h.saturating_sub(h);
+                let margin_x = ((frame_w as f32) * 0.04).round() as u32;
+                let w = frame_w.saturating_sub(margin_x * 2);
+                Roi::new(margin_x, y, w, h).clamp(frame_w, frame_h)
+            }
+            Self::FullScreen => Some(Roi::new(0, 0, frame_w, frame_h)),
+            Self::Custom => custom.and_then(|r| r.clamp(frame_w, frame_h)),
+        }
+    }
+}
+
+/// Represents the active capture configuration: a preset and an optional custom ROI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CaptureRegion {
+    pub preset: RoiPreset,
+    pub custom: Option<Roi>,
+}
+
+impl CaptureRegion {
+    pub fn new(preset: RoiPreset, custom: Option<Roi>) -> Self {
+        Self { preset, custom }
+    }
+
+    pub fn compute(&self, width: u32, height: u32) -> Option<Roi> {
+        self.preset.compute_for_frame(width, height, self.custom)
+    }
+}
+
+impl From<Option<Roi>> for CaptureRegion {
+    fn from(opt: Option<Roi>) -> Self {
+        Self {
+            preset: if opt.is_some() {
+                RoiPreset::Custom
+            } else {
+                RoiPreset::FullScreen
+            },
+            custom: opt,
+        }
+    }
+}
+
+impl From<Roi> for CaptureRegion {
+    fn from(r: Roi) -> Self {
+        Self {
+            preset: RoiPreset::Custom,
+            custom: Some(r),
+        }
+    }
+}
+
+impl From<RoiPreset> for CaptureRegion {
+    fn from(preset: RoiPreset) -> Self {
+        Self {
+            preset,
+            custom: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +268,29 @@ mod tests {
 
         let pixel = cropped.get_pixel(0, 0);
         assert_eq!(pixel.0, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn test_roi_preset_dynamic_scaling() {
+        // 1080p (1920x1080) Bottom 25%
+        let roi_1080p = RoiPreset::Bottom25.compute_for_frame(1920, 1080, None).unwrap();
+        assert_eq!(roi_1080p.height, 270); // 1080 * 0.25
+        assert_eq!(roi_1080p.y, 810);      // 1080 - 270
+        assert_eq!(roi_1080p.x, 96);       // 1920 * 0.05
+        assert_eq!(roi_1080p.width, 1728);  // 1920 - (96 * 2)
+
+        // 720p (1280x720) Bottom 25%
+        let roi_720p = RoiPreset::Bottom25.compute_for_frame(1280, 720, None).unwrap();
+        assert_eq!(roi_720p.height, 180);
+        assert_eq!(roi_720p.y, 540);
+
+        // Visual Novel Bottom 33%
+        let roi_vn = RoiPreset::Bottom33.compute_for_frame(1920, 1080, None).unwrap();
+        assert_eq!(roi_vn.height, 356); // 1080 * 0.33 rounded
+        assert_eq!(roi_vn.y, 724);
+
+        // Fullscreen
+        let roi_fs = RoiPreset::FullScreen.compute_for_frame(1920, 1080, None).unwrap();
+        assert_eq!(roi_fs, Roi::new(0, 0, 1920, 1080));
     }
 }

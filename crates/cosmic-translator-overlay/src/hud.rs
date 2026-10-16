@@ -14,6 +14,9 @@ pub struct SubtitleHudState {
     pub surface_id: Id,
     pub current_text: String,
     pub visible: bool,
+    pub font_size: u16,
+    pub opacity: f32,
+    pub duration_ms: u64,
 }
 
 impl Default for SubtitleHudState {
@@ -22,6 +25,9 @@ impl Default for SubtitleHudState {
             surface_id: Id::unique(),
             current_text: String::new(),
             visible: true,
+            font_size: 22,
+            opacity: 0.92,
+            duration_ms: 6000,
         }
     }
 }
@@ -36,41 +42,47 @@ impl SubtitleHudState {
             // Empty input zone ensures 100% click-through (all clicks pass to underlying game/window)
             input_zone: Some(vec![]),
             exclusive_zone: -1,
-            anchor: Anchor::BOTTOM,
+            anchor: Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
             margin: IcedMargin {
-                bottom: 80,
+                bottom: 40,
                 top: 0,
                 left: 0,
                 right: 0,
             },
-            size: None, // Auto-sizes to text content
+            size: Some((None, Some(110))),
             ..Default::default()
         }
     }
 
     pub fn view<Message: 'static>(&self) -> Element<'_, Message> {
         if !self.visible || self.current_text.trim().is_empty() {
-            // Invisible when there is no text
-            return widget::text("").into();
+            // Transparent empty container filling surface
+            return widget::container(widget::text(""))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
         }
 
-        let label = widget::text(&self.current_text).size(22);
+        let label = widget::text(&self.current_text).size(self.font_size);
+        let opacity = self.opacity.clamp(0.1, 1.0);
 
         let pill_container = widget::container(label)
-            .padding(Padding::from([12, 24]))
-            .style(|_theme| widget::container::Style {
-                background: Some(Background::Color(Color::from_rgba(0.04, 0.04, 0.06, 0.88))),
+            .padding(Padding::from([14, 28]))
+            .style(move |_theme| widget::container::Style {
+                background: Some(Background::Color(Color::from_rgba(0.04, 0.04, 0.06, opacity))),
                 border: Border {
-                    color: Color::from_rgba(1.0, 1.0, 1.0, 0.25),
-                    width: 1.5,
-                    radius: 12.0.into(),
+                    color: Color::from_rgba(1.0, 1.0, 1.0, 0.35),
+                    width: 2.0,
+                    radius: 14.0.into(),
                 },
                 ..Default::default()
             });
 
         widget::container(pill_container)
-            .width(Length::Shrink)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
             .into()
     }
 }
