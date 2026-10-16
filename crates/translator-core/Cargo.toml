@@ -12,6 +12,9 @@ tokio = { workspace = true }
 image = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+anyhow = { workspace = true }
+ocrs = "0.13.1"
+rten = "0.26"
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
