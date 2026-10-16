@@ -1,6 +1,8 @@
 pub mod fuzzy_cache;
+pub mod google;
 
 pub use fuzzy_cache::{FuzzyLruCache, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD};
+pub use google::GoogleTranslateBackend;
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;

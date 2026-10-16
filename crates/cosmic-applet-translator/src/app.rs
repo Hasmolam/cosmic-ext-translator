@@ -7,15 +7,15 @@ use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_p
 use cosmic::iced::{window::Id, Limits, Task};
 use cosmic::prelude::*;
 use cosmic::widget::{self, button, row};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use translator_core::capture::roi::{CaptureRegion, RoiPreset};
 use translator_core::ipc::{HudIpcClient, HudMessage};
-use translator_core::ocr::MockOcrBackend;
+use translator_core::ocr::{MockOcrBackend, OcrBackend, OcrsBackend};
 use translator_core::orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorHandle,
 };
 use translator_core::pipeline::debouncer::FrameDebouncer;
-use translator_core::translation::OllamaTranslationBackend;
+use translator_core::translation::{GoogleTranslateBackend, OllamaTranslationBackend, TranslationBackend};
 use translator_core::{CaptureSession, Roi};
 
 #[derive(Default)]
@@ -51,7 +51,7 @@ pub enum Message {
     RoiSelected(Roi),
     RoiSelectionCancelled,
     PresetSelected(RoiPreset),
-    CaptureStarted(CaptureSession),
+    CaptureStarted(CaptureSession, Arc<dyn OcrBackend>),
     CaptureFailed(String),
     HudCleared,
 }
@@ -69,7 +69,7 @@ impl Clone for Message {
             Self::RoiSelected(r) => Self::RoiSelected(*r),
             Self::RoiSelectionCancelled => Self::RoiSelectionCancelled,
             Self::PresetSelected(p) => Self::PresetSelected(*p),
-            Self::CaptureStarted(_) => Self::CaptureFailed("Cannot clone active session".into()),
+            Self::CaptureStarted(_, _) => Self::CaptureFailed("Cannot clone active session".into()),
             Self::CaptureFailed(s) => Self::CaptureFailed(s.clone()),
             Self::HudCleared => Self::HudCleared,
         }
@@ -196,6 +196,10 @@ impl cosmic::Application for AppModel {
                             let region = CaptureRegion::new(preset, self.config.custom_roi);
                             session.update_region(region);
                         }
+                    }
+                    SettingsMessage::EngineSelected(engine) => {
+                        self.config.engine = engine;
+                        self.save_config();
                     }
                     SettingsMessage::SelectCustomRoi => {
                         return self.update(Message::SelectRoiRequested);
@@ -402,28 +406,40 @@ impl cosmic::Application for AppModel {
                 let region = CaptureRegion::new(preset, self.config.custom_roi);
                 return Task::perform(
                     async move {
-                        match CaptureSession::start(None, false, region).await {
-                            Ok(session) => Message::CaptureStarted(session),
+                        let session = match CaptureSession::start(None, false, region).await {
+                            Ok(s) => s,
                             Err(err) => {
                                 error!("Failed to start capture session: {err}");
-                                Message::CaptureFailed(err.to_string())
+                                return Message::CaptureFailed(err.to_string());
                             }
-                        }
+                        };
+                        let ocr: Arc<dyn OcrBackend> = match OcrsBackend::load_default_or_download().await {
+                            Ok(backend) => Arc::new(backend),
+                            Err(err) => {
+                                warn!("Failed to load OcrsBackend, falling back to mock: {err}");
+                                Arc::new(MockOcrBackend::new("Capture active"))
+                            }
+                        };
+                        Message::CaptureStarted(session, ocr)
                     },
                     cosmic::Action::from,
                 );
             }
 
-            Message::CaptureStarted(session) => {
+            Message::CaptureStarted(session, ocr_backend) => {
                 info!("Capture session active, starting translation orchestrator");
                 let frame_rx = session.frame_receiver.clone();
                 self.capture_session = Some(session);
 
-                let ocr_backend = Arc::new(MockOcrBackend::new("Game Subtitle"));
-                let translation_backend = Arc::new(OllamaTranslationBackend::new(
-                    &self.config.ollama_endpoint,
-                    &self.config.ollama_model,
-                ));
+                let translation_backend: Arc<dyn TranslationBackend> = if self.config.engine == "ollama" {
+                    Arc::new(OllamaTranslationBackend::new(
+                        &self.config.ollama_endpoint,
+                        &self.config.ollama_model,
+                    ))
+                } else {
+                    Arc::new(GoogleTranslateBackend::new())
+                };
+
                 let orchestrator_config = OrchestratorConfig {
                     src_lang: self.config.source_lang.clone(),
                     target_lang: self.config.target_lang.clone(),

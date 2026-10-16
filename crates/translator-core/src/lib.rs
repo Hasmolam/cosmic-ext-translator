@@ -19,8 +19,8 @@ pub use pipeline::{spawn_recognition_pipeline, PipelineHandle, RecognizedEvent};
 
 pub use ocr::{MockOcrBackend, OcrBackend, OcrsBackend};
 pub use translation::{
-    FuzzyLruCache, MockTranslationBackend, OllamaTranslationBackend, TranslationBackend,
-    TranslationContext, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
+    FuzzyLruCache, GoogleTranslateBackend, MockTranslationBackend, OllamaTranslationBackend,
+    TranslationBackend, TranslationContext, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
 };
 pub use shortcuts::{GlobalShortcutsManager, ShortcutAction};
 pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage};

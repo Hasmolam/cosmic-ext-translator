@@ -25,6 +25,7 @@ pub struct SettingsState {
 #[derive(Debug, Clone)]
 pub enum SettingsMessage {
     TabSelected(SettingsTab),
+    EngineSelected(String),
     PresetSelected(RoiPreset),
     SelectCustomRoi,
     SettleDurationChanged(u64),
@@ -140,28 +141,27 @@ impl SettingsState {
     }
 
     fn view_engine<'a>(&'a self, config: &'a Config) -> Element<'a, SettingsMessage> {
-        let status_desc = if self.is_testing_ollama {
-            "Bağlantı test ediliyor...".to_string()
-        } else if let Some(ref st) = self.ollama_test_status {
-            st.clone()
-        } else {
-            "Durum bilinmiyor".to_string()
-        };
+        let is_google = config.engine == "google";
+        let engine_buttons = row![
+            if is_google {
+                button::suggested("Google Translate (Önerilen)")
+            } else {
+                button::standard("Google Translate (Önerilen)")
+            }
+            .on_press(SettingsMessage::EngineSelected("google".to_string())),
+            if !is_google {
+                button::suggested("Ollama (Yerel LLM)")
+            } else {
+                button::standard("Ollama (Yerel LLM)")
+            }
+            .on_press(SettingsMessage::EngineSelected("ollama".to_string())),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
 
-        let section = widget::settings::section()
-            .title("Yerel Çeviri Motoru (Ollama)")
-            .add(widget::settings::item(
-                "Endpoint Adresi",
-                widget::text_input("http://localhost:11434", &config.ollama_endpoint)
-                    .on_input(SettingsMessage::OllamaEndpointChanged)
-                    .width(260),
-            ))
-            .add(widget::settings::item(
-                "Model Adı",
-                widget::text_input("qwen2.5:3b", &config.ollama_model)
-                    .on_input(SettingsMessage::OllamaModelChanged)
-                    .width(260),
-            ))
+        let mut section = widget::settings::section()
+            .title("Çeviri Motoru Seçimi")
+            .add(widget::settings::item("Aktif Motor", engine_buttons))
             .add(widget::settings::item(
                 "Hedef Dil (Target)",
                 widget::text_input("tr", &config.target_lang)
@@ -173,17 +173,46 @@ impl SettingsState {
                 widget::text_input("auto", &config.source_lang)
                     .on_input(SettingsMessage::SourceLangChanged)
                     .width(100),
-            ))
-            .add(widget::settings::item(
-                "Bağlantı Durumu",
-                row![
-                    text(status_desc).size(13),
-                    button::suggested("Test Et")
-                        .on_press(SettingsMessage::TestOllamaConnection),
-                ]
-                .spacing(12)
-                .align_y(Alignment::Center),
             ));
+
+        if is_google {
+            section = section.add(widget::settings::item(
+                "Motor Bilgisi",
+                text("Google Translate devrede. Hızlıdır, ekstra GPU veya model indirme gerektirmez.").size(13),
+            ));
+        } else {
+            let status_desc = if self.is_testing_ollama {
+                "Bağlantı test ediliyor...".to_string()
+            } else if let Some(ref st) = self.ollama_test_status {
+                st.clone()
+            } else {
+                "Durum bilinmiyor".to_string()
+            };
+
+            section = section
+                .add(widget::settings::item(
+                    "Ollama Endpoint",
+                    widget::text_input("http://localhost:11434", &config.ollama_endpoint)
+                        .on_input(SettingsMessage::OllamaEndpointChanged)
+                        .width(260),
+                ))
+                .add(widget::settings::item(
+                    "Ollama Modeli",
+                    widget::text_input("qwen2.5:3b", &config.ollama_model)
+                        .on_input(SettingsMessage::OllamaModelChanged)
+                        .width(260),
+                ))
+                .add(widget::settings::item(
+                    "Bağlantı Testi",
+                    row![
+                        text(status_desc).size(13),
+                        button::suggested("Test Et")
+                            .on_press(SettingsMessage::TestOllamaConnection),
+                    ]
+                    .spacing(12)
+                    .align_y(Alignment::Center),
+                ));
+        }
 
         section.into()
     }
