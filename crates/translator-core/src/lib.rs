@@ -2,6 +2,8 @@ pub mod error;
 pub mod capture;
 pub mod pipeline;
 pub mod ocr;
+pub mod translation;
+pub mod shortcuts;
 
 pub use capture::roi::Roi;
 pub use capture::screencast::{ScreencastManager, ScreencastStreamInfo};
@@ -14,4 +16,9 @@ pub use pipeline::preprocess::{preprocess_for_ocr, compute_otsu_threshold, Prepr
 pub use pipeline::{spawn_recognition_pipeline, PipelineHandle, RecognizedEvent};
 
 pub use ocr::{MockOcrBackend, OcrBackend, OcrsBackend};
+pub use translation::{
+    FuzzyLruCache, MockTranslationBackend, OllamaTranslationBackend, TranslationBackend,
+    TranslationContext, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
+};
+pub use shortcuts::{GlobalShortcutsManager, ShortcutAction};
 pub use error::{CaptureError, Result};
