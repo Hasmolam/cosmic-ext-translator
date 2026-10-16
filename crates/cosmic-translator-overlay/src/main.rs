@@ -2,6 +2,7 @@ mod hud;
 mod selector;
 
 use std::env;
+use std::time::Duration;
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings;
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity, Layer,
@@ -12,6 +13,8 @@ use cosmic::widget;
 use cosmic::Element;
 use hud::SubtitleHudState;
 use selector::{SelectorMessage, SelectorProgram};
+use tokio_stream::wrappers::ReceiverStream;
+use translator_core::ipc::{HudIpcServer, HudMessage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -30,8 +33,26 @@ pub struct OverlayApp {
 #[derive(Debug, Clone)]
 pub enum Message {
     Selector(SelectorMessage),
-    UpdateSubtitle(String),
+    Hud(HudMessage),
+    ClearSubtitle,
     Close,
+}
+
+fn hud_ipc_subscription() -> cosmic::iced::Subscription<Message> {
+    cosmic::iced::Subscription::run(|| {
+        let (tx, rx) = tokio::sync::mpsc::channel(32);
+        tokio::spawn(async move {
+            let server = HudIpcServer::default_server();
+            if let Ok(mut server_rx) = server.start().await {
+                while let Some(msg) = server_rx.recv().await {
+                    if tx.send(Message::Hud(msg)).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+        ReceiverStream::new(rx)
+    })
 }
 
 impl cosmic::Application for OverlayApp {
@@ -58,7 +79,7 @@ impl cosmic::Application for OverlayApp {
             mode,
             hud: SubtitleHudState {
                 surface_id: hud_id,
-                current_text: "Translation Overlay Active".into(),
+                current_text: String::new(),
                 visible: true,
             },
             selector_id,
@@ -88,6 +109,14 @@ impl cosmic::Application for OverlayApp {
         (app, task)
     }
 
+    fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
+        if self.mode == AppMode::Hud {
+            hud_ipc_subscription()
+        } else {
+            cosmic::iced::Subscription::none()
+        }
+    }
+
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         match message {
             Message::Selector(SelectorMessage::Selected(roi)) => {
@@ -103,8 +132,26 @@ impl cosmic::Application for OverlayApp {
                 destroy_layer_surface(self.selector_id)
             }
 
-            Message::UpdateSubtitle(text) => {
+            Message::Hud(HudMessage::ShowSubtitle { text, duration_ms, .. }) => {
                 self.hud.current_text = text;
+                self.hud.visible = true;
+                Task::perform(
+                    tokio::time::sleep(Duration::from_millis(duration_ms)),
+                    |_| cosmic::Action::from(Message::ClearSubtitle),
+                )
+            }
+
+            Message::Hud(HudMessage::ClearSubtitle) | Message::ClearSubtitle => {
+                self.hud.current_text.clear();
+                Task::none()
+            }
+
+            Message::Hud(HudMessage::SetStatus { active, text }) => {
+                if !active {
+                    self.hud.current_text.clear();
+                } else {
+                    self.hud.current_text = text;
+                }
                 Task::none()
             }
 

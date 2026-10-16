@@ -45,3 +45,11 @@ impl CaptureSession {
         self.capture_handle.stop()
     }
 }
+
+impl std::fmt::Debug for CaptureSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CaptureSession")
+            .field("node_id", &self.stream_info.node_id)
+            .finish()
+    }
+}

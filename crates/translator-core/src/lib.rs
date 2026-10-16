@@ -4,6 +4,8 @@ pub mod pipeline;
 pub mod ocr;
 pub mod translation;
 pub mod shortcuts;
+pub mod ipc;
+pub mod orchestrator;
 
 pub use capture::roi::Roi;
 pub use capture::screencast::{ScreencastManager, ScreencastStreamInfo};
@@ -21,4 +23,8 @@ pub use translation::{
     TranslationContext, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
 };
 pub use shortcuts::{GlobalShortcutsManager, ShortcutAction};
+pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage};
+pub use orchestrator::{
+    spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
+};
 pub use error::{CaptureError, Result};

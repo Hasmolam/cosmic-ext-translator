@@ -1,8 +1,9 @@
+use serde::{Deserialize, Serialize};
 use image::RgbaImage;
 use crate::error::CaptureError;
 
 /// Defines a rectangular Region of Interest on the captured screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Roi {
     pub x: u32,
     pub y: u32,
