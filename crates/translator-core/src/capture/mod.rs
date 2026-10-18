@@ -46,6 +46,14 @@ impl CaptureSession {
         self.capture_handle.update_roi(roi);
     }
 
+    pub fn snapshot_requester(&self) -> pipewire_thread::SnapshotRequester {
+        self.capture_handle.snapshot_requester()
+    }
+
+    pub async fn get_full_snapshot(&self) -> Option<image::RgbaImage> {
+        self.capture_handle.get_full_snapshot().await
+    }
+
     pub fn stop(&mut self) -> Result<()> {
         self.capture_handle.stop()
     }

@@ -11,6 +11,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tokio-stream = { workspace = true }
+image = { workspace = true }
 
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic.git"

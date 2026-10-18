@@ -51,6 +51,13 @@ impl OcrsBackend {
         "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten";
 
     pub fn default_models_dir() -> std::path::PathBuf {
+        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-lingua/models");
+        if system_dir.join("text-detection.rten").exists()
+            && system_dir.join("text-recognition.rten").exists()
+        {
+            return system_dir;
+        }
+
         if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
             std::path::PathBuf::from(data_home).join("cosmic-ext-lingua/models")
         } else if let Ok(home) = std::env::var("HOME") {
@@ -75,6 +82,17 @@ impl OcrsBackend {
 
     /// Loads the OCR models from the default models directory, downloading them if missing.
     pub async fn load_default_or_download() -> Result<Self> {
+        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-lingua/models");
+        let sys_det = system_dir.join("text-detection.rten");
+        let sys_rec = system_dir.join("text-recognition.rten");
+
+        if sys_det.exists() && sys_rec.exists() {
+            tracing::info!("Loading OCR models from system directory: {:?}", system_dir);
+            let det_model = Model::load_file(&sys_det)?;
+            let rec_model = Model::load_file(&sys_rec)?;
+            return Self::from_models(det_model, rec_model);
+        }
+
         let models_dir = Self::default_models_dir();
         tokio::fs::create_dir_all(&models_dir).await?;
 
@@ -97,6 +115,90 @@ impl OcrsBackend {
         let rec_model = Model::load_file(&rec_path)?;
 
         Self::from_models(det_model, rec_model)
+    }
+}
+
+/// Tesseract OCR backend for extended language support (CJK: Japanese, Chinese, Korean).
+#[derive(Debug, Clone)]
+pub struct TesseractBackend {
+    pub lang: String,
+}
+
+impl TesseractBackend {
+    pub fn new(lang: impl Into<String>) -> Self {
+        Self {
+            lang: lang.into(),
+        }
+    }
+
+    pub fn is_available() -> bool {
+        std::process::Command::new("tesseract")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
+impl OcrBackend for TesseractBackend {
+    fn recognize<'a>(&'a self, image: &'a DynamicImage) -> BoxFuture<'a, Result<String>> {
+        let lang = self.lang.clone();
+        let rgb = image.to_rgb8();
+        Box::pin(async move {
+            let mut cursor = std::io::Cursor::new(Vec::new());
+            rgb.write_to(&mut cursor, image::ImageFormat::Png)
+                .map_err(|e| anyhow::anyhow!("Failed to encode image to PNG for Tesseract: {e}"))?;
+            let png_bytes = cursor.into_inner();
+
+            let mut child = tokio::process::Command::new("tesseract")
+                .arg("stdin")
+                .arg("stdout")
+                .arg("-l")
+                .arg(&lang)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map_err(|e| anyhow::anyhow!("Failed to spawn tesseract: {e}"))?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                use tokio::io::AsyncWriteExt;
+                stdin.write_all(&png_bytes).await?;
+            }
+
+            let output = child.wait_with_output().await?;
+            if !output.status.success() {
+                anyhow::bail!("Tesseract exited with non-zero status");
+            }
+
+            let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            Ok(text)
+        })
+    }
+}
+
+/// Automatically selects and instantiates the optimal OCR engine for a given source language.
+pub async fn create_ocr_backend_for_lang(src_lang: &str) -> Result<Arc<dyn OcrBackend>> {
+    let lower = src_lang.to_lowercase();
+    let is_cjk = matches!(lower.as_str(), "ja" | "jpn" | "zh" | "chi" | "ko" | "kor");
+
+    if is_cjk && TesseractBackend::is_available() {
+        let tesseract_lang = match lower.as_str() {
+            "ja" | "jpn" => "jpn",
+            "zh" | "chi" => "chi_sim",
+            "ko" | "kor" => "kor",
+            other => other,
+        };
+        tracing::info!("Using Tesseract OCR backend for CJK language: {tesseract_lang}");
+        return Ok(Arc::new(TesseractBackend::new(tesseract_lang)));
+    }
+
+    match OcrsBackend::load_default_or_download().await {
+        Ok(backend) => Ok(Arc::new(backend)),
+        Err(err) => {
+            tracing::warn!("Failed to load OcrsBackend, falling back to MockOcrBackend: {err}");
+            Ok(Arc::new(MockOcrBackend::new("Capture Active")))
+        }
     }
 }
 

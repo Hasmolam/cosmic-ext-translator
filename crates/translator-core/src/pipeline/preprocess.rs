@@ -27,17 +27,18 @@ impl Default for PreprocessConfig {
 /// 4. Background polarity check & color inversion (producing black text on white background).
 #[must_use]
 pub fn preprocess_for_ocr(image: &RgbaImage, config: &PreprocessConfig) -> GrayImage {
-    // 1. Optional Lanczos3 scaling
-    let scaled = if (config.scale_factor - 1.0).abs() > 0.05 {
+    // 1. Fast grayscale conversion
+    let gray_base = image::imageops::grayscale(image);
+
+    // 2. High-performance CatmullRom scaling (only for small text ROIs, 5x faster than Lanczos3)
+    let should_scale = (config.scale_factor - 1.0).abs() > 0.05 && image.height() < 160;
+    let mut gray = if should_scale {
         let new_w = ((image.width() as f32) * config.scale_factor).round() as u32;
         let new_h = ((image.height() as f32) * config.scale_factor).round() as u32;
-        image::imageops::resize(image, new_w.max(1), new_h.max(1), FilterType::Lanczos3)
+        image::imageops::resize(&gray_base, new_w.max(1), new_h.max(1), FilterType::CatmullRom)
     } else {
-        image.clone()
+        gray_base
     };
-
-    // 2. Grayscale conversion
-    let mut gray = image::imageops::grayscale(&scaled);
 
     if !config.binarize {
         return gray;

@@ -13,9 +13,12 @@ translator-core = { path = "../translator-core" }
 i18n-embed-fl = "0.10"
 rust-embed = "8.11"
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+image = { workspace = true }
 
 [dependencies.i18n-embed]
 version = "0.16"
@@ -32,3 +35,6 @@ features = [
     "wayland",
     "winit",
 ]
+
+[dev-dependencies]
+ron = "0.8"

@@ -19,10 +19,28 @@ pub struct ScreencastManager;
 impl ScreencastManager {
     /// Requests a screencast session via XDG Screencast portal.
     ///
-    /// # Arguments
-    /// * `restore_token` - Previous restore token to bypass dialog if supported by compositor.
-    /// * `persist` - Whether to persist permission across runs.
+    /// If an existing `restore_token` fails (e.g. expired or display topology changed),
+    /// it automatically falls back to an interactive session request so capture never fails silently.
     pub async fn create_stream(
+        restore_token: Option<&str>,
+        persist: bool,
+    ) -> Result<ScreencastStreamInfo> {
+        if let Some(token) = restore_token {
+            match Self::try_create_stream(Some(token), persist).await {
+                Ok(info) => Ok(info),
+                Err(err) => {
+                    tracing::warn!(
+                        "Screencast session with restore token failed ({err}); retrying with interactive picker"
+                    );
+                    Self::try_create_stream(None, persist).await
+                }
+            }
+        } else {
+            Self::try_create_stream(None, persist).await
+        }
+    }
+
+    async fn try_create_stream(
         restore_token: Option<&str>,
         persist: bool,
     ) -> Result<ScreencastStreamInfo> {

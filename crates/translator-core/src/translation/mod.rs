@@ -1,8 +1,12 @@
+pub mod deepl;
 pub mod fuzzy_cache;
 pub mod google;
+pub mod openai;
 
+pub use deepl::DeepLTranslationBackend;
 pub use fuzzy_cache::{FuzzyLruCache, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD};
 pub use google::GoogleTranslateBackend;
+pub use openai::OpenAiTranslationBackend;
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -258,6 +262,49 @@ impl TranslationBackend for OllamaTranslationBackend {
     }
 }
 
+/// Applies domain glossary replacements to a text string.
+/// Longer glossary terms take precedence over shorter ones to prevent partial substring collisions.
+pub fn apply_glossary(text: &str, glossary: &HashMap<String, String>) -> String {
+    if glossary.is_empty() || text.is_empty() {
+        return text.to_string();
+    }
+
+    let mut entries: Vec<(&String, &String)> = glossary.iter().collect();
+    entries.sort_by_key(|(a, _)| std::cmp::Reverse(a.len()));
+
+    let mut result = text.to_string();
+    for (term, replacement) in entries {
+        if term.is_empty() {
+            continue;
+        }
+        if result.contains(term.as_str()) {
+            result = result.replace(term.as_str(), replacement);
+        } else {
+            // Case-insensitive ASCII fallback match
+            let term_lower = term.to_ascii_lowercase();
+            let mut replaced = false;
+            let mut new_result = String::with_capacity(result.len());
+            let mut start = 0;
+            let text_lower = result.to_ascii_lowercase();
+
+            while let Some(idx) = text_lower[start..].find(&term_lower) {
+                let actual_start = start + idx;
+                let actual_end = actual_start + term.len();
+                new_result.push_str(&result[start..actual_start]);
+                new_result.push_str(replacement);
+                start = actual_end;
+                replaced = true;
+            }
+
+            if replaced {
+                new_result.push_str(&result[start..]);
+                result = new_result;
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,5 +345,26 @@ mod tests {
             .unwrap();
 
         assert_eq!(result, "[TEST: tr] Sword of light");
+    }
+
+    #[test]
+    fn test_apply_glossary_precedence() {
+        let mut glossary = HashMap::new();
+        glossary.insert("Potion".to_string(), "İksir".to_string());
+        glossary.insert("Health Potion".to_string(), "Can İksiri".to_string());
+
+        let input = "Player used a Health Potion and another Potion.";
+        let result = apply_glossary(input, &glossary);
+        assert_eq!(result, "Player used a Can İksiri and another İksir.");
+    }
+
+    #[test]
+    fn test_apply_glossary_case_insensitive() {
+        let mut glossary = HashMap::new();
+        glossary.insert("cyberware".to_string(), "Siberdonanım".to_string());
+
+        let input = "Upgraded Cyberware installed.";
+        let result = apply_glossary(input, &glossary);
+        assert_eq!(result, "Upgraded Siberdonanım installed.");
     }
 }

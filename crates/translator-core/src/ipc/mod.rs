@@ -17,6 +17,16 @@ pub fn default_socket_path() -> PathBuf {
     }
 }
 
+/// Subtitle HUD vertical screen position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HudPosition {
+    Top,
+    #[default]
+    Bottom,
+    Center,
+}
+
 /// Message payload communicated between the translation engine and the HUD overlay.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "payload")]
@@ -36,11 +46,29 @@ pub enum HudMessage {
         font_size: u16,
         opacity: f32,
         duration_ms: u64,
+        #[serde(default)]
+        position: HudPosition,
+        #[serde(default = "default_offset_y")]
+        offset_y: u32,
     },
+    SetPosition {
+        position: HudPosition,
+        #[serde(default = "default_offset_y")]
+        offset_y: u32,
+    },
+    SetVisible {
+        visible: bool,
+    },
+    Quit,
+    Ping,
+}
+
+fn default_offset_y() -> u32 {
+    40
 }
 
 fn default_duration() -> u64 {
-    DEFAULT_SUBTITLE_DURATION_MS
+    0 // 0 means persistent / stay until next subtitle arrives
 }
 
 /// Server running in the HUD overlay, receiving messages from the translation pipeline.
@@ -137,6 +165,26 @@ impl HudIpcClient {
         stream.flush().await?;
         Ok(())
     }
+
+    /// Checks if a HUD overlay instance is actively listening on the socket.
+    pub async fn is_running(&self) -> bool {
+        if !self.socket_path.exists() {
+            return false;
+        }
+        match UnixStream::connect(&self.socket_path).await {
+            Ok(mut stream) => {
+                let msg = HudMessage::Ping;
+                if let Ok(mut payload) = serde_json::to_vec(&msg) {
+                    payload.push(b'\n');
+                    if stream.write_all(&payload).await.is_ok() && stream.flush().await.is_ok() {
+                        return true;
+                    }
+                }
+                false
+            }
+            Err(_) => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -152,6 +200,10 @@ mod tests {
         let mut rx = server.start().await.expect("Failed to bind server");
 
         let client = HudIpcClient::new(&sock_path);
+        assert!(client.is_running().await);
+        let ping_msg = rx.recv().await.expect("Failed to receive Ping");
+        assert_eq!(ping_msg, HudMessage::Ping);
+
         let msg = HudMessage::ShowSubtitle {
             text: "Merhaba Dünya!".to_string(),
             original: Some("Hello World!".to_string()),
@@ -168,5 +220,13 @@ mod tests {
         assert_eq!(received, msg);
 
         let _ = std::fs::remove_file(sock_path);
+    }
+
+    #[tokio::test]
+    async fn test_ipc_is_not_running_when_no_server() {
+        let temp_dir = std::env::temp_dir();
+        let sock_path = temp_dir.join(format!("test_ipc_dead_{}.sock", std::process::id()));
+        let client = HudIpcClient::new(&sock_path);
+        assert!(!client.is_running().await);
     }
 }

@@ -29,13 +29,44 @@ struct StreamUserData {
     format: spa::param::video::VideoInfoRaw,
     region: Arc<RwLock<CaptureRegion>>,
     frame_sender: tokio::sync::watch::Sender<Option<CapturedFrame>>,
+    snapshot_sender: tokio::sync::watch::Sender<Option<RgbaImage>>,
+    snapshot_requested: Arc<std::sync::atomic::AtomicBool>,
+    last_capture_time: Instant,
+}
+
+#[derive(Clone)]
+pub struct SnapshotRequester {
+    pub snapshot_requested: Arc<std::sync::atomic::AtomicBool>,
+    pub snapshot_receiver: tokio::sync::watch::Receiver<Option<RgbaImage>>,
+}
+
+impl SnapshotRequester {
+    pub async fn get_full_snapshot(&self) -> Option<RgbaImage> {
+        let mut rx = self.snapshot_receiver.clone();
+        self.snapshot_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        match tokio::time::timeout(std::time::Duration::from_millis(1500), async {
+            loop {
+                if rx.changed().await.is_err() {
+                    return None;
+                }
+                if let Some(ref img) = *rx.borrow_and_update() {
+                    return Some(img.clone());
+                }
+            }
+        }).await {
+            Ok(opt) => opt,
+            Err(_) => None,
+        }
+    }
 }
 
 pub struct PipewireCaptureHandle {
     command_sender: pw::channel::Sender<PipewireCommand>,
     thread_handle: Option<std::thread::JoinHandle<Result<()>>>,
     pub frame_receiver: tokio::sync::watch::Receiver<Option<CapturedFrame>>,
+    pub snapshot_receiver: tokio::sync::watch::Receiver<Option<RgbaImage>>,
     region: Arc<RwLock<CaptureRegion>>,
+    snapshot_requested: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl PipewireCaptureHandle {
@@ -56,6 +87,18 @@ impl PipewireCaptureHandle {
             custom: roi,
         };
         self.update_region(region);
+    }
+
+    pub fn snapshot_requester(&self) -> SnapshotRequester {
+        SnapshotRequester {
+            snapshot_requested: Arc::clone(&self.snapshot_requested),
+            snapshot_receiver: self.snapshot_receiver.clone(),
+        }
+    }
+
+    /// Requests an uncropped full-frame snapshot of the entire game window or screen.
+    pub async fn get_full_snapshot(&self) -> Option<RgbaImage> {
+        self.snapshot_requester().get_full_snapshot().await
     }
 
     pub fn stop(&mut self) -> Result<()> {
@@ -85,20 +128,35 @@ pub fn spawn_pipewire_capture_thread(
     tokio::sync::watch::Receiver<Option<CapturedFrame>>,
 ) {
     let (frame_sender, frame_receiver) = tokio::sync::watch::channel(None);
+    let (snapshot_sender, snapshot_receiver) = tokio::sync::watch::channel(None);
+    let snapshot_requested = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let snapshot_requested_clone = Arc::clone(&snapshot_requested);
     let (pw_sender, pw_receiver) = pw::channel::channel::<PipewireCommand>();
     let region = Arc::new(RwLock::new(initial_region));
     let region_clone = Arc::clone(&region);
 
     let thread_handle = std::thread::Builder::new()
         .name("pw-capture-loop".into())
-        .spawn(move || run_pipewire_loop(fd, node_id, region_clone, pw_receiver, frame_sender))
+        .spawn(move || {
+            run_pipewire_loop(
+                fd,
+                node_id,
+                region_clone,
+                pw_receiver,
+                frame_sender,
+                snapshot_sender,
+                snapshot_requested_clone,
+            )
+        })
         .expect("Failed to spawn PipeWire capture thread");
 
     let handle = PipewireCaptureHandle {
         command_sender: pw_sender,
         thread_handle: Some(thread_handle),
         frame_receiver: frame_receiver.clone(),
+        snapshot_receiver,
         region,
+        snapshot_requested,
     };
 
     (handle, frame_receiver)
@@ -110,6 +168,8 @@ fn run_pipewire_loop(
     region: Arc<RwLock<CaptureRegion>>,
     pw_receiver: pw::channel::Receiver<PipewireCommand>,
     frame_sender: tokio::sync::watch::Sender<Option<CapturedFrame>>,
+    snapshot_sender: tokio::sync::watch::Sender<Option<RgbaImage>>,
+    snapshot_requested: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<()> {
     pw::init();
 
@@ -140,6 +200,11 @@ fn run_pipewire_loop(
         format: Default::default(),
         region,
         frame_sender,
+        snapshot_sender,
+        snapshot_requested,
+        last_capture_time: Instant::now()
+            .checked_sub(std::time::Duration::from_millis(100))
+            .unwrap_or_else(Instant::now),
     };
 
     let stream = pw::stream::StreamBox::new(
@@ -191,6 +256,49 @@ fn run_pipewire_loop(
             };
 
             let datas = buffer.datas_mut();
+            if datas.is_empty() {
+                return;
+            }
+
+            let frame_w = user_data.format.size().width;
+            let frame_h = user_data.format.size().height;
+            if frame_w == 0 || frame_h == 0 {
+                return;
+            }
+
+            let is_bgr = matches!(
+                user_data.format.format(),
+                pw::spa::param::video::VideoFormat::BGRx
+                    | pw::spa::param::video::VideoFormat::BGRA
+                    | pw::spa::param::video::VideoFormat::BGR
+            );
+
+            let data = &mut datas[0];
+            let stride = data.chunk().stride();
+            let effective_stride = if stride > 0 {
+                stride as usize
+            } else {
+                frame_w as usize * 4
+            };
+
+            let Some(slice) = data.data() else {
+                return;
+            };
+
+            // 1. If a full snapshot was requested (for full game region picker), capture it immediately!
+            if user_data.snapshot_requested.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                let full_roi = Roi::new(0, 0, frame_w, frame_h);
+                if let Ok(full_img) = full_roi.crop_to_rgba(slice, frame_w, frame_h, effective_stride, is_bgr) {
+                    let _ = user_data.snapshot_sender.send(Some(full_img));
+                }
+            }
+
+            // 2. Throttle frame processing to max 20 FPS (50ms interval).
+            let now = Instant::now();
+            if now.duration_since(user_data.last_capture_time) < std::time::Duration::from_millis(50) {
+                return;
+            }
+            user_data.last_capture_time = now;
             if datas.is_empty() {
                 return;
             }

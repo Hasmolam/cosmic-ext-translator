@@ -1,7 +1,5 @@
-mod hud;
-mod selector;
-
 use std::env;
+use std::io::Write;
 use std::time::Duration;
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings;
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
@@ -11,48 +9,54 @@ use cosmic::iced::window::Id;
 use cosmic::iced::{Length, Task};
 use cosmic::widget;
 use cosmic::Element;
-use hud::SubtitleHudState;
-use selector::{SelectorMessage, SelectorProgram};
-use tokio_stream::wrappers::ReceiverStream;
-use translator_core::ipc::{HudIpcServer, HudMessage};
+use cosmic_translator_overlay::hud::SubtitleHudState;
+use cosmic_translator_overlay::selector::{SelectorMessage, SelectorProgram};
+use translator_core::ipc::{default_socket_path, HudIpcServer, HudMessage};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppMode {
     Hud,
-    Selector,
+    Selector {
+        preview_path: Option<std::path::PathBuf>,
+    },
 }
 
 pub struct OverlayApp {
     core: cosmic::Core,
     mode: AppMode,
     hud: SubtitleHudState,
+    selector_program: SelectorProgram,
     selector_id: Id,
     hud_id: Id,
+    subtitle_seq: u64,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Selector(SelectorMessage),
     Hud(HudMessage),
-    ClearSubtitle,
+    ClearSubtitle(u64),
     Close,
 }
 
 fn hud_ipc_subscription() -> cosmic::iced::Subscription<Message> {
-    cosmic::iced::Subscription::run(|| {
-        let (tx, rx) = tokio::sync::mpsc::channel(32);
-        tokio::spawn(async move {
-            let server = HudIpcServer::default_server();
-            if let Ok(mut server_rx) = server.start().await {
-                while let Some(msg) = server_rx.recv().await {
-                    if tx.send(Message::Hud(msg)).await.is_err() {
-                        break;
+    struct HudIpcSub;
+    cosmic::iced::Subscription::run_with(
+        std::any::TypeId::of::<HudIpcSub>(),
+        |_| {
+            cosmic::iced::stream::channel(16, |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| async move {
+                use cosmic::iced::futures::SinkExt;
+                let server = HudIpcServer::default_server();
+                if let Ok(mut server_rx) = server.start().await {
+                    while let Some(msg) = server_rx.recv().await {
+                        if output.send(Message::Hud(msg)).await.is_err() {
+                            break;
+                        }
                     }
                 }
-            }
-        });
-        ReceiverStream::new(rx)
-    })
+            })
+        },
+    )
 }
 
 impl cosmic::Application for OverlayApp {
@@ -73,6 +77,7 @@ impl cosmic::Application for OverlayApp {
     fn init(core: cosmic::Core, mode: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
         let selector_id = Id::unique();
         let hud_id = Id::unique();
+        let subtitle_seq = 1;
 
         let initial_text = if mode == AppMode::Hud {
             "🎮 cosmic-ext-lingua: Altyazı Katmanı Aktif".to_string()
@@ -80,21 +85,28 @@ impl cosmic::Application for OverlayApp {
             String::new()
         };
 
+        let selector_program = match &mode {
+            AppMode::Selector { preview_path } => SelectorProgram::new(preview_path.as_deref()),
+            _ => SelectorProgram::default(),
+        };
+
         let app = Self {
             core,
-            mode,
+            mode: mode.clone(),
             hud: SubtitleHudState {
                 surface_id: hud_id,
                 current_text: initial_text,
                 visible: true,
                 ..Default::default()
             },
+            selector_program,
             selector_id,
             hud_id,
+            subtitle_seq,
         };
 
         let task = match mode {
-            AppMode::Selector => {
+            AppMode::Selector { .. } => {
                 let settings = SctkLayerSurfaceSettings {
                     id: selector_id,
                     layer: Layer::Overlay,
@@ -111,8 +123,8 @@ impl cosmic::Application for OverlayApp {
                 settings.id = hud_id;
                 let layer_task = get_layer_surface(settings);
                 let clear_task = Task::perform(
-                    tokio::time::sleep(Duration::from_millis(30000)),
-                    |_| cosmic::Action::from(Message::ClearSubtitle),
+                    tokio::time::sleep(Duration::from_millis(3000)),
+                    move |_| cosmic::Action::from(Message::ClearSubtitle(subtitle_seq)),
                 );
                 Task::batch([layer_task, clear_task])
             }
@@ -130,39 +142,78 @@ impl cosmic::Application for OverlayApp {
     }
 
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
-        eprintln!("OverlayApp::update received: {:?}", message);
+        tracing::debug!("OverlayApp::update received: {:?}", message);
         match message {
-            Message::Selector(SelectorMessage::Selected(roi)) => {
+            Message::Selector(SelectorMessage::Selected { roi, surface_width, surface_height }) => {
                 println!(
-                    "ROI_SELECTED:{{\"x\":{},\"y\":{},\"width\":{},\"height\":{}}}",
-                    roi.x, roi.y, roi.width, roi.height
+                    "ROI_SELECTED:{{\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"surface_width\":{},\"surface_height\":{}}}",
+                    roi.x, roi.y, roi.width, roi.height, surface_width, surface_height
                 );
-                destroy_layer_surface(self.selector_id)
+                let _ = std::io::stdout().flush();
+                let _ = destroy_layer_surface::<Message>(self.selector_id);
+                Task::perform(
+                    async {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        std::process::exit(0);
+                    },
+                    |_| cosmic::Action::None,
+                )
             }
 
             Message::Selector(SelectorMessage::Cancelled) => {
                 println!("ROI_CANCELLED");
-                destroy_layer_surface(self.selector_id)
-            }
-
-            Message::Hud(HudMessage::ShowSubtitle { text, duration_ms, .. }) => {
-                eprintln!("HUD updating text to: '{}'", text);
-                self.hud.current_text = text;
-                self.hud.visible = true;
-                let duration = if duration_ms == 0 { self.hud.duration_ms } else { duration_ms };
+                let _ = std::io::stdout().flush();
+                let _ = destroy_layer_surface::<Message>(self.selector_id);
                 Task::perform(
-                    tokio::time::sleep(Duration::from_millis(duration)),
-                    |_| cosmic::Action::from(Message::ClearSubtitle),
+                    async {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        std::process::exit(0);
+                    },
+                    |_| cosmic::Action::None,
                 )
             }
 
-            Message::Hud(HudMessage::ClearSubtitle) | Message::ClearSubtitle => {
-                eprintln!("HUD clearing subtitle");
+            Message::Hud(HudMessage::ShowSubtitle { text, duration_ms, .. }) => {
+                tracing::debug!("HUD updating text to: '{}' (duration_ms={})", text, duration_ms);
+                self.subtitle_seq = self.subtitle_seq.wrapping_add(1);
+                let seq = self.subtitle_seq;
+                self.hud.current_text = text;
+                self.hud.visible = true;
+
+                if duration_ms == 0 {
+                    // Persistent subtitle mode: stay displayed continuously until next dialogue replaces it
+                    Task::none()
+                } else {
+                    Task::perform(
+                        tokio::time::sleep(Duration::from_millis(duration_ms)),
+                        move |_| cosmic::Action::from(Message::ClearSubtitle(seq)),
+                    )
+                }
+            }
+
+            Message::Hud(HudMessage::ClearSubtitle) => {
+                tracing::debug!("HUD clearing subtitle explicitly");
+                self.subtitle_seq = self.subtitle_seq.wrapping_add(1);
                 self.hud.current_text.clear();
                 Task::none()
             }
 
+            Message::ClearSubtitle(seq) => {
+                if seq == self.subtitle_seq {
+                    tracing::debug!("HUD timer clearing subtitle for seq {}", seq);
+                    self.hud.current_text.clear();
+                } else {
+                    tracing::debug!(
+                        "HUD ignoring stale ClearSubtitle seq {} (current: {})",
+                        seq,
+                        self.subtitle_seq
+                    );
+                }
+                Task::none()
+            }
+
             Message::Hud(HudMessage::SetStatus { active, text }) => {
+                self.subtitle_seq = self.subtitle_seq.wrapping_add(1);
                 if !active {
                     self.hud.current_text.clear();
                 } else {
@@ -171,35 +222,75 @@ impl cosmic::Application for OverlayApp {
                 Task::none()
             }
 
-            Message::Hud(HudMessage::UpdateStyle { font_size, opacity, duration_ms }) => {
-                eprintln!("HUD style updated: font_size={}, opacity={}, duration_ms={}", font_size, opacity, duration_ms);
+            Message::Hud(HudMessage::UpdateStyle { font_size, opacity, duration_ms, position, offset_y }) => {
+                tracing::debug!(
+                    "HUD style updated: font_size={}, opacity={}, duration_ms={}, position={:?}, offset_y={}",
+                    font_size,
+                    opacity,
+                    duration_ms,
+                    position,
+                    offset_y
+                );
                 self.hud.font_size = font_size;
                 self.hud.opacity = opacity;
                 self.hud.duration_ms = duration_ms;
+                self.hud.position = position;
+                self.hud.offset_y = offset_y;
+                let mut settings = self.hud.layer_settings();
+                settings.id = self.hud_id;
+                get_layer_surface(settings)
+            }
+
+            Message::Hud(HudMessage::SetVisible { visible }) => {
+                tracing::debug!("HUD visibility changed: visible={}", visible);
+                self.hud.visible = visible;
+                Task::none()
+            }
+
+            Message::Hud(HudMessage::SetPosition { position, offset_y }) => {
+                tracing::debug!("HUD position updated: {:?}, offset_y={}", position, offset_y);
+                self.hud.position = position;
+                self.hud.offset_y = offset_y;
+                let mut settings = self.hud.layer_settings();
+                settings.id = self.hud_id;
+                get_layer_surface(settings)
+            }
+
+            Message::Hud(HudMessage::Quit) => {
+                tracing::info!("HUD received Quit command via IPC; exiting cleanly");
+                let _ = destroy_layer_surface::<Message>(self.hud_id);
+                std::process::exit(0);
+            }
+
+            Message::Hud(HudMessage::Ping) => {
+                tracing::debug!("HUD received IPC Ping");
                 Task::none()
             }
 
             Message::Close => match self.mode {
-                AppMode::Selector => destroy_layer_surface(self.selector_id),
+                AppMode::Selector { .. } => {
+                    let _ = std::io::stdout().flush();
+                    std::process::exit(0);
+                }
                 AppMode::Hud => destroy_layer_surface(self.hud_id),
             },
         }
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        eprintln!("OverlayApp::view called (main window)");
+        tracing::debug!("OverlayApp::view called (main window)");
         widget::text("").into()
     }
 
     fn view_window(&self, id: Id) -> Element<'_, Self::Message> {
-        eprintln!("OverlayApp::view_window called for id {:?}", id);
+        tracing::debug!("OverlayApp::view_window called for id {:?}", id);
         if id == self.selector_id {
-            let canvas_widget = cosmic::iced::widget::canvas(SelectorProgram)
+            let canvas_widget = cosmic::iced::widget::canvas(self.selector_program.clone())
                 .width(Length::Fill)
                 .height(Length::Fill);
             Element::from(canvas_widget).map(Message::Selector)
         } else if id == self.hud_id {
-            eprintln!("Rendering HUD element with text: '{}'", self.hud.current_text);
+            tracing::debug!("Rendering HUD element with text: '{}'", self.hud.current_text);
             self.hud.view()
         } else {
             widget::text("").into()
@@ -209,14 +300,27 @@ impl cosmic::Application for OverlayApp {
 
 fn main() -> cosmic::iced::Result {
     let _ = tracing_subscriber::fmt::try_init();
-    let mode = if env::args().any(|arg| arg == "--selector") {
-        AppMode::Selector
+    let args: Vec<String> = env::args().collect();
+    let mode = if args.iter().any(|arg| arg == "--selector") {
+        let preview_path = args.iter().find(|arg| arg.ends_with(".png")).map(std::path::PathBuf::from);
+        AppMode::Selector { preview_path }
     } else {
         AppMode::Hud
     };
 
+    if mode == AppMode::Hud {
+        let sock_path = default_socket_path();
+        if std::os::unix::net::UnixStream::connect(&sock_path).is_ok() {
+            tracing::info!(
+                "HUD overlay is already running on {:?}. Exiting cleanly.",
+                sock_path
+            );
+            return Ok(());
+        }
+    }
+
     cosmic::app::run::<OverlayApp>(
-        cosmic::app::Settings::default(),
+        cosmic::app::Settings::default().no_main_window(true),
         mode,
     )
 }

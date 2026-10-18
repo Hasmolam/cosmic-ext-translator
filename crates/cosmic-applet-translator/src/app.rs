@@ -4,19 +4,32 @@ use crate::fl;
 use crate::settings_dialog::{SettingsMessage, SettingsState};
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup};
-use cosmic::iced::{window::Id, Limits, Task};
+use cosmic::iced::{window::Id, Length, Limits, Task};
 use cosmic::prelude::*;
 use cosmic::widget::{self, button, row};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
+use translator_core::capture::pipewire_thread::CapturedFrame;
 use translator_core::capture::roi::{CaptureRegion, RoiPreset};
-use translator_core::ipc::{HudIpcClient, HudMessage};
-use translator_core::ocr::{MockOcrBackend, OcrBackend, OcrsBackend};
+use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition};
+use translator_core::ocr::{create_ocr_backend_for_lang, OcrBackend};
 use translator_core::orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorHandle,
 };
 use translator_core::pipeline::debouncer::FrameDebouncer;
-use translator_core::translation::{GoogleTranslateBackend, OllamaTranslationBackend, TranslationBackend};
+use translator_core::pipeline::preprocess::PreprocessConfig;
+use translator_core::shortcuts::{GlobalShortcutsManager, ShortcutAction};
+use translator_core::translation::{
+    DeepLTranslationBackend, GoogleTranslateBackend, OllamaTranslationBackend,
+    OpenAiTranslationBackend, TranslationBackend,
+};
 use translator_core::{CaptureSession, Roi};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PreviewMode {
+    #[default]
+    RawCropped,
+    Preprocessed,
+}
 
 #[derive(Default)]
 pub struct AppModel {
@@ -27,8 +40,15 @@ pub struct AppModel {
     config_handler: Option<cosmic_config::Config>,
     settings_state: SettingsState,
     capture_active: bool,
+    hud_visible: bool,
+    ocr_backend: Option<Arc<dyn OcrBackend>>,
     orchestrator: Option<OrchestratorHandle>,
     capture_session: Option<CaptureSession>,
+    preview_mode: PreviewMode,
+    last_raw_preview: Option<cosmic::iced::core::image::Handle>,
+    last_proc_preview: Option<cosmic::iced::core::image::Handle>,
+    last_ocr_text: String,
+    last_translated_text: String,
 }
 
 impl AppModel {
@@ -36,6 +56,230 @@ impl AppModel {
         if let Some(ref handler) = self.config_handler {
             let _ = self.config.write_entry(handler);
         }
+    }
+
+    fn restart_orchestrator_if_active(&mut self) {
+        if !self.capture_active {
+            return;
+        }
+        let (Some(ref session), Some(ref ocr_backend)) = (&self.capture_session, &self.ocr_backend)
+        else {
+            return;
+        };
+
+        if let Some(old) = self.orchestrator.take() {
+            old.stop();
+        }
+
+        let frame_rx = session.frame_receiver.clone();
+        let translation_backend: Arc<dyn TranslationBackend> = match self.config.engine.as_str() {
+            "ollama" => Arc::new(OllamaTranslationBackend::new(
+                &self.config.ollama_endpoint,
+                &self.config.ollama_model,
+            )),
+            "deepl" => Arc::new(DeepLTranslationBackend::new(&self.config.deepl_api_key)),
+            "openai" => Arc::new(OpenAiTranslationBackend::new(
+                &self.config.openai_endpoint,
+                &self.config.openai_api_key,
+                &self.config.openai_model,
+            )),
+            _ => Arc::new(GoogleTranslateBackend::new()),
+        };
+
+        let orchestrator_config = OrchestratorConfig {
+            src_lang: self.config.source_lang.clone(),
+            target_lang: self.config.target_lang.clone(),
+            glossary: self.config.glossary.clone(),
+            hud_duration_ms: self.config.hud_duration_ms,
+            preprocess: PreprocessConfig {
+                binarize: self.config.binarize,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let handle = spawn_orchestrator(
+            frame_rx,
+            FrameDebouncer::new(
+                2,
+                std::time::Duration::from_millis(self.config.settle_duration_ms),
+                std::time::Duration::from_millis(2000),
+            ),
+            Arc::clone(ocr_backend),
+            translation_backend,
+            orchestrator_config,
+        );
+        self.orchestrator = Some(handle);
+    }
+
+    pub fn is_standalone(&self) -> bool {
+        !std::env::args().any(|arg| arg == "--applet")
+    }
+
+    fn update_previews(&mut self, frame: &CapturedFrame) {
+        let w = frame.image.width();
+        let h = frame.image.height();
+        if w == 0 || h == 0 {
+            return;
+        }
+
+        let raw_bytes = frame.image.clone().into_raw();
+        self.last_raw_preview = Some(cosmic::iced::core::image::Handle::from_rgba(w, h, raw_bytes));
+
+        let preprocess_cfg = PreprocessConfig {
+            binarize: self.config.binarize,
+            ..Default::default()
+        };
+        let gray = translator_core::pipeline::preprocess::preprocess_for_ocr(&frame.image, &preprocess_cfg);
+        let mut gray_rgba = image::RgbaImage::new(gray.width(), gray.height());
+        for (x, y, p) in gray.enumerate_pixels() {
+            gray_rgba.put_pixel(x, y, image::Rgba([p[0], p[0], p[0], 255]));
+        }
+        self.last_proc_preview = Some(cosmic::iced::core::image::Handle::from_rgba(
+            gray.width(),
+            gray.height(),
+            gray_rgba.into_raw(),
+        ));
+    }
+
+    fn view_standalone_dashboard(&self) -> Element<'_, Message> {
+        let status_text = if self.capture_active {
+            fl!("active")
+        } else {
+            fl!("paused")
+        };
+
+        let current_preset = RoiPreset::from_str_name(&self.config.preset);
+        let preset_label = match current_preset {
+            RoiPreset::Bottom25 => "Alt %25 (RPG)",
+            RoiPreset::Bottom33 => "Alt %33 (VN)",
+            RoiPreset::FullScreen => "Tam Ekran",
+            RoiPreset::Custom => "Özel Alan",
+        };
+
+        let roi_desc = match current_preset {
+            RoiPreset::Custom => {
+                if let Some(r) = self.config.custom_roi {
+                    format!("{}x{} @ ({}, {})", r.width, r.height, r.x, r.y)
+                } else {
+                    fl!("custom-roi-unset")
+                }
+            }
+            _ => preset_label.to_string(),
+        };
+
+        let header = row![
+            widget::text("cosmic-ext-lingua")
+                .size(20)
+                .wrapping(cosmic::iced::widget::text::Wrapping::Word),
+            cosmic::iced::widget::space::horizontal(),
+            widget::text(format!("Durum: {status_text}")).size(14),
+            widget::toggler(self.capture_active).on_toggle(Message::ToggleCapture),
+        ]
+        .spacing(12)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        let quick_actions = row![
+            button::suggested(fl!("select-target")).on_press(Message::ChangeCaptureTarget),
+            button::standard(fl!("select-roi")).on_press(Message::SelectRoiRequested),
+            button::standard(fl!("translate-now")).on_press(Message::OneShotTranslate),
+            widget::text(format!("Bölge: {roi_desc}")).size(13),
+        ]
+        .spacing(10)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        let preview_handle = match self.preview_mode {
+            PreviewMode::RawCropped => self.last_raw_preview.as_ref(),
+            PreviewMode::Preprocessed => self.last_proc_preview.as_ref(),
+        };
+
+        let preview_widget: Element<'_, Message> = if let Some(handle) = preview_handle {
+            widget::container(
+                widget::image(handle.clone())
+                    .width(Length::Fill)
+                    .height(Length::Fixed(110.0))
+            )
+            .width(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+        } else {
+            widget::container(
+                widget::text("🎯 Canlı görüntü denetimi için pencere seçin veya çeviriyi başlatın")
+                    .size(13)
+            )
+            .padding(14)
+            .center_x(Length::Fill)
+            .into()
+        };
+
+        let preview_selector = row![
+            widget::text("🔍 Canlı Çeviri Alanı & Denetim:").size(13),
+            cosmic::iced::widget::space::horizontal(),
+            if self.preview_mode == PreviewMode::RawCropped {
+                button::suggested("Orijinal Kırpma")
+            } else {
+                button::standard("Orijinal Kırpma")
+            }
+            .on_press(Message::TogglePreviewMode(PreviewMode::RawCropped)),
+            if self.preview_mode == PreviewMode::Preprocessed {
+                button::suggested("OCR Binarizasyonu")
+            } else {
+                button::standard("OCR Binarizasyonu")
+            }
+            .on_press(Message::TogglePreviewMode(PreviewMode::Preprocessed)),
+        ]
+        .spacing(8)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        let ocr_feedback = widget::column![
+            row![
+                widget::text("📝 Son Algılanan Metin (OCR): ").size(13),
+                widget::text(if self.last_ocr_text.is_empty() { "-" } else { &self.last_ocr_text })
+                    .size(13)
+                    .wrapping(cosmic::iced::widget::text::Wrapping::Word),
+            ],
+            row![
+                widget::text("🌐 Çeviri Çıktısı: ").size(13),
+                widget::text(if self.last_translated_text.is_empty() { "-" } else { &self.last_translated_text })
+                    .size(13)
+                    .wrapping(cosmic::iced::widget::text::Wrapping::Word),
+            ]
+        ]
+        .spacing(4);
+
+        let inspection_card = widget::container(
+            widget::column![
+                preview_selector,
+                widget::divider::horizontal::default(),
+                preview_widget,
+                widget::divider::horizontal::default(),
+                ocr_feedback,
+            ]
+            .spacing(8)
+            .padding(10)
+        )
+        .class(cosmic::theme::Container::Card);
+
+        let settings_content = self.settings_state.view(&self.config).map(Message::Settings);
+
+        let layout = widget::column![
+            header,
+            widget::divider::horizontal::default(),
+            quick_actions,
+            widget::divider::horizontal::default(),
+            inspection_card,
+            widget::divider::horizontal::default(),
+            settings_content,
+        ]
+        .spacing(12)
+        .padding(16);
+
+        widget::container(layout)
+            .width(cosmic::iced::Length::Fill)
+            .height(cosmic::iced::Length::Fill)
+            .class(cosmic::theme::Container::WindowBackground)
+            .into()
     }
 }
 
@@ -47,12 +291,22 @@ pub enum Message {
     CloseSettingsWindow(Id),
     Settings(SettingsMessage),
     ToggleCapture(bool),
+    ChangeCaptureTarget,
     SelectRoiRequested,
     RoiSelected(Roi),
+    RoiSelectedWithSurface {
+        roi: Roi,
+        surface_width: Option<u32>,
+        surface_height: Option<u32>,
+    },
     RoiSelectionCancelled,
     PresetSelected(RoiPreset),
     CaptureStarted(CaptureSession, Arc<dyn OcrBackend>),
     CaptureFailed(String),
+    ShortcutActivated(ShortcutAction),
+    OneShotTranslate,
+    OneShotCompleted(Option<(String, String)>),
+    TogglePreviewMode(PreviewMode),
     HudCleared,
 }
 
@@ -65,15 +319,86 @@ impl Clone for Message {
             Self::CloseSettingsWindow(id) => Self::CloseSettingsWindow(*id),
             Self::Settings(m) => Self::Settings(m.clone()),
             Self::ToggleCapture(v) => Self::ToggleCapture(*v),
+            Self::ChangeCaptureTarget => Self::ChangeCaptureTarget,
             Self::SelectRoiRequested => Self::SelectRoiRequested,
             Self::RoiSelected(r) => Self::RoiSelected(*r),
+            Self::RoiSelectedWithSurface { roi, surface_width, surface_height } => {
+                Self::RoiSelectedWithSurface {
+                    roi: *roi,
+                    surface_width: *surface_width,
+                    surface_height: *surface_height,
+                }
+            }
             Self::RoiSelectionCancelled => Self::RoiSelectionCancelled,
             Self::PresetSelected(p) => Self::PresetSelected(*p),
             Self::CaptureStarted(_, _) => Self::CaptureFailed("Cannot clone active session".into()),
             Self::CaptureFailed(s) => Self::CaptureFailed(s.clone()),
+            Self::ShortcutActivated(a) => Self::ShortcutActivated(a.clone()),
+            Self::OneShotTranslate => Self::OneShotTranslate,
+            Self::OneShotCompleted(s) => Self::OneShotCompleted(s.clone()),
+            Self::TogglePreviewMode(m) => Self::TogglePreviewMode(*m),
             Self::HudCleared => Self::HudCleared,
         }
     }
+}
+
+fn global_shortcuts_subscription() -> cosmic::iced::Subscription<Message> {
+    struct GlobalShortcutsSub;
+
+    cosmic::iced::Subscription::run_with(
+        std::any::TypeId::of::<GlobalShortcutsSub>(),
+        |_| {
+            cosmic::iced::stream::channel(16, |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| async move {
+                use cosmic::iced::futures::SinkExt;
+                match GlobalShortcutsManager::register(None).await {
+                    Ok((_manager, mut shortcut_rx)) => {
+                        while let Some(action) = shortcut_rx.recv().await {
+                            if output.send(Message::ShortcutActivated(action)).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        debug!("Global shortcuts portal unavailable or declined: {err}");
+                        cosmic::iced::futures::future::pending::<()>().await;
+                    }
+                }
+            })
+        },
+    )
+}
+
+fn hud_position_from_str(pos: &str) -> HudPosition {
+    match pos {
+        "top" => HudPosition::Top,
+        "center" => HudPosition::Center,
+        _ => HudPosition::Bottom,
+    }
+}
+
+async fn ensure_hud_running_and_styled(
+    font_size: u16,
+    opacity: u8,
+    duration_ms: u64,
+    position: &str,
+    offset_y: u32,
+) {
+    let client = HudIpcClient::default_client();
+    if !client.is_running().await {
+        let bin = overlay_binary_path();
+        let _ = std::process::Command::new(bin).arg("--hud").spawn();
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    let hud_pos = hud_position_from_str(position);
+    let _ = client
+        .send(&HudMessage::UpdateStyle {
+            font_size,
+            opacity: (opacity as f32) / 100.0,
+            duration_ms,
+            position: hud_pos,
+            offset_y,
+        })
+        .await;
 }
 
 impl cosmic::Application for AppModel {
@@ -95,16 +420,17 @@ impl cosmic::Application for AppModel {
         core: cosmic::Core,
         _flags: Self::Flags,
     ) -> (Self, Task<cosmic::Action<Self::Message>>) {
-        let (config_handler, config) = match cosmic_config::Config::new(Self::APP_ID, Config::VERSION) {
-            Ok(context) => {
-                let entry = match Config::get_entry(&context) {
-                    Ok(cfg) => cfg,
-                    Err((_errors, cfg)) => cfg,
-                };
-                (Some(context), entry)
-            }
-            Err(_) => (None, Config::default()),
-        };
+        let (config_handler, config) =
+            match cosmic_config::Config::new(Self::APP_ID, Config::VERSION) {
+                Ok(context) => {
+                    let entry = match Config::get_entry(&context) {
+                        Ok(cfg) => cfg,
+                        Err((_errors, cfg)) => cfg,
+                    };
+                    (Some(context), entry)
+                }
+                Err(_) => (None, Config::default()),
+            };
 
         let app = AppModel {
             core,
@@ -114,11 +440,18 @@ impl cosmic::Application for AppModel {
             config_handler,
             settings_state: SettingsState::new(),
             capture_active: false,
+            hud_visible: true,
+            ocr_backend: None,
             orchestrator: None,
             capture_session: None,
+            ..Default::default()
         };
 
         (app, Task::none())
+    }
+
+    fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
+        global_shortcuts_subscription()
     }
 
     fn on_close_requested(&self, id: Id) -> Option<Message> {
@@ -162,19 +495,28 @@ impl cosmic::Application for AppModel {
             }
 
             Message::OpenSettings => {
-                if self.settings_window.is_some() {
+                if self.is_standalone() || self.settings_window.is_some() {
                     return Task::none();
                 }
+                let close_popup_task = if let Some(p) = self.popup.take() {
+                    destroy_popup(p)
+                } else {
+                    Task::none()
+                };
+
                 let (id, spawn_task) = cosmic::iced::window::open(cosmic::iced::window::Settings {
-                    size: (700.0, 520.0).into(),
-                    min_size: Some((520.0, 380.0).into()),
+                    size: (780.0, 560.0).into(),
+                    min_size: Some((580.0, 420.0).into()),
                     resizable: true,
                     decorations: true,
                     ..Default::default()
                 });
                 self.settings_window = Some(id);
-                let _ = self.set_window_title("cosmic-ext-lingua: Ayarlar".to_string(), id);
-                return spawn_task.map(|_| cosmic::Action::None);
+                let _ = self.set_window_title(
+                    format!("cosmic-ext-lingua: {}", fl!("settings")),
+                    id,
+                );
+                return Task::batch([close_popup_task, spawn_task.map(|_| cosmic::Action::None)]);
             }
 
             Message::CloseSettingsWindow(id) => {
@@ -183,6 +525,32 @@ impl cosmic::Application for AppModel {
                 }
                 return cosmic::iced::window::close(id);
             }
+
+            Message::ShortcutActivated(action) => match action {
+                ShortcutAction::SelectRoi => {
+                    return self.update(Message::SelectRoiRequested);
+                }
+                ShortcutAction::ToggleTranslation => {
+                    return self.update(Message::ToggleCapture(!self.capture_active));
+                }
+                ShortcutAction::ToggleHud => {
+                    self.hud_visible = !self.hud_visible;
+                    let visible = self.hud_visible;
+                    return Task::perform(
+                        async move {
+                            let client = HudIpcClient::default_client();
+                            let _ = client.send(&HudMessage::SetVisible { visible }).await;
+                        },
+                        |_| cosmic::Action::None,
+                    );
+                }
+                ShortcutAction::TranslateCurrentScreen => {
+                    return self.update(Message::OneShotTranslate);
+                }
+                ShortcutAction::Custom(id) => {
+                    info!("Unhandled custom global shortcut: {id}");
+                }
+            },
 
             Message::Settings(settings_msg) => {
                 match settings_msg {
@@ -200,29 +568,115 @@ impl cosmic::Application for AppModel {
                     SettingsMessage::EngineSelected(engine) => {
                         self.config.engine = engine;
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::SelectCustomRoi => {
                         return self.update(Message::SelectRoiRequested);
                     }
+                    SettingsMessage::BinarizeToggled(bin) => {
+                        self.config.binarize = bin;
+                        self.save_config();
+                        self.restart_orchestrator_if_active();
+                    }
+                    SettingsMessage::HudPositionChanged(pos) => {
+                        self.config.hud_position = pos.clone();
+                        self.save_config();
+                        let hud_pos = hud_position_from_str(&pos);
+                        let offset_y = self.config.hud_offset_y;
+                        return Task::perform(
+                            async move {
+                                let client = HudIpcClient::default_client();
+                                let _ = client.send(&HudMessage::SetPosition { position: hud_pos, offset_y }).await;
+                            },
+                            |_| cosmic::Action::None,
+                        );
+                    }
+                    SettingsMessage::HudPersistentToggled(persistent) => {
+                        self.config.hud_persistent = persistent;
+                        if persistent {
+                            self.config.hud_duration_ms = 0;
+                        } else if self.config.hud_duration_ms == 0 {
+                            self.config.hud_duration_ms = 6000;
+                        }
+                        self.save_config();
+                        self.restart_orchestrator_if_active();
+                        let msg = HudMessage::UpdateStyle {
+                            font_size: self.config.font_size,
+                            opacity: (self.config.hud_opacity as f32) / 100.0,
+                            duration_ms: self.config.hud_duration_ms,
+                            position: hud_position_from_str(&self.config.hud_position),
+                            offset_y: self.config.hud_offset_y,
+                        };
+                        return Task::perform(
+                            async move {
+                                let client = HudIpcClient::default_client();
+                                let _ = client.send(&msg).await;
+                            },
+                            |_| cosmic::Action::None,
+                        );
+                    }
+                    SettingsMessage::HudOffsetYChanged(offset) => {
+                        self.config.hud_offset_y = offset;
+                        self.save_config();
+                        let msg = HudMessage::UpdateStyle {
+                            font_size: self.config.font_size,
+                            opacity: (self.config.hud_opacity as f32) / 100.0,
+                            duration_ms: self.config.hud_duration_ms,
+                            position: hud_position_from_str(&self.config.hud_position),
+                            offset_y: offset,
+                        };
+                        return Task::perform(
+                            async move {
+                                let client = HudIpcClient::default_client();
+                                let _ = client.send(&msg).await;
+                            },
+                            |_| cosmic::Action::None,
+                        );
+                    }
+                    SettingsMessage::DeepLApiKeyChanged(key) => {
+                        self.config.deepl_api_key = key;
+                        self.save_config();
+                        self.restart_orchestrator_if_active();
+                    }
+                    SettingsMessage::OpenAiEndpointChanged(ep) => {
+                        self.config.openai_endpoint = ep;
+                        self.save_config();
+                        self.restart_orchestrator_if_active();
+                    }
+                    SettingsMessage::OpenAiApiKeyChanged(key) => {
+                        self.config.openai_api_key = key;
+                        self.save_config();
+                        self.restart_orchestrator_if_active();
+                    }
+                    SettingsMessage::OpenAiModelChanged(m) => {
+                        self.config.openai_model = m;
+                        self.save_config();
+                        self.restart_orchestrator_if_active();
+                    }
                     SettingsMessage::SettleDurationChanged(ms) => {
                         self.config.settle_duration_ms = ms;
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::OllamaEndpointChanged(ep) => {
                         self.config.ollama_endpoint = ep;
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::OllamaModelChanged(model) => {
                         self.config.ollama_model = model;
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::TargetLangChanged(lang) => {
                         self.config.target_lang = lang;
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::SourceLangChanged(lang) => {
                         self.config.source_lang = lang;
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::TestOllamaConnection => {
                         self.settings_state.is_testing_ollama = true;
@@ -233,7 +687,11 @@ impl cosmic::Application for AppModel {
                                 let backend = OllamaTranslationBackend::new(endpoint, model);
                                 backend.test_connection().await.map_err(|e| e.to_string())
                             },
-                            |res| cosmic::Action::from(Message::Settings(SettingsMessage::OllamaTestResult(res))),
+                            |res| {
+                                cosmic::Action::from(Message::Settings(
+                                    SettingsMessage::OllamaTestResult(res),
+                                ))
+                            },
                         );
                     }
                     SettingsMessage::OllamaTestResult(res) => {
@@ -246,7 +704,8 @@ impl cosmic::Application for AppModel {
                                 ));
                             }
                             Err(err) => {
-                                self.settings_state.ollama_test_status = Some(format!("✗ Hata: {}", err));
+                                self.settings_state.ollama_test_status =
+                                    Some(format!("✗ Hata: {}", err));
                             }
                         }
                     }
@@ -257,6 +716,8 @@ impl cosmic::Application for AppModel {
                             font_size: size,
                             opacity: (self.config.hud_opacity as f32) / 100.0,
                             duration_ms: self.config.hud_duration_ms,
+                            position: hud_position_from_str(&self.config.hud_position),
+                            offset_y: self.config.hud_offset_y,
                         };
                         return Task::perform(
                             async move {
@@ -273,6 +734,8 @@ impl cosmic::Application for AppModel {
                             font_size: self.config.font_size,
                             opacity: (opacity as f32) / 100.0,
                             duration_ms: self.config.hud_duration_ms,
+                            position: hud_position_from_str(&self.config.hud_position),
+                            offset_y: self.config.hud_offset_y,
                         };
                         return Task::perform(
                             async move {
@@ -285,10 +748,13 @@ impl cosmic::Application for AppModel {
                     SettingsMessage::DurationChanged(dur) => {
                         self.config.hud_duration_ms = dur;
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                         let msg = HudMessage::UpdateStyle {
                             font_size: self.config.font_size,
                             opacity: (self.config.hud_opacity as f32) / 100.0,
                             duration_ms: dur,
+                            position: hud_position_from_str(&self.config.hud_position),
+                            offset_y: self.config.hud_offset_y,
                         };
                         return Task::perform(
                             async move {
@@ -299,16 +765,19 @@ impl cosmic::Application for AppModel {
                         );
                     }
                     SettingsMessage::TestHudRequested => {
-                        let bin = overlay_binary_path();
-                        let _ = std::process::Command::new(bin).arg("--hud").spawn();
+                        let font_size = self.config.font_size;
+                        let opacity = self.config.hud_opacity;
                         let dur = self.config.hud_duration_ms;
+                        let pos = self.config.hud_position.clone();
+                        let offset_y = self.config.hud_offset_y;
                         return Task::perform(
                             async move {
-                                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                                ensure_hud_running_and_styled(font_size, opacity, dur, &pos, offset_y).await;
                                 let client = HudIpcClient::default_client();
                                 let _ = client
                                     .send(&HudMessage::ShowSubtitle {
-                                        text: "🎮 Test Altyazısı: cosmic-ext-lingua aktif ve hazır!".to_string(),
+                                        text: "🎮 Test Altyazısı: cosmic-ext-lingua aktif ve hazır!"
+                                            .to_string(),
                                         original: Some("Test Subtitle".to_string()),
                                         duration_ms: dur,
                                     })
@@ -331,11 +800,13 @@ impl cosmic::Application for AppModel {
                             self.settings_state.new_glossary_source.clear();
                             self.settings_state.new_glossary_target.clear();
                             self.save_config();
+                            self.restart_orchestrator_if_active();
                         }
                     }
                     SettingsMessage::RemoveGlossaryTerm(term) => {
                         self.config.glossary.remove(&term);
                         self.save_config();
+                        self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::Close => {
                         if let Some(id) = self.settings_window.take() {
@@ -354,20 +825,73 @@ impl cosmic::Application for AppModel {
                 }
             }
 
+            Message::ChangeCaptureTarget => {
+                info!("User requested selecting a new target window or screen");
+                self.config.restore_token = None;
+                self.save_config();
+
+                if let Some(orch) = self.orchestrator.take() {
+                    orch.stop();
+                }
+                if let Some(mut session) = self.capture_session.take() {
+                    let _ = session.stop();
+                }
+
+                return self.update(Message::ToggleCapture(true));
+            }
+
             Message::SelectRoiRequested => {
                 let bin = overlay_binary_path();
+                let requester = self.capture_session.as_ref().map(|s| s.snapshot_requester());
+
                 return Task::perform(
                     async move {
-                        let output = tokio::process::Command::new(bin)
-                            .arg("--selector")
-                            .output()
-                            .await;
+                        let full_snapshot = if let Some(req) = requester {
+                            req.get_full_snapshot().await
+                        } else {
+                            None
+                        };
+
+                        let preview_path = if let Some(img) = full_snapshot {
+                            let path = std::env::temp_dir().join(format!("cosmic-ext-lingua-full-{}.png", std::process::id()));
+                            if img.save(&path).is_ok() {
+                                Some(path)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        let mut cmd = tokio::process::Command::new(bin);
+                        cmd.arg("--selector");
+                        if let Some(ref p) = preview_path {
+                            cmd.arg(p);
+                        }
+                        let output = cmd.output().await;
+                        if let Some(ref p) = preview_path {
+                            let _ = std::fs::remove_file(p);
+                        }
                         if let Ok(out) = output {
                             let stdout_str = String::from_utf8_lossy(&out.stdout);
                             for line in stdout_str.lines() {
                                 if let Some(json_str) = line.strip_prefix("ROI_SELECTED:") {
-                                    if let Ok(roi) = serde_json::from_str::<Roi>(json_str) {
-                                        return Message::RoiSelected(roi);
+                                    #[derive(serde::Deserialize)]
+                                    struct SelectedPayload {
+                                        x: u32,
+                                        y: u32,
+                                        width: u32,
+                                        height: u32,
+                                        surface_width: Option<u32>,
+                                        surface_height: Option<u32>,
+                                    }
+                                    if let Ok(p) = serde_json::from_str::<SelectedPayload>(json_str) {
+                                        let roi = Roi::new(p.x, p.y, p.width, p.height);
+                                        return Message::RoiSelectedWithSurface {
+                                            roi,
+                                            surface_width: p.surface_width,
+                                            surface_height: p.surface_height,
+                                        };
                                     }
                                 }
                             }
@@ -376,6 +900,21 @@ impl cosmic::Application for AppModel {
                     },
                     cosmic::Action::from,
                 );
+            }
+
+            Message::RoiSelectedWithSurface { roi, surface_width, surface_height } => {
+                let effective_roi = if let (Some(sw), Some(sh), Some(ref session)) = (surface_width, surface_height, &self.capture_session) {
+                    if let Some(frame) = session.frame_receiver.borrow().as_ref() {
+                        let scaled = roi.scale_to_frame(sw, sh, frame.original_width, frame.original_height);
+                        info!("Scaled ROI from surface ({sw}x{sh}) to frame ({}x{}): {:?}", frame.original_width, frame.original_height, scaled);
+                        scaled
+                    } else {
+                        roi
+                    }
+                } else {
+                    roi
+                };
+                return self.update(Message::RoiSelected(effective_roi));
             }
 
             Message::RoiSelected(roi) => {
@@ -393,31 +932,136 @@ impl cosmic::Application for AppModel {
                 info!("ROI selection was cancelled");
             }
 
+            Message::OneShotTranslate => {
+                let Some(ref session) = self.capture_session else {
+                    info!("One-shot translation requested but capture is inactive, starting capture");
+                    return self.update(Message::ToggleCapture(true));
+                };
+
+                let frame_opt = session.frame_receiver.borrow().clone();
+                let Some(frame) = frame_opt else {
+                    info!("No frame available yet for one-shot translate");
+                    return Task::none();
+                };
+
+                self.update_previews(&frame);
+
+                let ocr_opt = self.ocr_backend.clone();
+                let Some(ocr) = ocr_opt else {
+                    return Task::none();
+                };
+
+                let engine = self.config.engine.clone();
+                let src_lang = self.config.source_lang.clone();
+                let target_lang = self.config.target_lang.clone();
+                let binarize = self.config.binarize;
+                let glossary = self.config.glossary.clone();
+                let hud_duration = self.config.hud_duration_ms;
+                let ollama_ep = self.config.ollama_endpoint.clone();
+                let ollama_model = self.config.ollama_model.clone();
+                let deepl_key = self.config.deepl_api_key.clone();
+                let openai_ep = self.config.openai_endpoint.clone();
+                let openai_key = self.config.openai_api_key.clone();
+                let openai_model = self.config.openai_model.clone();
+
+                return Task::perform(
+                    async move {
+                        let preprocess_cfg = PreprocessConfig {
+                            binarize,
+                            ..Default::default()
+                        };
+                        let gray = translator_core::pipeline::preprocess::preprocess_for_ocr(&frame.image, &preprocess_cfg);
+                        let dynamic = image::DynamicImage::ImageLuma8(gray);
+
+                        let text = match ocr.recognize(&dynamic).await {
+                            Ok(t) => t.trim().to_string(),
+                            Err(e) => {
+                                warn!("One-shot OCR failed: {e}");
+                                return Message::OneShotCompleted(None);
+                            }
+                        };
+
+                        if text.is_empty() {
+                            return Message::OneShotCompleted(None);
+                        }
+
+                        let backend: Arc<dyn TranslationBackend> = match engine.as_str() {
+                            "ollama" => Arc::new(OllamaTranslationBackend::new(ollama_ep, ollama_model)),
+                            "deepl" => Arc::new(DeepLTranslationBackend::new(deepl_key)),
+                            "openai" => Arc::new(OpenAiTranslationBackend::new(openai_ep, openai_key, openai_model)),
+                            _ => Arc::new(GoogleTranslateBackend::new()),
+                        };
+
+                        let mut ctx = translator_core::translation::TranslationContext::default();
+                        for (k, v) in glossary {
+                            ctx.set_glossary_term(k, v);
+                        }
+
+                        match backend.translate(&text, &src_lang, &target_lang, &ctx).await {
+                            Ok(translated) => {
+                                let client = HudIpcClient::default_client();
+                                let _ = client.send(&HudMessage::ShowSubtitle {
+                                    text: translated.clone(),
+                                    original: Some(text.clone()),
+                                    duration_ms: hud_duration,
+                                }).await;
+                                Message::OneShotCompleted(Some((text, translated)))
+                            }
+                            Err(err) => {
+                                warn!("One-shot translation failed: {err}");
+                                Message::OneShotCompleted(None)
+                            }
+                        }
+                    },
+                    cosmic::Action::from,
+                );
+            }
+
+            Message::OneShotCompleted(opt) => {
+                if let Some((raw, tr)) = opt {
+                    self.last_ocr_text = raw;
+                    self.last_translated_text = tr;
+                }
+            }
+
+            Message::TogglePreviewMode(mode) => {
+                self.preview_mode = mode;
+            }
+
             Message::ToggleCapture(true) => {
                 self.capture_active = true;
 
-                // Ensure the HUD overlay is running
-                let bin = overlay_binary_path();
-                let _ = std::process::Command::new(bin)
-                    .arg("--hud")
-                    .spawn();
-
+                let font_size = self.config.font_size;
+                let opacity = self.config.hud_opacity;
+                let duration_ms = self.config.hud_duration_ms;
+                let position = self.config.hud_position.clone();
+                let offset_y = self.config.hud_offset_y;
+                let restore_token = self.config.restore_token.clone();
+                let src_lang = self.config.source_lang.clone();
                 let preset = RoiPreset::from_str_name(&self.config.preset);
                 let region = CaptureRegion::new(preset, self.config.custom_roi);
+
                 return Task::perform(
                     async move {
-                        let session = match CaptureSession::start(None, false, region).await {
+                        ensure_hud_running_and_styled(font_size, opacity, duration_ms, &position, offset_y).await;
+                        let session = match CaptureSession::start(
+                            restore_token.as_deref(),
+                            true,
+                            region,
+                        )
+                        .await
+                        {
                             Ok(s) => s,
                             Err(err) => {
                                 error!("Failed to start capture session: {err}");
                                 return Message::CaptureFailed(err.to_string());
                             }
                         };
-                        let ocr: Arc<dyn OcrBackend> = match OcrsBackend::load_default_or_download().await {
-                            Ok(backend) => Arc::new(backend),
+                        let ocr = match create_ocr_backend_for_lang(&src_lang).await {
+                            Ok(backend) => backend,
                             Err(err) => {
-                                warn!("Failed to load OcrsBackend, falling back to mock: {err}");
-                                Arc::new(MockOcrBackend::new("Capture active"))
+                                warn!("Failed to load OCR backend: {err}");
+                                Arc::new(translator_core::ocr::MockOcrBackend::new("Capture Active"))
                             }
                         };
                         Message::CaptureStarted(session, ocr)
@@ -428,36 +1072,18 @@ impl cosmic::Application for AppModel {
 
             Message::CaptureStarted(session, ocr_backend) => {
                 info!("Capture session active, starting translation orchestrator");
-                let frame_rx = session.frame_receiver.clone();
+                if session.stream_info.restore_token != self.config.restore_token {
+                    self.config.restore_token = session.stream_info.restore_token.clone();
+                    self.save_config();
+                }
+
+                if let Some(frame) = session.frame_receiver.borrow().as_ref() {
+                    self.update_previews(frame);
+                }
+
                 self.capture_session = Some(session);
-
-                let translation_backend: Arc<dyn TranslationBackend> = if self.config.engine == "ollama" {
-                    Arc::new(OllamaTranslationBackend::new(
-                        &self.config.ollama_endpoint,
-                        &self.config.ollama_model,
-                    ))
-                } else {
-                    Arc::new(GoogleTranslateBackend::new())
-                };
-
-                let orchestrator_config = OrchestratorConfig {
-                    src_lang: self.config.source_lang.clone(),
-                    target_lang: self.config.target_lang.clone(),
-                    ..Default::default()
-                };
-
-                let handle = spawn_orchestrator(
-                    frame_rx,
-                    FrameDebouncer::new(
-                        2,
-                        std::time::Duration::from_millis(self.config.settle_duration_ms),
-                        std::time::Duration::from_millis(2000),
-                    ),
-                    ocr_backend,
-                    translation_backend,
-                    orchestrator_config,
-                );
-                self.orchestrator = Some(handle);
+                self.ocr_backend = Some(ocr_backend);
+                self.restart_orchestrator_if_active();
             }
 
             Message::CaptureFailed(err) => {
@@ -489,6 +1115,10 @@ impl cosmic::Application for AppModel {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
+        if self.is_standalone() {
+            return self.view_standalone_dashboard();
+        }
+
         self.core
             .applet
             .icon_button("accessories-dictionary-symbolic")
@@ -501,69 +1131,78 @@ impl cosmic::Application for AppModel {
             return self.settings_state.view(&self.config).map(Message::Settings);
         }
 
-        let status_text = if self.capture_active {
-            fl!("active")
-        } else {
-            fl!("paused")
-        };
-
-        let current_preset = RoiPreset::from_str_name(&self.config.preset);
-        let preset_label = current_preset.label();
-
-        let roi_desc = match current_preset {
-            RoiPreset::Custom => {
-                if let Some(r) = self.config.custom_roi {
-                    format!("{}x{} @ ({}, {})", r.width, r.height, r.x, r.y)
-                } else {
-                    "Özel Alan Seçilmedi".to_string()
-                }
-            }
-            _ => preset_label.to_string(),
-        };
-
-        let mut preset_buttons = row![].spacing(4);
-        for p in [RoiPreset::Bottom25, RoiPreset::Bottom33, RoiPreset::FullScreen] {
-            let label = match p {
-                RoiPreset::Bottom25 => "Alt %25",
-                RoiPreset::Bottom33 => "Alt %33",
-                RoiPreset::FullScreen => "Tam Ekran",
-                _ => "",
-            };
-            let btn = if p == current_preset {
-                button::suggested(label)
+        if Some(id) == self.popup {
+            let status_text = if self.capture_active {
+                fl!("active")
             } else {
-                button::standard(label)
+                fl!("paused")
             };
-            preset_buttons = preset_buttons.push(btn.on_press(Message::PresetSelected(p)));
+
+            let current_preset = RoiPreset::from_str_name(&self.config.preset);
+            let preset_label = current_preset.label();
+
+            let roi_desc = match current_preset {
+                RoiPreset::Custom => {
+                    if let Some(r) = self.config.custom_roi {
+                        format!("{}x{} @ ({}, {})", r.width, r.height, r.x, r.y)
+                    } else {
+                        fl!("custom-roi-unset")
+                    }
+                }
+                _ => preset_label.to_string(),
+            };
+
+            let mut preset_buttons = row![].spacing(4);
+            for p in [RoiPreset::Bottom25, RoiPreset::Bottom33, RoiPreset::FullScreen] {
+                let label = match p {
+                    RoiPreset::Bottom25 => "Alt %25",
+                    RoiPreset::Bottom33 => "Alt %33",
+                    RoiPreset::FullScreen => "Tam Ekran",
+                    _ => "",
+                };
+                let btn = if p == current_preset {
+                    button::suggested(label)
+                } else {
+                    button::standard(label)
+                };
+                preset_buttons = preset_buttons.push(btn.on_press(Message::PresetSelected(p)));
+            }
+
+            let content_list = widget::list_column()
+                .add(widget::settings::item(
+                    fl!("status"),
+                    widget::text(status_text),
+                ))
+                .add(widget::settings::item(
+                    fl!("enable-translation"),
+                    widget::toggler(self.capture_active).on_toggle(Message::ToggleCapture),
+                ))
+                .add(widget::settings::item(fl!("preset"), preset_buttons))
+                .add(widget::settings::item(
+                    fl!("active-region"),
+                    widget::text(roi_desc),
+                ))
+                .add(
+                    widget::button::suggested(fl!("select-target"))
+                        .on_press(Message::ChangeCaptureTarget),
+                )
+                .add(
+                    widget::button::standard(fl!("select-roi"))
+                        .on_press(Message::SelectRoiRequested),
+                )
+                .add(
+                    widget::button::standard(fl!("translate-now"))
+                        .on_press(Message::OneShotTranslate),
+                )
+                .add(
+                    widget::button::suggested(fl!("settings"))
+                        .on_press(Message::OpenSettings),
+                );
+
+            return self.core.applet.popup_container(content_list).into();
         }
 
-        let content_list = widget::list_column()
-            .add(widget::settings::item(
-                fl!("status"),
-                widget::text(status_text),
-            ))
-            .add(widget::settings::item(
-                fl!("example-row"),
-                widget::toggler(self.capture_active).on_toggle(Message::ToggleCapture),
-            ))
-            .add(widget::settings::item(
-                "Şablon",
-                preset_buttons,
-            ))
-            .add(widget::settings::item(
-                "Aktif Bölge",
-                widget::text(roi_desc),
-            ))
-            .add(
-                widget::button::standard(fl!("select-roi"))
-                    .on_press(Message::SelectRoiRequested),
-            )
-            .add(
-                widget::button::suggested(fl!("settings"))
-                    .on_press(Message::OpenSettings),
-            );
-
-        self.core.applet.popup_container(content_list).into()
+        widget::text("").into()
     }
 }
 

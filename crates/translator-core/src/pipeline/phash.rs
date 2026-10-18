@@ -7,7 +7,7 @@ use image::{imageops::FilterType, RgbaImage};
 /// robust 64-bit perceptual fingerprint resistant to minor scaling and compression artifacts.
 #[must_use]
 pub fn dhash_64(image: &RgbaImage) -> u64 {
-    let small = image::imageops::resize(image, 9, 8, FilterType::Nearest);
+    let small = image::imageops::resize(image, 9, 8, FilterType::Triangle);
     let mut hash = 0u64;
 
     for y in 0..8 {
@@ -38,7 +38,7 @@ pub const fn hamming_distance_64(h1: u64, h2: u64) -> u32 {
 /// Computes a higher resolution 256-bit difference hash (17x16 sample grid).
 #[must_use]
 pub fn dhash_256(image: &RgbaImage) -> [u64; 4] {
-    let small = image::imageops::resize(image, 17, 16, FilterType::Nearest);
+    let small = image::imageops::resize(image, 17, 16, FilterType::Triangle);
     let mut hashes = [0u64; 4];
 
     for y in 0..16 {

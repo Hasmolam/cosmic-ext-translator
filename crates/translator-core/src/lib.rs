@@ -17,13 +17,14 @@ pub use pipeline::debouncer::{DebounceState, FrameDebouncer, SettledFrame};
 pub use pipeline::preprocess::{preprocess_for_ocr, compute_otsu_threshold, PreprocessConfig};
 pub use pipeline::{spawn_recognition_pipeline, PipelineHandle, RecognizedEvent};
 
-pub use ocr::{MockOcrBackend, OcrBackend, OcrsBackend};
+pub use ocr::{create_ocr_backend_for_lang, MockOcrBackend, OcrBackend, OcrsBackend, TesseractBackend};
 pub use translation::{
-    FuzzyLruCache, GoogleTranslateBackend, MockTranslationBackend, OllamaTranslationBackend,
-    TranslationBackend, TranslationContext, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
+    DeepLTranslationBackend, FuzzyLruCache, GoogleTranslateBackend, MockTranslationBackend,
+    OllamaTranslationBackend, OpenAiTranslationBackend, TranslationBackend, TranslationContext,
+    DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
 };
 pub use shortcuts::{GlobalShortcutsManager, ShortcutAction};
-pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage};
+pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage, HudPosition};
 pub use orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
 };

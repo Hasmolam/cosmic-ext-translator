@@ -45,6 +45,25 @@ impl Roi {
         }
     }
 
+    /// Scales the ROI coordinates from Wayland logical surface dimensions to
+    /// PipeWire physical buffer dimensions, ensuring pixel-perfect alignment
+    /// across HiDPI and fractional scaling displays (%125, %150, %200).
+    #[must_use]
+    pub fn scale_to_frame(&self, surface_w: u32, surface_h: u32, frame_w: u32, frame_h: u32) -> Self {
+        if surface_w == 0 || surface_h == 0 || frame_w == 0 || frame_h == 0 {
+            return *self;
+        }
+        let scale_x = frame_w as f64 / surface_w as f64;
+        let scale_y = frame_h as f64 / surface_h as f64;
+
+        Self {
+            x: ((self.x as f64) * scale_x).round() as u32,
+            y: ((self.y as f64) * scale_y).round() as u32,
+            width: ((self.width as f64) * scale_x).round() as u32,
+            height: ((self.height as f64) * scale_y).round() as u32,
+        }
+    }
+
     /// Efficiently crops and copies only the ROI pixels from a raw 32-bit RGBA/BGRA/RGBx frame.
     pub fn crop_to_rgba(
         &self,
@@ -268,6 +287,24 @@ mod tests {
 
         let pixel = cropped.get_pixel(0, 0);
         assert_eq!(pixel.0, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn test_roi_scale_to_frame_hidpi() {
+        let logical_roi = Roi::new(100, 200, 300, 150);
+        // Logical surface 1280x720, Physical frame 1920x1080 (1.5x fractional scale)
+        let scaled = logical_roi.scale_to_frame(1280, 720, 1920, 1080);
+        assert_eq!(scaled.x, 150);
+        assert_eq!(scaled.y, 300);
+        assert_eq!(scaled.width, 450);
+        assert_eq!(scaled.height, 225);
+
+        // 2.0x scale (e.g. 4K 3840x2160 on 1920x1080 surface)
+        let scaled_4k = logical_roi.scale_to_frame(1920, 1080, 3840, 2160);
+        assert_eq!(scaled_4k.x, 200);
+        assert_eq!(scaled_4k.y, 400);
+        assert_eq!(scaled_4k.width, 600);
+        assert_eq!(scaled_4k.height, 300);
     }
 
     #[test]

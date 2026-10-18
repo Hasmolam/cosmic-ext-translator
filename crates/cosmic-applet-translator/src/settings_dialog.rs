@@ -28,13 +28,21 @@ pub enum SettingsMessage {
     EngineSelected(String),
     PresetSelected(RoiPreset),
     SelectCustomRoi,
+    BinarizeToggled(bool),
     SettleDurationChanged(u64),
     OllamaEndpointChanged(String),
     OllamaModelChanged(String),
+    DeepLApiKeyChanged(String),
+    OpenAiEndpointChanged(String),
+    OpenAiApiKeyChanged(String),
+    OpenAiModelChanged(String),
     TargetLangChanged(String),
     SourceLangChanged(String),
     TestOllamaConnection,
     OllamaTestResult(Result<Vec<String>, String>),
+    HudPositionChanged(String),
+    HudPersistentToggled(bool),
+    HudOffsetYChanged(u32),
     FontSizeChanged(u16),
     OpacityChanged(u8),
     DurationChanged(u64),
@@ -55,10 +63,10 @@ impl SettingsState {
         let nav_bar = row![
             tab_button("Yakalama & Alan", SettingsTab::Capture, self.active_tab),
             tab_button("Çeviri Motoru", SettingsTab::Engine, self.active_tab),
-            tab_button("Altyazı Görünümü", SettingsTab::Display, self.active_tab),
+            tab_button("Altyazı HUD", SettingsTab::Display, self.active_tab),
             tab_button("Oyun Sözlüğü", SettingsTab::Glossary, self.active_tab),
         ]
-        .spacing(8)
+        .spacing(6)
         .align_y(Alignment::Center);
 
         let content: Element<'a, SettingsMessage> = match self.active_tab {
@@ -74,15 +82,20 @@ impl SettingsState {
         ]
         .width(cosmic::iced::Length::Fill);
 
-        column![
-            nav_bar,
-            widget::divider::horizontal::default(),
-            widget::scrollable(content).height(cosmic::iced::Length::Fill),
-            widget::divider::horizontal::default(),
-            footer,
-        ]
-        .spacing(12)
-        .padding(16)
+        widget::container(
+            column![
+                nav_bar,
+                widget::divider::horizontal::default(),
+                widget::scrollable(content).height(cosmic::iced::Length::Fill),
+                widget::divider::horizontal::default(),
+                footer,
+            ]
+            .spacing(12)
+            .padding(16)
+        )
+        .width(cosmic::iced::Length::Fill)
+        .height(cosmic::iced::Length::Fill)
+        .class(cosmic::theme::Container::WindowBackground)
         .into()
     }
 
@@ -91,7 +104,12 @@ impl SettingsState {
 
         let mut preset_row = row![].spacing(6);
         for p in RoiPreset::ALL {
-            let label = p.label();
+            let label = match p {
+                RoiPreset::Bottom25 => "Alt %25 (RPG)",
+                RoiPreset::Bottom33 => "Alt %33 (VN)",
+                RoiPreset::FullScreen => "Tam Ekran",
+                RoiPreset::Custom => "Özel Alan",
+            };
             let is_active = p == current_preset;
             let btn = if is_active {
                 button::suggested(label)
@@ -123,6 +141,10 @@ impl SettingsState {
                 .align_y(Alignment::Center),
             ))
             .add(widget::settings::item(
+                "Otsu Binarizasyonu",
+                widget::toggler(config.binarize).on_toggle(SettingsMessage::BinarizeToggled),
+            ))
+            .add(widget::settings::item(
                 "Kare Sabitlenme Eşiği",
                 row![
                     widget::slider(
@@ -141,22 +163,34 @@ impl SettingsState {
     }
 
     fn view_engine<'a>(&'a self, config: &'a Config) -> Element<'a, SettingsMessage> {
-        let is_google = config.engine == "google";
+        let active_engine = config.engine.as_str();
         let engine_buttons = row![
-            if is_google {
-                button::suggested("Google Translate (Önerilen)")
+            if active_engine == "google" {
+                button::suggested("Google")
             } else {
-                button::standard("Google Translate (Önerilen)")
+                button::standard("Google")
             }
             .on_press(SettingsMessage::EngineSelected("google".to_string())),
-            if !is_google {
-                button::suggested("Ollama (Yerel LLM)")
+            if active_engine == "deepl" {
+                button::suggested("DeepL")
             } else {
-                button::standard("Ollama (Yerel LLM)")
+                button::standard("DeepL")
+            }
+            .on_press(SettingsMessage::EngineSelected("deepl".to_string())),
+            if active_engine == "ollama" {
+                button::suggested("Ollama")
+            } else {
+                button::standard("Ollama")
             }
             .on_press(SettingsMessage::EngineSelected("ollama".to_string())),
+            if active_engine == "openai" {
+                button::suggested("OpenAI/LLM")
+            } else {
+                button::standard("OpenAI/LLM")
+            }
+            .on_press(SettingsMessage::EngineSelected("openai".to_string())),
         ]
-        .spacing(8)
+        .spacing(6)
         .align_y(Alignment::Center);
 
         let mut section = widget::settings::section()
@@ -175,51 +209,117 @@ impl SettingsState {
                     .width(100),
             ));
 
-        if is_google {
-            section = section.add(widget::settings::item(
-                "Motor Bilgisi",
-                text("Google Translate devrede. Hızlıdır, ekstra GPU veya model indirme gerektirmez.").size(13),
-            ));
-        } else {
-            let status_desc = if self.is_testing_ollama {
-                "Bağlantı test ediliyor...".to_string()
-            } else if let Some(ref st) = self.ollama_test_status {
-                st.clone()
-            } else {
-                "Durum bilinmiyor".to_string()
-            };
-
-            section = section
-                .add(widget::settings::item(
-                    "Ollama Endpoint",
-                    widget::text_input("http://localhost:11434", &config.ollama_endpoint)
-                        .on_input(SettingsMessage::OllamaEndpointChanged)
-                        .width(260),
-                ))
-                .add(widget::settings::item(
-                    "Ollama Modeli",
-                    widget::text_input("qwen2.5:3b", &config.ollama_model)
-                        .on_input(SettingsMessage::OllamaModelChanged)
-                        .width(260),
-                ))
-                .add(widget::settings::item(
-                    "Bağlantı Testi",
-                    row![
-                        text(status_desc).size(13),
-                        button::suggested("Test Et")
-                            .on_press(SettingsMessage::TestOllamaConnection),
-                    ]
-                    .spacing(12)
-                    .align_y(Alignment::Center),
+        match active_engine {
+            "google" => {
+                section = section.add(widget::settings::item(
+                    "Motor Bilgisi",
+                    text("Google Translate devrede. Hızlıdır, anahtar veya model indirme gerektirmez.").size(13),
                 ));
+            }
+            "deepl" => {
+                section = section.add(widget::settings::item(
+                    "DeepL API Key",
+                    widget::text_input("DeepL API Key (:fx veya pro)", &config.deepl_api_key)
+                        .on_input(SettingsMessage::DeepLApiKeyChanged)
+                        .width(280),
+                ));
+            }
+            "openai" => {
+                section = section
+                    .add(widget::settings::item(
+                        "API Endpoint",
+                        widget::text_input("https://api.openai.com/v1", &config.openai_endpoint)
+                            .on_input(SettingsMessage::OpenAiEndpointChanged)
+                            .width(280),
+                    ))
+                    .add(widget::settings::item(
+                        "Model Adı",
+                        widget::text_input("gpt-4o-mini", &config.openai_model)
+                            .on_input(SettingsMessage::OpenAiModelChanged)
+                            .width(280),
+                    ))
+                    .add(widget::settings::item(
+                        "API Key",
+                        widget::text_input("sk-...", &config.openai_api_key)
+                            .on_input(SettingsMessage::OpenAiApiKeyChanged)
+                            .width(280),
+                    ));
+            }
+            _ => {
+                let status_desc = if self.is_testing_ollama {
+                    "Bağlantı test ediliyor...".to_string()
+                } else if let Some(ref st) = self.ollama_test_status {
+                    st.clone()
+                } else {
+                    "Durum bilinmiyor".to_string()
+                };
+
+                section = section
+                    .add(widget::settings::item(
+                        "Ollama Endpoint",
+                        widget::text_input("http://localhost:11434", &config.ollama_endpoint)
+                            .on_input(SettingsMessage::OllamaEndpointChanged)
+                            .width(260),
+                    ))
+                    .add(widget::settings::item(
+                        "Ollama Modeli",
+                        widget::text_input("qwen2.5:3b", &config.ollama_model)
+                            .on_input(SettingsMessage::OllamaModelChanged)
+                            .width(260),
+                    ))
+                    .add(widget::settings::item(
+                        "Bağlantı Testi",
+                        row![
+                            text(status_desc).size(13),
+                            button::suggested("Test Et")
+                                .on_press(SettingsMessage::TestOllamaConnection),
+                        ]
+                        .spacing(12)
+                        .align_y(Alignment::Center),
+                    ));
+            }
         }
 
         section.into()
     }
 
     fn view_display<'a>(&'a self, config: &'a Config) -> Element<'a, SettingsMessage> {
-        let section = widget::settings::section()
+        let current_pos = config.hud_position.as_str();
+        let position_row = row![
+            if current_pos == "bottom" || (current_pos != "top" && current_pos != "center") {
+                button::suggested("Ekran Altı")
+            } else {
+                button::standard("Ekran Altı")
+            }
+            .on_press(SettingsMessage::HudPositionChanged("bottom".to_string())),
+            if current_pos == "top" {
+                button::suggested("Ekran Üstü")
+            } else {
+                button::standard("Ekran Üstü")
+            }
+            .on_press(SettingsMessage::HudPositionChanged("top".to_string())),
+            if current_pos == "center" {
+                button::suggested("Ekran Ortası")
+            } else {
+                button::standard("Ekran Ortası")
+            }
+            .on_press(SettingsMessage::HudPositionChanged("center".to_string())),
+        ]
+        .spacing(6);
+
+        let mut section = widget::settings::section()
             .title("Altyazı HUD Katmanı")
+            .add(widget::settings::item("Altyazı Konumu", position_row))
+            .add(widget::settings::item(
+                "Dikey Mesafe (Ofset)",
+                row![
+                    widget::slider(0..=300, config.hud_offset_y, SettingsMessage::HudOffsetYChanged)
+                        .width(180),
+                    text(format!("{} px", config.hud_offset_y)).size(14),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            ))
             .add(widget::settings::item(
                 "Font Boyutu",
                 row![
@@ -241,24 +341,33 @@ impl SettingsState {
                 .align_y(Alignment::Center),
             ))
             .add(widget::settings::item(
-                "Görünme Süresi",
+                "Altyazıyı Ekranda Tut (Sürekli)",
+                widget::toggler(config.hud_persistent).on_toggle(SettingsMessage::HudPersistentToggled),
+            ));
+
+        if !config.hud_persistent {
+            let dur = if config.hud_duration_ms == 0 { 6000 } else { config.hud_duration_ms };
+            section = section.add(widget::settings::item(
+                "Otomatik Kaybolma Süresi",
                 row![
                     widget::slider(
                         2000..=15000,
-                        config.hud_duration_ms as u32,
+                        dur as u32,
                         |val| SettingsMessage::DurationChanged(val as u64),
                     )
                     .width(180),
-                    text(format!("{:.1} sn", config.hud_duration_ms as f32 / 1000.0)).size(14),
+                    text(format!("{:.1} sn", dur as f32 / 1000.0)).size(14),
                 ]
                 .spacing(10)
                 .align_y(Alignment::Center),
-            ))
-            .add(widget::settings::item(
-                "Canlı Önizleme",
-                button::standard("HUD'da Test Mesajı Göster")
-                    .on_press(SettingsMessage::TestHudRequested),
             ));
+        }
+
+        section = section.add(widget::settings::item(
+            "Canlı Önizleme",
+            button::standard("HUD'da Test Mesajı Göster")
+                .on_press(SettingsMessage::TestHudRequested),
+        ));
 
         section.into()
     }

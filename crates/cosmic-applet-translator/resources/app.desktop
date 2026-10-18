@@ -8,6 +8,6 @@ Terminal=false
 StartupNotify=true
 Categories=COSMIC
 Keywords=COSMIC;translator;game;ocr;
-NoDisplay=true
+NoDisplay=false
 X-CosmicApplet=true
 X-CosmicHoverPopup=Auto

@@ -1,4 +1,4 @@
-use super::{BoxFuture, TranslationBackend, TranslationContext};
+use super::{apply_glossary, BoxFuture, TranslationBackend, TranslationContext};
 use serde_json::Value;
 
 /// Fast, keyless translation backend using Google Translate client endpoint.
@@ -41,6 +41,11 @@ impl TranslationBackend for GoogleTranslateBackend {
             // Check if full text matches a glossary term
             if let Some(replacement) = ctx.glossary().get(trimmed) {
                 return Ok(replacement.clone());
+            }
+            for (term, replacement) in ctx.glossary() {
+                if term.eq_ignore_ascii_case(trimmed) {
+                    return Ok(replacement.clone());
+                }
             }
 
             let sl = if src_lang.is_empty() || src_lang == "auto" { "auto" } else { src_lang };
@@ -85,12 +90,8 @@ impl TranslationBackend for GoogleTranslateBackend {
                 anyhow::bail!("Failed to parse Google Translate response: {val:?}");
             }
 
-            // Apply glossary word-level replacements if needed
-            for (term, repl) in ctx.glossary() {
-                if translated_text.contains(term) {
-                    translated_text = translated_text.replace(term, repl);
-                }
-            }
+            // Apply domain glossary replacements
+            let translated_text = apply_glossary(&translated_text, ctx.glossary());
 
             Ok(translated_text)
         })
@@ -110,5 +111,32 @@ mod tests {
             .await
             .expect("Google Translate request failed");
         assert_eq!(result.to_lowercase(), "selam dünya".to_lowercase());
+    }
+
+    #[tokio::test]
+    async fn test_google_translate_glossary_override() {
+        let backend = GoogleTranslateBackend::new();
+        let mut ctx = TranslationContext::default();
+        ctx.set_glossary_term("Sandevistan", "Zaman Yavaşlatıcı");
+
+        // Direct full text glossary match bypasses remote network call
+        let result = backend
+            .translate("Sandevistan", "en", "tr", &ctx)
+            .await
+            .expect("Translation failed");
+        assert_eq!(result, "Zaman Yavaşlatıcı");
+    }
+
+    #[tokio::test]
+    async fn test_google_translate_glossary_in_sentence() {
+        let backend = GoogleTranslateBackend::new();
+        let mut ctx = TranslationContext::default();
+        ctx.set_glossary_term("selam", "merhaba");
+
+        let result = backend
+            .translate("Hello world", "en", "tr", &ctx)
+            .await
+            .expect("Translation failed");
+        assert!(result.to_lowercase().contains("merhaba"));
     }
 }

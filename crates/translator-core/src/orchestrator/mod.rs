@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info};
@@ -38,6 +39,8 @@ pub struct OrchestratorConfig {
     pub cache_capacity: usize,
     pub similarity_threshold: f64,
     pub forward_to_hud: bool,
+    pub glossary: HashMap<String, String>,
+    pub hud_duration_ms: u64,
 }
 
 impl Default for OrchestratorConfig {
@@ -49,6 +52,8 @@ impl Default for OrchestratorConfig {
             cache_capacity: DEFAULT_CACHE_CAPACITY,
             similarity_threshold: DEFAULT_SIMILARITY_THRESHOLD,
             forward_to_hud: true,
+            glossary: HashMap::new(),
+            hud_duration_ms: 0, // 0 = persistent / stay until replaced by next dialogue
         }
     }
 }
@@ -96,6 +101,9 @@ pub fn spawn_orchestrator(
 
         let mut cache = FuzzyLruCache::new(config.cache_capacity, config.similarity_threshold);
         let mut context = TranslationContext::default();
+        for (term, repl) in &config.glossary {
+            context.set_glossary_term(term.clone(), repl.clone());
+        }
         let hud_client = if config.forward_to_hud {
             Some(HudIpcClient::default_client())
         } else {
@@ -146,6 +154,20 @@ pub fn spawn_orchestrator(
                                 let err_msg = format!("Translation failure: {err}");
                                 error!("{err_msg}");
                                 let _ = event_tx.send(OrchestratorEvent::Error(err_msg)).await;
+                                if let Some(ref client) = hud_client {
+                                    let err_summary = if err.to_string().contains("429") {
+                                        "Hız Sınırı Aşıldı (HTTP 429 Rate Limit)"
+                                    } else {
+                                        "Çeviri Hatası (Bağlantı/Servis)"
+                                    };
+                                    let _ = client
+                                        .send(&HudMessage::ShowSubtitle {
+                                            text: format!("⚠️ {err_summary}"),
+                                            original: Some(recognized.clone()),
+                                            duration_ms: 3500,
+                                        })
+                                        .await;
+                                }
                                 continue;
                             }
                         }
@@ -162,7 +184,7 @@ pub fn spawn_orchestrator(
                         let msg = HudMessage::ShowSubtitle {
                             text: translated,
                             original: Some(recognized),
-                            duration_ms: 6000,
+                            duration_ms: config.hud_duration_ms,
                         };
                         if let Err(err) = client.send(&msg).await {
                             debug!("HUD client send notice (HUD may not be listening): {err}");

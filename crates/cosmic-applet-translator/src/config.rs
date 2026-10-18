@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use cosmic::cosmic_config::{self, cosmic_config_derive::CosmicConfigEntry, CosmicConfigEntry};
+use serde::{Deserialize, Serialize};
 use translator_core::Roi;
 
-#[derive(Debug, Clone, CosmicConfigEntry, Eq, PartialEq)]
+#[derive(Debug, Clone, CosmicConfigEntry, Eq, PartialEq, Serialize, Deserialize)]
 #[version = 1]
 pub struct Config {
     pub enabled: bool,
@@ -14,6 +15,14 @@ pub struct Config {
     pub engine: String,
     pub ollama_endpoint: String,
     pub ollama_model: String,
+    pub deepl_api_key: String,
+    pub openai_endpoint: String,
+    pub openai_api_key: String,
+    pub openai_model: String,
+    pub binarize: bool,
+    pub hud_position: String,
+    pub hud_persistent: bool,
+    pub hud_offset_y: u32,
     pub font_size: u16,
     pub hud_duration_ms: u64,
     pub hud_opacity: u8,
@@ -33,8 +42,16 @@ impl Default for Config {
             engine: "google".to_string(),
             ollama_endpoint: "http://localhost:11434".to_string(),
             ollama_model: "qwen2.5:3b".to_string(),
+            deepl_api_key: String::new(),
+            openai_endpoint: "https://api.openai.com/v1".to_string(),
+            openai_api_key: String::new(),
+            openai_model: "gpt-4o-mini".to_string(),
+            binarize: false,
+            hud_position: "bottom".to_string(),
+            hud_persistent: true,
+            hud_offset_y: 40,
             font_size: 22,
-            hud_duration_ms: 6000,
+            hud_duration_ms: 0,
             hud_opacity: 92,
             settle_duration_ms: 250,
             glossary: HashMap::new(),

@@ -11,6 +11,7 @@ pub enum ShortcutAction {
     SelectRoi,
     ToggleTranslation,
     ToggleHud,
+    TranslateCurrentScreen,
     Custom(String),
 }
 
@@ -20,6 +21,7 @@ impl ShortcutAction {
             Self::SelectRoi => "select_roi",
             Self::ToggleTranslation => "toggle_translation",
             Self::ToggleHud => "toggle_hud",
+            Self::TranslateCurrentScreen => "translate_current_screen",
             Self::Custom(id) => id.as_str(),
         }
     }
@@ -29,6 +31,7 @@ impl ShortcutAction {
             "select_roi" => Self::SelectRoi,
             "toggle_translation" => Self::ToggleTranslation,
             "toggle_hud" => Self::ToggleHud,
+            "translate_current_screen" => Self::TranslateCurrentScreen,
             other => Self::Custom(other.to_string()),
         }
     }
@@ -50,6 +53,8 @@ impl GlobalShortcutsManager {
                 .preferred_trigger(Some("Super+Alt+T")),
             NewShortcut::new("toggle_hud", "Toggle Subtitle HUD Visibility")
                 .preferred_trigger(Some("Super+Alt+H")),
+            NewShortcut::new("translate_current_screen", "Translate Current Screen Now")
+                .preferred_trigger(Some("Super+Alt+C")),
         ]
     }
 
@@ -120,6 +125,6 @@ mod tests {
     #[test]
     fn test_default_shortcuts_definitions() {
         let defaults = GlobalShortcutsManager::default_shortcuts();
-        assert_eq!(defaults.len(), 3);
+        assert_eq!(defaults.len(), 4);
     }
 }

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, trace};
 
 use crate::capture::pipewire_thread::CapturedFrame;
-use crate::pipeline::phash::{dhash_64, hamming_distance_64};
+use crate::pipeline::phash::{dhash_256, hamming_distance_256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DebounceState {
@@ -30,7 +30,7 @@ pub struct FrameDebouncer {
     pub max_animation_duration: Duration,
 
     state: DebounceState,
-    last_hash: Option<u64>,
+    last_hash: Option<[u64; 4]>,
     last_change_time: Instant,
     animation_start_time: Option<Instant>,
     latest_frame: Option<CapturedFrame>,
@@ -71,7 +71,7 @@ impl FrameDebouncer {
     /// Returns `Some(SettledFrame)` only when the text stream has completed typing
     /// and remained visually stable for `settle_duration`.
     pub fn process_frame(&mut self, frame: CapturedFrame) -> Option<SettledFrame> {
-        let current_hash = dhash_64(&frame.image);
+        let current_hash = dhash_256(&frame.image);
         let now = Instant::now();
 
         match self.state {
@@ -82,7 +82,7 @@ impl FrameDebouncer {
                     return None;
                 };
 
-                let distance = hamming_distance_64(prev_hash, current_hash);
+                let distance = hamming_distance_256(&prev_hash, &current_hash);
                 trace!(
                     "Debouncer: Idle, dist={}, threshold={}",
                     distance,
@@ -102,10 +102,10 @@ impl FrameDebouncer {
 
             DebounceState::Animating => {
                 let prev_hash = self.last_hash.unwrap_or(current_hash);
-                let distance = hamming_distance_64(prev_hash, current_hash);
+                let distance = hamming_distance_256(&prev_hash, &current_hash);
                 self.latest_frame = Some(frame);
 
-                if distance >= self.hash_threshold {
+                if distance > 0 {
                     // Still actively typing (new characters appearing)
                     trace!("Debouncer: still animating (dist={distance})");
                     self.last_hash = Some(current_hash);
@@ -131,9 +131,10 @@ impl FrameDebouncer {
                     self.animation_start_time = None;
 
                     let final_frame = self.latest_frame.take()?;
+                    let compact_hash = current_hash[0] ^ current_hash[1] ^ current_hash[2] ^ current_hash[3];
                     let settled = SettledFrame {
                         frame: final_frame,
-                        hash: current_hash,
+                        hash: compact_hash,
                         settled_at: now,
                     };
 

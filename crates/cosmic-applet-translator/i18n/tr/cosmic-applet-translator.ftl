@@ -1,0 +1,17 @@
+app-title = Ekran Çevirmeni
+app-comment = COSMIC için Gerçek Zamanlı Ekran ve Oyun Çevirmeni
+app-keywords = çeviri;çevirmen;ekran;oyun;cosmic;ocr;lingua;
+about = Hakkında
+status = Durum
+active = Aktif
+paused = Duraklatıldı
+enable-translation = Çeviriyi Etkinleştir
+preset = Şablon
+active-region = Aktif Bölge
+custom-roi-unset = Özel Alan Seçilmedi
+select-roi = Yakalama Alanı Seç
+select-target = 🎯 Hedef Pencere / Ekran Seç
+settings = Ayarlar
+translate-now = Şu Anki Ekranı Çevir
+profile = Oyun Profili
+example-row = Çeviriyi Etkinleştir
