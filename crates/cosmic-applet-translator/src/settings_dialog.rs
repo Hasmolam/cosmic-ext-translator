@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::fl;
 use cosmic::iced::Alignment;
 use cosmic::widget::{self, button, column, container, row, text};
 use cosmic::Element;
@@ -62,10 +63,10 @@ impl SettingsState {
 
     pub fn view<'a>(&'a self, config: &'a Config) -> Element<'a, SettingsMessage> {
         let nav_bar = row![
-            tab_button("Yakalama & Alan", SettingsTab::Capture, self.active_tab),
-            tab_button("Çeviri Motoru", SettingsTab::Engine, self.active_tab),
-            tab_button("Altyazı HUD", SettingsTab::Display, self.active_tab),
-            tab_button("Oyun Sözlüğü", SettingsTab::Glossary, self.active_tab),
+            tab_button(fl!("tab-capture"), SettingsTab::Capture, self.active_tab),
+            tab_button(fl!("tab-engine"), SettingsTab::Engine, self.active_tab),
+            tab_button(fl!("tab-display"), SettingsTab::Display, self.active_tab),
+            tab_button(fl!("tab-glossary"), SettingsTab::Glossary, self.active_tab),
         ]
         .spacing(6)
         .align_y(Alignment::Center);
@@ -79,7 +80,7 @@ impl SettingsState {
 
         let footer = row![
             cosmic::iced::widget::space::horizontal(),
-            button::standard("Pencereyi Kapat").on_press(SettingsMessage::Close),
+            button::standard(fl!("close-window")).on_press(SettingsMessage::Close),
         ]
         .width(cosmic::iced::Length::Fill);
 
@@ -123,30 +124,30 @@ impl SettingsState {
         let custom_coords = if let Some(r) = config.custom_roi {
             format!("{}x{} @ ({}, {})", r.width, r.height, r.x, r.y)
         } else {
-            "Tanımlı özel alan yok".to_string()
+            fl!("no-custom-area")
         };
 
         let section = widget::settings::section()
-            .title("Diyalog ve Yakalama Alanı")
+            .title(fl!("section-capture-title"))
             .add(widget::settings::item(
-                "Diyalog Şablonu",
+                fl!("preset-dialog-template"),
                 preset_row,
             ))
             .add(widget::settings::item(
-                "Özel Koordinatlar",
+                fl!("custom-coords"),
                 row![
                     text(custom_coords),
-                    button::standard("Yeni Alan Çiz").on_press(SettingsMessage::SelectCustomRoi),
+                    button::standard(fl!("draw-new-area")).on_press(SettingsMessage::SelectCustomRoi),
                 ]
                 .spacing(10)
                 .align_y(Alignment::Center),
             ))
             .add(widget::settings::item(
-                "Otsu Binarizasyonu",
+                fl!("otsu-binarization"),
                 widget::toggler(config.binarize).on_toggle(SettingsMessage::BinarizeToggled),
             ))
             .add(widget::settings::item(
-                "Kare Sabitlenme Eşiği",
+                fl!("settle-threshold"),
                 row![
                     widget::slider(
                         100..=1000,
@@ -195,16 +196,16 @@ impl SettingsState {
         .align_y(Alignment::Center);
 
         let mut section = widget::settings::section()
-            .title("Çeviri Motoru Seçimi")
-            .add(widget::settings::item("Aktif Motor", engine_buttons))
+            .title(fl!("engine-selection"))
+            .add(widget::settings::item(fl!("active-engine"), engine_buttons))
             .add(widget::settings::item(
-                "Hedef Dil (Target)",
+                fl!("target-language"),
                 widget::text_input("tr", &config.target_lang)
                     .on_input(SettingsMessage::TargetLangChanged)
                     .width(100),
             ))
             .add(widget::settings::item(
-                "Kaynak Dil (Source)",
+                fl!("source-language"),
                 widget::text_input("auto", &config.source_lang)
                     .on_input(SettingsMessage::SourceLangChanged)
                     .width(100),
@@ -213,13 +214,13 @@ impl SettingsState {
         match active_engine {
             "google" => {
                 section = section.add(widget::settings::item(
-                    "Motor Bilgisi",
-                    text("Google Translate devrede. Hızlıdır, anahtar veya model indirme gerektirmez.").size(13),
+                    fl!("engine-info"),
+                    text(fl!("engine-info-google")).size(13),
                 ));
             }
             "deepl" => {
                 section = section.add(widget::settings::item(
-                    "DeepL API Key",
+                    fl!("deepl-api-key"),
                     widget::text_input("DeepL API Key (:fx veya pro)", &config.deepl_api_key)
                         .on_input(SettingsMessage::DeepLApiKeyChanged)
                         .width(280),
@@ -228,19 +229,19 @@ impl SettingsState {
             "openai" => {
                 section = section
                     .add(widget::settings::item(
-                        "API Endpoint",
+                        fl!("api-endpoint"),
                         widget::text_input("https://api.openai.com/v1", &config.openai_endpoint)
                             .on_input(SettingsMessage::OpenAiEndpointChanged)
                             .width(280),
                     ))
                     .add(widget::settings::item(
-                        "Model Adı",
+                        fl!("model-name"),
                         widget::text_input("gpt-4o-mini", &config.openai_model)
                             .on_input(SettingsMessage::OpenAiModelChanged)
                             .width(280),
                     ))
                     .add(widget::settings::item(
-                        "API Key",
+                        fl!("api-key"),
                         widget::text_input("sk-...", &config.openai_api_key)
                             .on_input(SettingsMessage::OpenAiApiKeyChanged)
                             .width(280),
@@ -248,31 +249,31 @@ impl SettingsState {
             }
             _ => {
                 let status_desc = if self.is_testing_ollama {
-                    "Bağlantı test ediliyor...".to_string()
+                    fl!("testing-connection")
                 } else if let Some(ref st) = self.ollama_test_status {
                     st.clone()
                 } else {
-                    "Durum bilinmiyor".to_string()
+                    fl!("status-unknown")
                 };
 
                 section = section
                     .add(widget::settings::item(
-                        "Ollama Endpoint",
+                        fl!("ollama-endpoint"),
                         widget::text_input("http://localhost:11434", &config.ollama_endpoint)
                             .on_input(SettingsMessage::OllamaEndpointChanged)
                             .width(260),
                     ))
                     .add(widget::settings::item(
-                        "Ollama Modeli",
+                        fl!("ollama-model"),
                         widget::text_input("qwen2.5:3b", &config.ollama_model)
                             .on_input(SettingsMessage::OllamaModelChanged)
                             .width(260),
                     ))
                     .add(widget::settings::item(
-                        "Bağlantı Testi",
+                        fl!("connection-test"),
                         row![
                             text(status_desc).size(13),
-                            button::suggested("Test Et")
+                            button::suggested(fl!("test-button"))
                                 .on_press(SettingsMessage::TestOllamaConnection),
                         ]
                         .spacing(12)
@@ -288,31 +289,31 @@ impl SettingsState {
         let current_pos = config.hud_position.as_str();
         let position_row = row![
             if current_pos == "bottom" || (current_pos != "top" && current_pos != "center") {
-                button::suggested("Ekran Altı")
+                button::suggested(fl!("pos-bottom"))
             } else {
-                button::standard("Ekran Altı")
+                button::standard(fl!("pos-bottom"))
             }
             .on_press(SettingsMessage::HudPositionChanged("bottom".to_string())),
             if current_pos == "top" {
-                button::suggested("Ekran Üstü")
+                button::suggested(fl!("pos-top"))
             } else {
-                button::standard("Ekran Üstü")
+                button::standard(fl!("pos-top"))
             }
             .on_press(SettingsMessage::HudPositionChanged("top".to_string())),
             if current_pos == "center" {
-                button::suggested("Ekran Ortası")
+                button::suggested(fl!("pos-center"))
             } else {
-                button::standard("Ekran Ortası")
+                button::standard(fl!("pos-center"))
             }
             .on_press(SettingsMessage::HudPositionChanged("center".to_string())),
         ]
         .spacing(6);
 
         let mut section = widget::settings::section()
-            .title("Altyazı HUD Katmanı")
-            .add(widget::settings::item("Altyazı Konumu", position_row))
+            .title(fl!("hud-layer-title"))
+            .add(widget::settings::item(fl!("hud-position"), position_row))
             .add(widget::settings::item(
-                "Dikey Mesafe (Ofset)",
+                fl!("hud-vertical-offset"),
                 row![
                     widget::slider(0..=300, config.hud_offset_y, SettingsMessage::HudOffsetYChanged)
                         .width(180),
@@ -322,7 +323,7 @@ impl SettingsState {
                 .align_y(Alignment::Center),
             ))
             .add(widget::settings::item(
-                "Font Boyutu",
+                fl!("font-size"),
                 row![
                     widget::slider(16..=36, config.font_size, SettingsMessage::FontSizeChanged)
                         .width(180),
@@ -332,7 +333,7 @@ impl SettingsState {
                 .align_y(Alignment::Center),
             ))
             .add(widget::settings::item(
-                "Arka Plan Opaklığı",
+                fl!("background-opacity"),
                 row![
                     widget::slider(20..=100, config.hud_opacity, SettingsMessage::OpacityChanged)
                         .width(180),
@@ -342,14 +343,14 @@ impl SettingsState {
                 .align_y(Alignment::Center),
             ))
             .add(widget::settings::item(
-                "Altyazıyı Ekranda Tut (Sürekli)",
+                fl!("hud-persistent"),
                 widget::toggler(config.hud_persistent).on_toggle(SettingsMessage::HudPersistentToggled),
             ));
 
         if !config.hud_persistent {
             let dur = if config.hud_duration_ms == 0 { 6000 } else { config.hud_duration_ms };
             section = section.add(widget::settings::item(
-                "Otomatik Kaybolma Süresi",
+                fl!("hud-auto-hide-time"),
                 row![
                     widget::slider(
                         2000..=15000,
@@ -365,14 +366,14 @@ impl SettingsState {
         }
 
         section = section.add(widget::settings::item(
-            "MORT Tarzı Konumlandırma",
-            button::suggested("✥ Ekranda Canlı Konumlandır (MORT Modu)")
+            fl!("mort-positioning"),
+            button::suggested(fl!("mort-button"))
                 .on_press(SettingsMessage::StartMortPositioning),
         ));
 
         section = section.add(widget::settings::item(
-            "Canlı Önizleme",
-            button::standard("HUD'da Test Mesajı Göster")
+            fl!("live-preview"),
+            button::standard(fl!("show-test-hud-message"))
                 .on_press(SettingsMessage::TestHudRequested),
         ));
 
@@ -381,13 +382,13 @@ impl SettingsState {
 
     fn view_glossary<'a>(&'a self, config: &'a Config) -> Element<'a, SettingsMessage> {
         let add_row = row![
-            widget::text_input("Orijinal Terim (örn: Potion)", &self.new_glossary_source)
+            widget::text_input(fl!("glossary-source-placeholder"), &self.new_glossary_source)
                 .on_input(SettingsMessage::GlossarySourceChanged)
                 .width(180),
-            widget::text_input("Çevirisi (örn: İksir)", &self.new_glossary_target)
+            widget::text_input(fl!("glossary-target-placeholder"), &self.new_glossary_target)
                 .on_input(SettingsMessage::GlossaryTargetChanged)
                 .width(180),
-            button::suggested("Ekle").on_press(SettingsMessage::AddGlossaryTerm),
+            button::suggested(fl!("add-button")).on_press(SettingsMessage::AddGlossaryTerm),
         ]
         .spacing(8)
         .align_y(Alignment::Center);
@@ -397,7 +398,7 @@ impl SettingsState {
             let item_row = row![
                 text(format!("\"{}\" ➔ \"{}\"", term, trans)).size(14),
                 cosmic::iced::widget::space::horizontal(),
-                button::destructive("Sil")
+                button::destructive(fl!("delete-button"))
                     .on_press(SettingsMessage::RemoveGlossaryTerm(term.clone())),
             ]
             .width(cosmic::iced::Length::Fill)
@@ -428,16 +429,17 @@ impl SettingsState {
 }
 
 fn tab_button<'a>(
-    title: &'static str,
+    title: impl Into<std::borrow::Cow<'a, str>>,
     tab: SettingsTab,
     active: SettingsTab,
 ) -> Element<'a, SettingsMessage> {
+    let title_str = title.into();
     if tab == active {
-        button::suggested(title)
+        button::suggested(title_str)
             .on_press(SettingsMessage::TabSelected(tab))
             .into()
     } else {
-        button::standard(title)
+        button::standard(title_str)
             .on_press(SettingsMessage::TabSelected(tab))
             .into()
     }

@@ -105,9 +105,9 @@ impl FrameDebouncer {
                 let distance = hamming_distance_256(&prev_hash, &current_hash);
                 self.latest_frame = Some(frame);
 
-                // Only treat changes with distance >= 3 as active text writing.
-                // 1-2 bit fluctuations are subpixel rasterization jitter or idle background sprite breathing.
-                if distance >= 3 {
+                // Only treat changes with distance >= hash_threshold as active text writing.
+                // Sub-threshold fluctuations are subpixel rasterization jitter or idle background sprite breathing.
+                if distance >= self.hash_threshold {
                     trace!("Debouncer: still actively typing (dist={distance})");
                     self.last_hash = Some(current_hash);
                     self.last_change_time = now;
@@ -154,6 +154,26 @@ impl FrameDebouncer {
                 self.state = DebounceState::Idle;
                 None
             }
+        }
+    }
+
+    /// Forces a settled state if the animation is pending.
+    /// This resolves zero-damage / 0-FPS game engine freezes where the text has stopped
+    /// animating but the game engine produces no further damaged frames to trigger the watch channel.
+    pub fn force_settle(&mut self) -> Option<SettledFrame> {
+        if self.state == DebounceState::Animating {
+            let final_frame = self.latest_frame.take()?;
+            let hash = self.last_hash.unwrap_or_default();
+            let compact_hash = hash[0] ^ hash[1] ^ hash[2] ^ hash[3];
+            self.state = DebounceState::Idle;
+            self.animation_start_time = None;
+            Some(SettledFrame {
+                frame: final_frame,
+                hash: compact_hash,
+                settled_at: Instant::now(),
+            })
+        } else {
+            None
         }
     }
 

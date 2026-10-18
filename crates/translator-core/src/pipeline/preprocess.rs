@@ -14,7 +14,7 @@ impl Default for PreprocessConfig {
     fn default() -> Self {
         Self {
             scale_factor: 1.5,
-            binarize: true,
+            binarize: false,
             auto_invert: true,
         }
     }

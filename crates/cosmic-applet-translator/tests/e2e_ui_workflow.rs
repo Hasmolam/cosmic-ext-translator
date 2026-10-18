@@ -4,6 +4,7 @@ use translator_core::capture::roi::{Roi, RoiPreset};
 
 #[test]
 fn test_ui_settings_tab_transitions() {
+    cosmic_applet_translator::i18n::init(&[]);
     let config = Config::default();
     let mut state = SettingsState::new();
 
@@ -29,6 +30,7 @@ fn test_ui_settings_tab_transitions() {
 
 #[test]
 fn test_ui_engine_views_render_cleanly() {
+    cosmic_applet_translator::i18n::init(&[]);
     let mut config = Config::default();
     let mut state = SettingsState::new();
     state.active_tab = SettingsTab::Engine;

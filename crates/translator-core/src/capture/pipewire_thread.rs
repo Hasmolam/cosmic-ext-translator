@@ -122,10 +122,10 @@ pub fn spawn_pipewire_capture_thread(
     fd: OwnedFd,
     node_id: u32,
     initial_region: CaptureRegion,
-) -> (
+) -> Result<(
     PipewireCaptureHandle,
     tokio::sync::watch::Receiver<Option<CapturedFrame>>,
-) {
+)> {
     let (frame_sender, frame_receiver) = tokio::sync::watch::channel(None);
     let (snapshot_sender, snapshot_receiver) = tokio::sync::watch::channel(None);
     let snapshot_requested = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -147,7 +147,7 @@ pub fn spawn_pipewire_capture_thread(
                 snapshot_requested_clone,
             )
         })
-        .expect("Failed to spawn PipeWire capture thread");
+        .map_err(|e| CaptureError::ThreadDied(format!("Failed to spawn PipeWire thread: {e}")))?;
 
     let handle = PipewireCaptureHandle {
         command_sender: pw_sender,
@@ -158,7 +158,7 @@ pub fn spawn_pipewire_capture_thread(
         snapshot_requested,
     };
 
-    (handle, frame_receiver)
+    Ok((handle, frame_receiver))
 }
 
 fn run_pipewire_loop(
@@ -298,34 +298,6 @@ fn run_pipewire_loop(
                 return;
             }
             user_data.last_capture_time = now;
-            if datas.is_empty() {
-                return;
-            }
-
-            let frame_w = user_data.format.size().width;
-            let frame_h = user_data.format.size().height;
-            if frame_w == 0 || frame_h == 0 {
-                return;
-            }
-
-            let is_bgr = matches!(
-                user_data.format.format(),
-                pw::spa::param::video::VideoFormat::BGRx
-                    | pw::spa::param::video::VideoFormat::BGRA
-                    | pw::spa::param::video::VideoFormat::BGR
-            );
-
-            let data = &mut datas[0];
-            let stride = data.chunk().stride();
-            let effective_stride = if stride > 0 {
-                stride as usize
-            } else {
-                frame_w as usize * 4
-            };
-
-            let Some(slice) = data.data() else {
-                return;
-            };
 
             let region = user_data.region.read().ok().map(|r| *r).unwrap_or_default();
             let target_roi = region.compute(frame_w, frame_h).unwrap_or_else(|| Roi::new(0, 0, frame_w, frame_h));

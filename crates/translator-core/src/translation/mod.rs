@@ -277,29 +277,12 @@ pub fn apply_glossary(text: &str, glossary: &HashMap<String, String>) -> String 
         if term.is_empty() {
             continue;
         }
-        if result.contains(term.as_str()) {
-            result = result.replace(term.as_str(), replacement);
-        } else {
-            // Case-insensitive ASCII fallback match
-            let term_lower = term.to_ascii_lowercase();
-            let mut replaced = false;
-            let mut new_result = String::with_capacity(result.len());
-            let mut start = 0;
-            let text_lower = result.to_ascii_lowercase();
-
-            while let Some(idx) = text_lower[start..].find(&term_lower) {
-                let actual_start = start + idx;
-                let actual_end = actual_start + term.len();
-                new_result.push_str(&result[start..actual_start]);
-                new_result.push_str(replacement);
-                start = actual_end;
-                replaced = true;
-            }
-
-            if replaced {
-                new_result.push_str(&result[start..]);
-                result = new_result;
-            }
+        let escaped = regex::escape(term);
+        if let Ok(re) = regex::RegexBuilder::new(&escaped)
+            .case_insensitive(true)
+            .build()
+        {
+            result = re.replace_all(&result, replacement.as_str()).to_string();
         }
     }
     result

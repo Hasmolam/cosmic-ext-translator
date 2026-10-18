@@ -15,3 +15,70 @@ settings = Settings
 translate-now = Translate Screen Now
 profile = Game Profile
 example-row = Enable Translation
+region = Region
+
+# Tabs
+tab-capture = Capture & Area
+tab-engine = Translation Engine
+tab-display = Subtitle HUD
+tab-glossary = Game Glossary
+close-window = Close Window
+
+# Capture Settings
+section-capture-title = Dialogue and Capture Area
+preset-dialog-template = Dialogue Template
+custom-coords = Custom Coordinates
+draw-new-area = Draw New Area
+no-custom-area = No custom area defined
+otsu-binarization = Otsu Binarization (1-bit)
+settle-threshold = Settle Duration Threshold
+
+# Engine Settings
+engine-selection = Translation Engine Selection
+active-engine = Active Engine
+target-language = Target Language
+source-language = Source Language
+engine-info = Engine Info
+engine-info-google = Google Translate active. Fast, keyless, and requires no local model downloads.
+deepl-api-key = DeepL API Key
+api-endpoint = API Endpoint
+model-name = Model Name
+api-key = API Key
+ollama-endpoint = Ollama Endpoint
+ollama-model = Ollama Model
+connection-test = Connection Test
+test-button = Test Connection
+testing-connection = Testing connection...
+status-unknown = Status unknown
+
+# Display & HUD
+hud-layer-title = Subtitle HUD Layer
+hud-position = Subtitle Position
+hud-vertical-offset = Vertical Offset
+font-size = Font Size
+background-opacity = Background Opacity
+hud-persistent = Keep Subtitle on Screen (Persistent)
+hud-auto-hide-time = Auto-Hide Duration
+mort-positioning = MORT Live Positioning
+mort-button = ✥ Position Live on Screen (MORT Mode)
+live-preview = Live Preview
+show-test-hud-message = Show Test Message on HUD
+pos-bottom = Screen Bottom
+pos-top = Screen Top
+pos-center = Screen Center
+
+# Glossary
+glossary-title = In-Game Terminology Glossary
+glossary-source-placeholder = Original Term (e.g. Potion)
+glossary-target-placeholder = Translation (e.g. Elixir)
+add-button = Add
+delete-button = Delete
+
+# Live Inspection Dashboard
+live-inspection-title = 🔍 Live Capture Area & Inspection
+preview-mode = Preview Mode
+raw-crop = Raw Cropped
+ocr-binarize = OCR Binarization
+last-detected-ocr = 📝 Last Detected Text (OCR)
+translation-output = 🌐 Translation Output
+prompt-select-target = 🎯 Select a window or start capture for live image inspection

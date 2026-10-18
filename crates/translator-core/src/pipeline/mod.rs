@@ -55,18 +55,38 @@ pub fn spawn_recognition_pipeline(
         info!("Recognition pipeline started");
 
         while !stop_clone.load(Ordering::Relaxed) {
-            if frame_receiver.changed().await.is_err() {
-                // Sender dropped, PipeWire stream closed
-                break;
-            }
-
-            let frame = frame_receiver.borrow_and_update().clone();
-            let Some(captured) = frame else {
-                continue;
+            let settled = if debouncer.state() == debouncer::DebounceState::Animating {
+                // If text is animating, wait for either a new frame OR settle timeout.
+                // This prevents zero-damage / 0-FPS game engine freezes (e.g. Ren'Py, RPG Maker)
+                // where the text has stopped typing but the engine produces no further frames to trigger watch.
+                tokio::select! {
+                    res = frame_receiver.changed() => {
+                        if res.is_err() {
+                            break;
+                        }
+                        let frame = frame_receiver.borrow_and_update().clone();
+                        let Some(captured) = frame else {
+                            continue;
+                        };
+                        debouncer.process_frame(captured)
+                    }
+                    _ = tokio::time::sleep(debouncer.settle_duration) => {
+                        debug!("Pipeline: zero-FPS static screen timeout reached, forcing settle");
+                        debouncer.force_settle()
+                    }
+                }
+            } else {
+                if frame_receiver.changed().await.is_err() {
+                    break;
+                }
+                let frame = frame_receiver.borrow_and_update().clone();
+                let Some(captured) = frame else {
+                    continue;
+                };
+                debouncer.process_frame(captured)
             };
 
-            // 1. Pass frame through typewriter debouncer
-            let Some(settled) = debouncer.process_frame(captured) else {
+            let Some(settled) = settled else {
                 continue;
             };
 

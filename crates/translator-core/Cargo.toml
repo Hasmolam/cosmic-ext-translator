@@ -19,6 +19,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 strsim = { workspace = true }
+regex = "1.11"
 futures-util = "0.3"
 
 [dev-dependencies]

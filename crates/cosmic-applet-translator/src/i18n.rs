@@ -8,7 +8,7 @@ use rust_embed::RustEmbed;
 
 pub fn init(requested_languages: &[LanguageIdentifier]) {
     if let Err(why) = localizer().select(requested_languages) {
-        eprintln!("error while loading fluent localizations: {why}");
+        tracing::warn!("error while loading fluent localizations: {why}");
     }
 }
 

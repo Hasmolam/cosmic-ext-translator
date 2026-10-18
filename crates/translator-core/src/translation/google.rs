@@ -103,6 +103,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires external network"]
     async fn test_google_translate_live() {
         let backend = GoogleTranslateBackend::new();
         let ctx = TranslationContext::default();
@@ -128,6 +129,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires external network"]
     async fn test_google_translate_glossary_in_sentence() {
         let backend = GoogleTranslateBackend::new();
         let mut ctx = TranslationContext::default();

@@ -4,7 +4,7 @@ destdir := rootdir + prefix
 bindir := destdir + '/bin'
 appid := 'com.system76.CosmicExtLingua'
 desktop_dst := destdir + '/share/applications/' + appid + '.desktop'
-metainfo_dst := destdir + '/share/appdata/' + appid + '.metainfo.xml'
+metainfo_dst := destdir + '/share/metainfo/' + appid + '.metainfo.xml'
 icon_dst := destdir + '/share/icons/hicolor/scalable/apps/' + appid + '.svg'
 
 # Default recipe: check the workspace

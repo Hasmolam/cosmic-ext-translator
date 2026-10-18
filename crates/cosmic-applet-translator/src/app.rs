@@ -173,7 +173,7 @@ impl AppModel {
                 .size(20)
                 .wrapping(cosmic::iced::widget::text::Wrapping::Word),
             cosmic::iced::widget::space::horizontal(),
-            widget::text(format!("Durum: {status_text}")).size(14),
+            widget::text(format!("{}: {status_text}", fl!("status"))).size(14),
             widget::toggler(self.capture_active).on_toggle(Message::ToggleCapture),
         ]
         .spacing(12)
@@ -183,7 +183,7 @@ impl AppModel {
             button::suggested(fl!("select-target")).on_press(Message::ChangeCaptureTarget),
             button::standard(fl!("select-roi")).on_press(Message::SelectRoiRequested),
             button::standard(fl!("translate-now")).on_press(Message::OneShotTranslate),
-            widget::text(format!("Bölge: {roi_desc}")).size(13),
+            widget::text(format!("{}: {roi_desc}", fl!("region"))).size(13),
         ]
         .spacing(10)
         .align_y(cosmic::iced::Alignment::Center);
@@ -205,7 +205,7 @@ impl AppModel {
             .into()
         } else {
             widget::container(
-                widget::text("🎯 Canlı görüntü denetimi için pencere seçin veya çeviriyi başlatın")
+                widget::text(fl!("prompt-select-target"))
                     .size(13)
             )
             .padding(14)
@@ -214,18 +214,18 @@ impl AppModel {
         };
 
         let preview_selector = row![
-            widget::text("🔍 Canlı Çeviri Alanı & Denetim:").size(13),
+            widget::text(fl!("live-inspection-title")).size(13),
             cosmic::iced::widget::space::horizontal(),
             if self.preview_mode == PreviewMode::RawCropped {
-                button::suggested("Orijinal Kırpma")
+                button::suggested(fl!("raw-crop"))
             } else {
-                button::standard("Orijinal Kırpma")
+                button::standard(fl!("raw-crop"))
             }
             .on_press(Message::TogglePreviewMode(PreviewMode::RawCropped)),
             if self.preview_mode == PreviewMode::Preprocessed {
-                button::suggested("OCR Binarizasyonu")
+                button::suggested(fl!("ocr-binarize"))
             } else {
-                button::standard("OCR Binarizasyonu")
+                button::standard(fl!("ocr-binarize"))
             }
             .on_press(Message::TogglePreviewMode(PreviewMode::Preprocessed)),
         ]
@@ -234,13 +234,13 @@ impl AppModel {
 
         let ocr_feedback = widget::column![
             row![
-                widget::text("📝 Son Algılanan Metin (OCR): ").size(13),
+                widget::text(format!("{}: ", fl!("last-detected-ocr"))).size(13),
                 widget::text(if self.last_ocr_text.is_empty() { "-" } else { &self.last_ocr_text })
                     .size(13)
                     .wrapping(cosmic::iced::widget::text::Wrapping::Word),
             ],
             row![
-                widget::text("🌐 Çeviri Çıktısı: ").size(13),
+                widget::text(format!("{}: ", fl!("translation-output"))).size(13),
                 widget::text(if self.last_translated_text.is_empty() { "-" } else { &self.last_translated_text })
                     .size(13)
                     .wrapping(cosmic::iced::widget::text::Wrapping::Word),
@@ -307,6 +307,7 @@ pub enum Message {
     OneShotTranslate,
     OneShotCompleted(Option<(String, String)>),
     TogglePreviewMode(PreviewMode),
+    CloseApp,
     HudCleared,
 }
 
@@ -337,6 +338,7 @@ impl Clone for Message {
             Self::OneShotTranslate => Self::OneShotTranslate,
             Self::OneShotCompleted(s) => Self::OneShotCompleted(s.clone()),
             Self::TogglePreviewMode(m) => Self::TogglePreviewMode(*m),
+            Self::CloseApp => Self::CloseApp,
             Self::HudCleared => Self::HudCleared,
         }
     }
@@ -444,7 +446,11 @@ impl cosmic::Application for AppModel {
             ocr_backend: None,
             orchestrator: None,
             capture_session: None,
-            ..Default::default()
+            preview_mode: PreviewMode::default(),
+            last_raw_preview: None,
+            last_proc_preview: None,
+            last_ocr_text: String::new(),
+            last_translated_text: String::new(),
         };
 
         (app, Task::none())
@@ -459,6 +465,8 @@ impl cosmic::Application for AppModel {
             Some(Message::PopupClosed(id))
         } else if Some(id) == self.settings_window {
             Some(Message::CloseSettingsWindow(id))
+        } else if self.is_standalone() && self.core.main_window_id() == Some(id) {
+            Some(Message::CloseApp)
         } else {
             None
         }
@@ -470,10 +478,13 @@ impl cosmic::Application for AppModel {
                 return if let Some(p) = self.popup.take() {
                     destroy_popup(p)
                 } else {
+                    let Some(main_id) = self.core.main_window_id() else {
+                        return Task::none();
+                    };
                     let new_id = Id::unique();
                     self.popup.replace(new_id);
                     let mut popup_settings = self.core.applet.get_popup_settings(
-                        self.core.main_window_id().unwrap(),
+                        main_id,
                         new_id,
                         None,
                         None,
@@ -517,6 +528,28 @@ impl cosmic::Application for AppModel {
                     id,
                 );
                 return Task::batch([close_popup_task, spawn_task.map(|_| cosmic::Action::None)]);
+            }
+
+            Message::CloseApp => {
+                if let Some(orch) = self.orchestrator.take() {
+                    orch.stop();
+                }
+                if let Some(mut session) = self.capture_session.take() {
+                    let _ = session.stop();
+                }
+                let close_task = if let Some(id) = self.core.main_window_id() {
+                    cosmic::iced::window::close(id)
+                } else {
+                    Task::none()
+                };
+                let quit_task = Task::perform(
+                    async move {
+                        let client = HudIpcClient::default_client();
+                        let _ = client.send(&HudMessage::Quit).await;
+                    },
+                    |_| cosmic::Action::None,
+                );
+                return Task::batch([quit_task, close_task]);
             }
 
             Message::CloseSettingsWindow(id) => {
@@ -1218,6 +1251,25 @@ impl cosmic::Application for AppModel {
         }
 
         widget::text("").into()
+    }
+}
+
+impl Drop for AppModel {
+    fn drop(&mut self) {
+        if let Some(mut session) = self.capture_session.take() {
+            let _ = session.stop();
+        }
+        let client = HudIpcClient::default_client();
+        let _ = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            if let Ok(runtime) = rt {
+                runtime.block_on(async {
+                    let _ = client.send(&HudMessage::Quit).await;
+                });
+            }
+        });
     }
 }
 

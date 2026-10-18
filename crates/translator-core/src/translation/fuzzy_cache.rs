@@ -35,16 +35,13 @@ impl FuzzyLruCache {
     ///
     /// `similarity_threshold` must be between `0.0` and `1.0`.
     pub fn new(capacity: usize, similarity_threshold: f64) -> Self {
-        assert!(capacity > 0, "FuzzyLruCache capacity must be greater than 0");
-        assert!(
-            (0.0..=1.0).contains(&similarity_threshold),
-            "similarity_threshold must be in the range [0.0, 1.0]"
-        );
+        let safe_capacity = capacity.max(1);
+        let safe_threshold = similarity_threshold.clamp(0.0, 1.0);
 
         Self {
-            entries: VecDeque::with_capacity(capacity),
-            capacity,
-            similarity_threshold,
+            entries: VecDeque::with_capacity(safe_capacity),
+            capacity: safe_capacity,
+            similarity_threshold: safe_threshold,
         }
     }
 

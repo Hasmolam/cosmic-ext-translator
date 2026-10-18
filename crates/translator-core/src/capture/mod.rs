@@ -29,7 +29,7 @@ impl CaptureSession {
             stream_info.pipewire_fd.try_clone().map_err(|e| crate::error::CaptureError::PipeWire(e.to_string()))?,
             stream_info.node_id,
             region,
-        );
+        )?;
 
         Ok(Self {
             stream_info,
