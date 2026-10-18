@@ -9,7 +9,7 @@ use cosmic::iced::window::Id;
 use cosmic::iced::{Length, Task};
 use cosmic::widget;
 use cosmic::Element;
-use cosmic_translator_overlay::hud::SubtitleHudState;
+use cosmic_translator_overlay::hud::{HudUiMessage, SubtitleHudState};
 use cosmic_translator_overlay::selector::{SelectorMessage, SelectorProgram};
 use translator_core::ipc::{default_socket_path, HudIpcServer, HudMessage};
 
@@ -35,6 +35,7 @@ pub struct OverlayApp {
 pub enum Message {
     Selector(SelectorMessage),
     Hud(HudMessage),
+    HudUi(HudUiMessage),
     ClearSubtitle(u64),
     Close,
 }
@@ -256,6 +257,40 @@ impl cosmic::Application for OverlayApp {
                 get_layer_surface(settings)
             }
 
+            Message::Hud(HudMessage::SetEditMode { edit_mode }) => {
+                tracing::info!("HUD edit mode updated via IPC: {}", edit_mode);
+                self.hud.edit_mode = edit_mode;
+                if edit_mode && self.hud.current_text.is_empty() {
+                    self.hud.current_text = "🎮 Test Altyazı: MORT Konumlandırma Modu Aktif".to_string();
+                }
+                let mut settings = self.hud.layer_settings();
+                settings.id = self.hud_id;
+                get_layer_surface(settings)
+            }
+
+            Message::HudUi(HudUiMessage::LockPosition) => {
+                tracing::info!("Locking HUD position at: {:?}, offset={}", self.hud.position, self.hud.offset_y);
+                self.hud.edit_mode = false;
+                let mut settings = self.hud.layer_settings();
+                settings.id = self.hud_id;
+                get_layer_surface(settings)
+            }
+
+            Message::HudUi(HudUiMessage::SetPresetPos(pos)) => {
+                self.hud.position = pos;
+                let mut settings = self.hud.layer_settings();
+                settings.id = self.hud_id;
+                get_layer_surface(settings)
+            }
+
+            Message::HudUi(HudUiMessage::NudgeOffset(delta)) => {
+                let new_offset = (self.hud.offset_y as i32 + delta).clamp(0, 400) as u32;
+                self.hud.offset_y = new_offset;
+                let mut settings = self.hud.layer_settings();
+                settings.id = self.hud_id;
+                get_layer_surface(settings)
+            }
+
             Message::Hud(HudMessage::Quit) => {
                 tracing::info!("HUD received Quit command via IPC; exiting cleanly");
                 let _ = destroy_layer_surface::<Message>(self.hud_id);
@@ -291,7 +326,7 @@ impl cosmic::Application for OverlayApp {
             Element::from(canvas_widget).map(Message::Selector)
         } else if id == self.hud_id {
             tracing::debug!("Rendering HUD element with text: '{}'", self.hud.current_text);
-            self.hud.view()
+            self.hud.view(Message::HudUi)
         } else {
             widget::text("").into()
         }
@@ -302,7 +337,10 @@ fn main() -> cosmic::iced::Result {
     let _ = tracing_subscriber::fmt::try_init();
     let args: Vec<String> = env::args().collect();
     let mode = if args.iter().any(|arg| arg == "--selector") {
-        let preview_path = args.iter().find(|arg| arg.ends_with(".png")).map(std::path::PathBuf::from);
+        let preview_path = args
+            .iter()
+            .find(|arg| arg.ends_with(".png") || arg.ends_with(".bmp"))
+            .map(std::path::PathBuf::from);
         AppMode::Selector { preview_path }
     } else {
         AppMode::Hud

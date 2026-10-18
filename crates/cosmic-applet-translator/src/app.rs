@@ -786,6 +786,21 @@ impl cosmic::Application for AppModel {
                             |_| cosmic::Action::None,
                         );
                     }
+                    SettingsMessage::StartMortPositioning => {
+                        let font_size = self.config.font_size;
+                        let opacity = self.config.hud_opacity;
+                        let dur = self.config.hud_duration_ms;
+                        let pos = self.config.hud_position.clone();
+                        let offset_y = self.config.hud_offset_y;
+                        return Task::perform(
+                            async move {
+                                ensure_hud_running_and_styled(font_size, opacity, dur, &pos, offset_y).await;
+                                let client = HudIpcClient::default_client();
+                                let _ = client.send(&HudMessage::SetEditMode { edit_mode: true }).await;
+                            },
+                            |_| cosmic::Action::None,
+                        );
+                    }
                     SettingsMessage::GlossarySourceChanged(s) => {
                         self.settings_state.new_glossary_source = s;
                     }
@@ -853,8 +868,8 @@ impl cosmic::Application for AppModel {
                         };
 
                         let preview_path = if let Some(img) = full_snapshot {
-                            let path = std::env::temp_dir().join(format!("cosmic-ext-lingua-full-{}.png", std::process::id()));
-                            if img.save(&path).is_ok() {
+                            let path = std::env::temp_dir().join(format!("cosmic-ext-lingua-full-{}.bmp", std::process::id()));
+                            if img.save_with_format(&path, image::ImageFormat::Bmp).is_ok() {
                                 Some(path)
                             } else {
                                 None

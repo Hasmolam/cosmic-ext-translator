@@ -38,7 +38,7 @@ pub struct FrameDebouncer {
 
 impl Default for FrameDebouncer {
     fn default() -> Self {
-        Self::new(2, Duration::from_millis(250), Duration::from_millis(2000))
+        Self::new(3, Duration::from_millis(180), Duration::from_millis(1500))
     }
 }
 
@@ -105,9 +105,10 @@ impl FrameDebouncer {
                 let distance = hamming_distance_256(&prev_hash, &current_hash);
                 self.latest_frame = Some(frame);
 
-                if distance > 0 {
-                    // Still actively typing (new characters appearing)
-                    trace!("Debouncer: still animating (dist={distance})");
+                // Only treat changes with distance >= 3 as active text writing.
+                // 1-2 bit fluctuations are subpixel rasterization jitter or idle background sprite breathing.
+                if distance >= 3 {
+                    trace!("Debouncer: still actively typing (dist={distance})");
                     self.last_hash = Some(current_hash);
                     self.last_change_time = now;
                 }

@@ -13,10 +13,11 @@ pub enum SelectorMessage {
     Cancelled,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct SelectorState {
     pub start: Option<Point>,
     pub current: Option<Point>,
+    pub bg_cache: canvas::Cache,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -65,8 +66,16 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
             }
 
             Event::Mouse(mouse::Event::CursorMoved { .. }) if state.start.is_some() => {
-                state.current = Some(cursor_pos);
-                Some(Action::request_redraw())
+                if let Some(curr) = state.current {
+                    if (curr.x - cursor_pos.x).abs() >= 1.0 || (curr.y - cursor_pos.y).abs() >= 1.0 {
+                        state.current = Some(cursor_pos);
+                        return Some(Action::request_redraw());
+                    }
+                } else {
+                    state.current = Some(cursor_pos);
+                    return Some(Action::request_redraw());
+                }
+                None
             }
 
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
@@ -126,22 +135,24 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let bg = state.bg_cache.draw(renderer, bounds.size(), |frame| {
+            if let Some(ref handle) = self.preview_image {
+                frame.draw_image(bounds, handle);
+                frame.fill_rectangle(
+                    Point::ORIGIN,
+                    bounds.size(),
+                    Color::from_rgba(0.0, 0.0, 0.0, 0.35),
+                );
+            } else {
+                frame.fill_rectangle(
+                    Point::ORIGIN,
+                    bounds.size(),
+                    Color::from_rgba(0.0, 0.0, 0.0, 0.45),
+                );
+            }
+        });
 
-        if let Some(ref handle) = self.preview_image {
-            frame.draw_image(bounds, handle);
-            frame.fill_rectangle(
-                Point::ORIGIN,
-                bounds.size(),
-                Color::from_rgba(0.0, 0.0, 0.0, 0.35),
-            );
-        } else {
-            frame.fill_rectangle(
-                Point::ORIGIN,
-                bounds.size(),
-                Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-            );
-        }
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
 
         // 2. If user is dragging a selection rectangle
         if let (Some(start), Some(curr)) = (state.start, state.current) {
@@ -150,14 +161,12 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
             let w = (curr.x - start.x).abs();
             let h = (curr.y - start.y).abs();
 
-            // Inner translucent highlight
             frame.fill_rectangle(
                 Point::new(x, y),
                 Size::new(w, h),
                 Color::from_rgba(0.28, 0.58, 0.94, 0.20),
             );
 
-            // Crisp accent border
             frame.stroke(
                 &Path::rectangle(Point::new(x, y), Size::new(w, h)),
                 Stroke::default()
@@ -166,7 +175,7 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
             );
         }
 
-        vec![frame.into_geometry()]
+        vec![bg, frame.into_geometry()]
     }
 
     fn mouse_interaction(

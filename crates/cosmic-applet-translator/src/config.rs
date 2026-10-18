@@ -53,7 +53,7 @@ impl Default for Config {
             font_size: 22,
             hud_duration_ms: 0,
             hud_opacity: 92,
-            settle_duration_ms: 250,
+            settle_duration_ms: 180,
             glossary: HashMap::new(),
         }
     }

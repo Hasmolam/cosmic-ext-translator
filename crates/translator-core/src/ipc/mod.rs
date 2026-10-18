@@ -59,6 +59,9 @@ pub enum HudMessage {
     SetVisible {
         visible: bool,
     },
+    SetEditMode {
+        edit_mode: bool,
+    },
     Quit,
     Ping,
 }

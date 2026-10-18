@@ -44,7 +44,7 @@ impl SnapshotRequester {
     pub async fn get_full_snapshot(&self) -> Option<RgbaImage> {
         let mut rx = self.snapshot_receiver.clone();
         self.snapshot_requested.store(true, std::sync::atomic::Ordering::SeqCst);
-        match tokio::time::timeout(std::time::Duration::from_millis(1500), async {
+        tokio::time::timeout(std::time::Duration::from_millis(1500), async {
             loop {
                 if rx.changed().await.is_err() {
                     return None;
@@ -53,10 +53,9 @@ impl SnapshotRequester {
                     return Some(img.clone());
                 }
             }
-        }).await {
-            Ok(opt) => opt,
-            Err(_) => None,
-        }
+        })
+        .await
+        .unwrap_or_default()
     }
 }
 

@@ -47,6 +47,7 @@ pub enum SettingsMessage {
     OpacityChanged(u8),
     DurationChanged(u64),
     TestHudRequested,
+    StartMortPositioning,
     GlossarySourceChanged(String),
     GlossaryTargetChanged(String),
     AddGlossaryTerm,
@@ -362,6 +363,12 @@ impl SettingsState {
                 .align_y(Alignment::Center),
             ));
         }
+
+        section = section.add(widget::settings::item(
+            "MORT Tarzı Konumlandırma",
+            button::suggested("✥ Ekranda Canlı Konumlandır (MORT Modu)")
+                .on_press(SettingsMessage::StartMortPositioning),
+        ));
 
         section = section.add(widget::settings::item(
             "Canlı Önizleme",
