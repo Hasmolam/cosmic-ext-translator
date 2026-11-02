@@ -11,7 +11,7 @@ use tracing::{debug, error, info};
 
 use crate::capture::pipewire_thread::CapturedFrame;
 use crate::ocr::OcrBackend;
-use debouncer::FrameDebouncer;
+pub use debouncer::{DebounceState, FrameDebouncer, SettledFrame, TextDiffAction, TextGate};
 use preprocess::{preprocess_for_ocr, PreprocessConfig};
 
 #[derive(Debug, Clone)]

@@ -46,6 +46,10 @@ impl CaptureSession {
         self.capture_handle.update_roi(roi);
     }
 
+    pub fn update_ignore_roi(&self, ignore_roi: Option<Roi>) {
+        self.capture_handle.update_ignore_roi(ignore_roi);
+    }
+
     pub fn snapshot_requester(&self) -> pipewire_thread::SnapshotRequester {
         self.capture_handle.snapshot_requester()
     }

@@ -14,7 +14,7 @@ fn main() -> cosmic::iced::Result {
         cosmic::applet::run::<app::AppModel>(())
     } else {
         let settings = cosmic::app::Settings::default()
-            .size(cosmic::iced::Size::new(820.0, 600.0));
+            .size(cosmic::iced::Size::new(900.0, 700.0));
         cosmic::app::run::<app::AppModel>(settings, ())
     }
 }

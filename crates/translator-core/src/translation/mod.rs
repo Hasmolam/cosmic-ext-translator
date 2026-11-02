@@ -1,103 +1,27 @@
+pub mod context;
 pub mod deepl;
 pub mod fuzzy_cache;
 pub mod google;
+pub mod offline;
 pub mod openai;
+pub mod rate_limit;
+pub mod speaker;
 
+pub use context::{DialogueTurn, TranslationContext};
 pub use deepl::DeepLTranslationBackend;
 pub use fuzzy_cache::{FuzzyLruCache, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD};
 pub use google::GoogleTranslateBackend;
+pub use offline::{default_offline_model_dir, OfflineTranslationBackend};
 pub use openai::OpenAiTranslationBackend;
+pub use rate_limit::RateLimitManager;
+pub use speaker::{parse_speaker_tags, BracketStyle, ParsedDialogueLine};
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use serde::{Deserialize, Serialize};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-
-/// Context for translation including recent dialogue history and game glossary.
-#[derive(Debug, Clone)]
-pub struct TranslationContext {
-    history: VecDeque<(String, String)>,
-    max_history: usize,
-    glossary: HashMap<String, String>,
-}
-
-impl Default for TranslationContext {
-    fn default() -> Self {
-        Self::new(3)
-    }
-}
-
-impl TranslationContext {
-    /// Creates a new `TranslationContext` retaining up to `max_history` dialogue turns.
-    pub fn new(max_history: usize) -> Self {
-        Self {
-            history: VecDeque::with_capacity(max_history),
-            max_history,
-            glossary: HashMap::new(),
-        }
-    }
-
-    /// Records a completed dialogue turn into history.
-    pub fn add_turn(&mut self, original: impl Into<String>, translated: impl Into<String>) {
-        if self.history.len() >= self.max_history && self.max_history > 0 {
-            self.history.pop_back();
-        }
-        if self.max_history > 0 {
-            self.history.push_front((original.into(), translated.into()));
-        }
-    }
-
-    /// Adds or updates a term in the domain-specific glossary.
-    pub fn set_glossary_term(&mut self, term: impl Into<String>, translation: impl Into<String>) {
-        self.glossary.insert(term.into(), translation.into());
-    }
-
-    /// Returns the recent dialogue history (most recent first).
-    pub fn history(&self) -> &VecDeque<(String, String)> {
-        &self.history
-    }
-
-    /// Returns the glossary terms.
-    pub fn glossary(&self) -> &HashMap<String, String> {
-        &self.glossary
-    }
-
-    /// Clears dialogue history.
-    pub fn clear_history(&mut self) {
-        self.history.clear();
-    }
-
-    /// Builds an LLM system prompt containing game localization instructions,
-    /// glossary rules, and recent dialogue history for grammatical/gender continuity.
-    pub fn build_system_prompt(&self, src_lang: &str, target_lang: &str) -> String {
-        let mut prompt = format!(
-            "You are a professional video game localization engine. \
-             Translate the provided dialogue text from {src_lang} to {target_lang}.\n\
-             Rules:\n\
-             1. Output ONLY the translated text. Do not add quotes, markdown formatting, explanations, or notes.\n\
-             2. Maintain the emotional tone, speaker brevity, and gaming context.\n"
-        );
-
-        if !self.glossary.is_empty() {
-            prompt.push_str("\n[Glossary / Preserved Terms]:\n");
-            for (term, tr) in &self.glossary {
-                prompt.push_str(&format!("- \"{term}\" -> \"{tr}\"\n"));
-            }
-        }
-
-        if !self.history.is_empty() {
-            prompt.push_str("\n[Previous Dialogue Context (oldest to newest)]:\n");
-            // Reverse so model reads context chronologically
-            for (orig, tr) in self.history.iter().rev() {
-                prompt.push_str(&format!("Context: \"{orig}\" => \"{tr}\"\n"));
-            }
-        }
-
-        prompt
-    }
-}
 
 /// Generic trait for translation backends.
 pub trait TranslationBackend: Send + Sync {
@@ -301,8 +225,8 @@ mod tests {
 
         ctx.add_turn("Turn 3", "Tur 3");
         assert_eq!(ctx.history().len(), 2);
-        assert_eq!(ctx.history()[0].0, "Turn 3");
-        assert_eq!(ctx.history()[1].0, "Turn 2");
+        assert_eq!(ctx.history()[0].source, "Turn 3");
+        assert_eq!(ctx.history()[1].source, "Turn 2");
     }
 
     #[test]

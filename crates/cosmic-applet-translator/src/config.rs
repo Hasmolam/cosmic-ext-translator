@@ -12,6 +12,8 @@ pub struct Config {
     pub restore_token: Option<String>,
     pub preset: String,
     pub custom_roi: Option<Roi>,
+    #[serde(default)]
+    pub ignore_roi: Option<Roi>,
     pub engine: String,
     pub ollama_endpoint: String,
     pub ollama_model: String,
@@ -20,6 +22,8 @@ pub struct Config {
     pub openai_api_key: String,
     pub openai_model: String,
     pub binarize: bool,
+    #[serde(default)]
+    pub blur_subtraction: bool,
     pub hud_position: String,
     pub hud_persistent: bool,
     pub hud_offset_y: u32,
@@ -39,6 +43,7 @@ impl Default for Config {
             restore_token: None,
             preset: "rpg_bottom_25".to_string(),
             custom_roi: None,
+            ignore_roi: None,
             engine: "google".to_string(),
             ollama_endpoint: "http://localhost:11434".to_string(),
             ollama_model: "qwen2.5:3b".to_string(),
@@ -47,6 +52,7 @@ impl Default for Config {
             openai_api_key: String::new(),
             openai_model: "gpt-4o-mini".to_string(),
             binarize: false,
+            blur_subtraction: false,
             hud_position: "bottom".to_string(),
             hud_persistent: true,
             hud_offset_y: 40,

@@ -77,6 +77,7 @@ impl PipewireCaptureHandle {
     }
 
     pub fn update_roi(&self, roi: Option<Roi>) {
+        let current_ignore = self.region.read().ok().and_then(|r| r.ignore_roi);
         let region = CaptureRegion {
             preset: if roi.is_some() {
                 RoiPreset::Custom
@@ -84,8 +85,17 @@ impl PipewireCaptureHandle {
                 RoiPreset::FullScreen
             },
             custom: roi,
+            ignore_roi: current_ignore,
         };
         self.update_region(region);
+    }
+
+    pub fn update_ignore_roi(&self, ignore_roi: Option<Roi>) {
+        if let Ok(mut current) = self.region.write() {
+            current.ignore_roi = ignore_roi;
+            let region = *current;
+            let _ = self.command_sender.send(PipewireCommand::UpdateRegion(region));
+        }
     }
 
     pub fn snapshot_requester(&self) -> SnapshotRequester {
@@ -303,7 +313,10 @@ fn run_pipewire_loop(
             let target_roi = region.compute(frame_w, frame_h).unwrap_or_else(|| Roi::new(0, 0, frame_w, frame_h));
 
             match target_roi.crop_to_rgba(slice, frame_w, frame_h, effective_stride, is_bgr) {
-                Ok(image) => {
+                Ok(mut image) => {
+                    if let Some(ref ignore) = region.ignore_roi {
+                        target_roi.mask_region(&mut image, ignore);
+                    }
                     let frame = CapturedFrame {
                         image,
                         timestamp: Instant::now(),

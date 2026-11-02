@@ -7,6 +7,9 @@ desktop_dst := destdir + '/share/applications/' + appid + '.desktop'
 metainfo_dst := destdir + '/share/metainfo/' + appid + '.metainfo.xml'
 icon_dst := destdir + '/share/icons/hicolor/scalable/apps/' + appid + '.svg'
 
+home := env_var('HOME')
+export PKG_CONFIG_PATH := env_var_or_default('PKG_CONFIG_PATH', '') + ':' + home + '/.local/lib/pkgconfig:' + home + '/.local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig'
+
 # Default recipe: check the workspace
 default: check
 
@@ -21,6 +24,10 @@ test:
 # Run clippy on workspace
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
+
+# Build debug binaries
+build *args:
+    cargo build --workspace {{args}}
 
 # Build release binaries
 build-release *args:

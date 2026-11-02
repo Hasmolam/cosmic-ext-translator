@@ -146,7 +146,8 @@ impl cosmic::Application for OverlayApp {
         tracing::debug!("OverlayApp::update received: {:?}", message);
         match message {
             Message::Selector(SelectorMessage::Selected { roi, surface_width, surface_height }) => {
-                println!(
+                let _ = writeln!(
+                    std::io::stdout(),
                     "ROI_SELECTED:{{\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"surface_width\":{},\"surface_height\":{}}}",
                     roi.x, roi.y, roi.width, roi.height, surface_width, surface_height
                 );
@@ -162,7 +163,7 @@ impl cosmic::Application for OverlayApp {
             }
 
             Message::Selector(SelectorMessage::Cancelled) => {
-                println!("ROI_CANCELLED");
+                let _ = writeln!(std::io::stdout(), "ROI_CANCELLED");
                 let _ = std::io::stdout().flush();
                 let _ = destroy_layer_surface::<Message>(self.selector_id);
                 Task::perform(
@@ -214,11 +215,10 @@ impl cosmic::Application for OverlayApp {
             }
 
             Message::Hud(HudMessage::SetStatus { active, text }) => {
-                self.subtitle_seq = self.subtitle_seq.wrapping_add(1);
-                if !active {
-                    self.hud.current_text.clear();
+                if active {
+                    self.hud.status_badge = Some(text);
                 } else {
-                    self.hud.current_text = text;
+                    self.hud.status_badge = None;
                 }
                 Task::none()
             }

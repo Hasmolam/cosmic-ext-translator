@@ -31,6 +31,7 @@ custom-coords = Custom Coordinates
 draw-new-area = Draw New Area
 no-custom-area = No custom area defined
 otsu-binarization = Otsu Binarization (1-bit)
+blur-subtraction = High-Pass Blur Subtraction
 settle-threshold = Settle Duration Threshold
 
 # Engine Settings
@@ -82,3 +83,16 @@ ocr-binarize = OCR Binarization
 last-detected-ocr = 📝 Last Detected Text (OCR)
 translation-output = 🌐 Translation Output
 prompt-select-target = 🎯 Select a window or start capture for live image inspection
+
+# History & Ignore Area
+tab-history = Dialogue History
+ignore-roi = Ignore ROI (Bust/Portrait)
+no-ignore-area = No ignore area defined
+draw-ignore-area = Draw Ignore Area
+clear-ignore-area = Clear
+history-search-placeholder = Search dialogue history...
+clear-history = Clear History
+copy = Copy
+copied = Copied
+no-history-entries = No dialogue history recorded yet
+

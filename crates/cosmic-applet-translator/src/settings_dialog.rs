@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::fl;
+use crate::history::DialogueBacklog;
 use cosmic::iced::Alignment;
 use cosmic::widget::{self, button, column, container, row, text};
 use cosmic::Element;
@@ -12,6 +13,7 @@ pub enum SettingsTab {
     Engine,
     Display,
     Glossary,
+    History,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -21,6 +23,7 @@ pub struct SettingsState {
     pub is_testing_ollama: bool,
     pub new_glossary_source: String,
     pub new_glossary_target: String,
+    pub history_search_query: String,
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +32,10 @@ pub enum SettingsMessage {
     EngineSelected(String),
     PresetSelected(RoiPreset),
     SelectCustomRoi,
+    SelectIgnoreRoi,
+    ClearIgnoreRoi,
     BinarizeToggled(bool),
+    BlurSubtractionToggled(bool),
     SettleDurationChanged(u64),
     OllamaEndpointChanged(String),
     OllamaModelChanged(String),
@@ -53,6 +59,9 @@ pub enum SettingsMessage {
     GlossaryTargetChanged(String),
     AddGlossaryTerm,
     RemoveGlossaryTerm(String),
+    HistorySearchChanged(String),
+    ClearHistory,
+    CopyHistoryEntry(String),
     Close,
 }
 
@@ -61,12 +70,17 @@ impl SettingsState {
         Self::default()
     }
 
-    pub fn view<'a>(&'a self, config: &'a Config) -> Element<'a, SettingsMessage> {
+    pub fn view<'a>(
+        &'a self,
+        config: &'a Config,
+        backlog: &'a DialogueBacklog,
+    ) -> Element<'a, SettingsMessage> {
         let nav_bar = row![
             tab_button(fl!("tab-capture"), SettingsTab::Capture, self.active_tab),
             tab_button(fl!("tab-engine"), SettingsTab::Engine, self.active_tab),
             tab_button(fl!("tab-display"), SettingsTab::Display, self.active_tab),
             tab_button(fl!("tab-glossary"), SettingsTab::Glossary, self.active_tab),
+            tab_button(fl!("tab-history"), SettingsTab::History, self.active_tab),
         ]
         .spacing(6)
         .align_y(Alignment::Center);
@@ -76,6 +90,7 @@ impl SettingsState {
             SettingsTab::Engine => self.view_engine(config),
             SettingsTab::Display => self.view_display(config),
             SettingsTab::Glossary => self.view_glossary(config),
+            SettingsTab::History => self.view_history(config, backlog),
         };
 
         let footer = row![
@@ -92,12 +107,10 @@ impl SettingsState {
                 widget::divider::horizontal::default(),
                 footer,
             ]
-            .spacing(12)
-            .padding(16)
+            .spacing(12),
         )
         .width(cosmic::iced::Length::Fill)
         .height(cosmic::iced::Length::Fill)
-        .class(cosmic::theme::Container::WindowBackground)
         .into()
     }
 
@@ -127,6 +140,25 @@ impl SettingsState {
             fl!("no-custom-area")
         };
 
+        let ignore_coords = if let Some(r) = config.ignore_roi {
+            format!("{}x{} @ ({}, {})", r.width, r.height, r.x, r.y)
+        } else {
+            fl!("no-ignore-area")
+        };
+
+        let mut ignore_row = row![
+            text(ignore_coords),
+            button::standard(fl!("draw-ignore-area")).on_press(SettingsMessage::SelectIgnoreRoi),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+
+        if config.ignore_roi.is_some() {
+            ignore_row = ignore_row.push(
+                button::destructive(fl!("clear-ignore-area")).on_press(SettingsMessage::ClearIgnoreRoi),
+            );
+        }
+
         let section = widget::settings::section()
             .title(fl!("section-capture-title"))
             .add(widget::settings::item(
@@ -143,8 +175,16 @@ impl SettingsState {
                 .align_y(Alignment::Center),
             ))
             .add(widget::settings::item(
+                fl!("ignore-roi"),
+                ignore_row,
+            ))
+            .add(widget::settings::item(
                 fl!("otsu-binarization"),
                 widget::toggler(config.binarize).on_toggle(SettingsMessage::BinarizeToggled),
+            ))
+            .add(widget::settings::item(
+                fl!("blur-subtraction"),
+                widget::toggler(config.blur_subtraction).on_toggle(SettingsMessage::BlurSubtractionToggled),
             ))
             .add(widget::settings::item(
                 fl!("settle-threshold"),
@@ -424,6 +464,103 @@ impl SettingsState {
             }
         ]
         .spacing(12)
+        .into()
+    }
+
+    fn view_history<'a>(
+        &'a self,
+        _config: &'a Config,
+        backlog: &'a DialogueBacklog,
+    ) -> Element<'a, SettingsMessage> {
+        let search_bar = row![
+            widget::text_input(
+                fl!("history-search-placeholder"),
+                &self.history_search_query
+            )
+            .on_input(SettingsMessage::HistorySearchChanged)
+            .width(cosmic::iced::Length::Fill),
+            button::destructive(fl!("clear-history")).on_press(SettingsMessage::ClearHistory),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+
+        let filtered_entries = backlog.search(&self.history_search_query);
+
+        let entries_list: Element<'a, SettingsMessage> = if filtered_entries.is_empty() {
+            widget::container(text(fl!("no-history-entries")).size(14))
+                .padding(24)
+                .center_x(cosmic::iced::Length::Fill)
+                .into()
+        } else {
+            let mut col = column![].spacing(8);
+            for entry in filtered_entries {
+                let timestamp_txt = text(&entry.timestamp_str).size(12);
+
+                let header = if let Some(ref speaker) = entry.speaker {
+                    let speaker_badge = widget::container(text(speaker).size(12))
+                        .padding(cosmic::iced::Padding::from([2, 8]))
+                        .style(|_theme| widget::container::Style {
+                            background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.2, 0.5, 0.8, 0.25))),
+                            border: cosmic::iced::Border {
+                                color: cosmic::iced::Color::from_rgba(0.3, 0.6, 0.9, 0.5),
+                                width: 1.0,
+                                radius: 4.0.into(),
+                            },
+                            ..Default::default()
+                        });
+                    let copy_payload = format!("{}: {}\n{}", speaker, entry.source, entry.target);
+                    row![
+                        timestamp_txt,
+                        speaker_badge,
+                        cosmic::iced::widget::space::horizontal(),
+                        button::standard(fl!("copy"))
+                            .on_press(SettingsMessage::CopyHistoryEntry(copy_payload)),
+                    ]
+                } else {
+                    let copy_payload = format!("{}\n{}", entry.source, entry.target);
+                    row![
+                        timestamp_txt,
+                        cosmic::iced::widget::space::horizontal(),
+                        button::standard(fl!("copy"))
+                            .on_press(SettingsMessage::CopyHistoryEntry(copy_payload)),
+                    ]
+                }
+                .spacing(8)
+                .align_y(Alignment::Center);
+
+                let source_txt = text(&entry.source)
+                    .size(13)
+                    .wrapping(cosmic::iced::widget::text::Wrapping::Word);
+
+                let target_txt = text(&entry.target)
+                    .size(14)
+                    .wrapping(cosmic::iced::widget::text::Wrapping::Word);
+
+                let card_content = column![
+                    header,
+                    widget::divider::horizontal::default(),
+                    source_txt,
+                    target_txt,
+                ]
+                .spacing(6);
+
+                let card = widget::container(card_content)
+                    .padding(10)
+                    .width(cosmic::iced::Length::Fill)
+                    .class(cosmic::theme::Container::Card);
+
+                col = col.push(card);
+            }
+            col.into()
+        };
+
+        column![
+            search_bar,
+            widget::divider::horizontal::default(),
+            entries_list,
+        ]
+        .spacing(12)
+        .width(cosmic::iced::Length::Fill)
         .into()
     }
 }

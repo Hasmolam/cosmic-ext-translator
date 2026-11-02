@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use crate::config::Config;
 use crate::fl;
+use crate::history::DialogueBacklog;
 use crate::settings_dialog::{SettingsMessage, SettingsState};
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup};
@@ -13,7 +14,7 @@ use translator_core::capture::roi::{CaptureRegion, RoiPreset};
 use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition};
 use translator_core::ocr::{create_ocr_backend_for_lang, OcrBackend};
 use translator_core::orchestrator::{
-    spawn_orchestrator, OrchestratorConfig, OrchestratorHandle,
+    spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
 };
 use translator_core::pipeline::debouncer::FrameDebouncer;
 use translator_core::pipeline::preprocess::PreprocessConfig;
@@ -35,7 +36,6 @@ pub enum PreviewMode {
 pub struct AppModel {
     core: cosmic::Core,
     popup: Option<Id>,
-    settings_window: Option<Id>,
     config: Config,
     config_handler: Option<cosmic_config::Config>,
     settings_state: SettingsState,
@@ -49,6 +49,7 @@ pub struct AppModel {
     last_proc_preview: Option<cosmic::iced::core::image::Handle>,
     last_ocr_text: String,
     last_translated_text: String,
+    pub backlog: DialogueBacklog,
 }
 
 impl AppModel {
@@ -93,6 +94,7 @@ impl AppModel {
             hud_duration_ms: self.config.hud_duration_ms,
             preprocess: PreprocessConfig {
                 binarize: self.config.binarize,
+                blur_subtraction: self.config.blur_subtraction,
                 ..Default::default()
             },
             ..Default::default()
@@ -109,6 +111,13 @@ impl AppModel {
             translation_backend,
             orchestrator_config,
         );
+        let mut drain_handle = handle.clone();
+        let bus = event_bus().clone();
+        tokio::spawn(async move {
+            while let Some(event) = drain_handle.next_event().await {
+                let _ = bus.send(event);
+            }
+        });
         self.orchestrator = Some(handle);
     }
 
@@ -128,6 +137,7 @@ impl AppModel {
 
         let preprocess_cfg = PreprocessConfig {
             binarize: self.config.binarize,
+            blur_subtraction: self.config.blur_subtraction,
             ..Default::default()
         };
         let gray = translator_core::pipeline::preprocess::preprocess_for_ocr(&frame.image, &preprocess_cfg);
@@ -261,18 +271,23 @@ impl AppModel {
         )
         .class(cosmic::theme::Container::Card);
 
-        let settings_content = self.settings_state.view(&self.config).map(Message::Settings);
+        let settings_content = self.settings_state.view(&self.config, &self.backlog).map(Message::Settings);
 
-        let layout = widget::column![
+        let top_section = widget::column![
             header,
             widget::divider::horizontal::default(),
             quick_actions,
             widget::divider::horizontal::default(),
             inspection_card,
             widget::divider::horizontal::default(),
+        ]
+        .spacing(10);
+
+        let layout = widget::column![
+            top_section,
             settings_content,
         ]
-        .spacing(12)
+        .spacing(10)
         .padding(16);
 
         widget::container(layout)
@@ -289,6 +304,7 @@ pub enum Message {
     PopupClosed(Id),
     OpenSettings,
     CloseSettingsWindow(Id),
+    ConfigChanged(Box<Config>),
     Settings(SettingsMessage),
     ToggleCapture(bool),
     ChangeCaptureTarget,
@@ -300,6 +316,15 @@ pub enum Message {
         surface_height: Option<u32>,
     },
     RoiSelectionCancelled,
+    SelectIgnoreRoiRequested,
+    IgnoreRoiSelectedWithSurface {
+        roi: Roi,
+        surface_width: Option<u32>,
+        surface_height: Option<u32>,
+    },
+    IgnoreRoiSelected(Roi),
+    IgnoreRoiSelectionCancelled,
+    ClearIgnoreRoi,
     PresetSelected(RoiPreset),
     CaptureStarted(CaptureSession, Arc<dyn OcrBackend>),
     CaptureFailed(String),
@@ -309,6 +334,9 @@ pub enum Message {
     TogglePreviewMode(PreviewMode),
     CloseApp,
     HudCleared,
+    OrchestratorEventReceived(OrchestratorEvent),
+    ClearHistory,
+    CopyHistoryEntry(String),
 }
 
 impl Clone for Message {
@@ -318,6 +346,7 @@ impl Clone for Message {
             Self::PopupClosed(id) => Self::PopupClosed(*id),
             Self::OpenSettings => Self::OpenSettings,
             Self::CloseSettingsWindow(id) => Self::CloseSettingsWindow(*id),
+            Self::ConfigChanged(c) => Self::ConfigChanged(c.clone()),
             Self::Settings(m) => Self::Settings(m.clone()),
             Self::ToggleCapture(v) => Self::ToggleCapture(*v),
             Self::ChangeCaptureTarget => Self::ChangeCaptureTarget,
@@ -331,6 +360,17 @@ impl Clone for Message {
                 }
             }
             Self::RoiSelectionCancelled => Self::RoiSelectionCancelled,
+            Self::SelectIgnoreRoiRequested => Self::SelectIgnoreRoiRequested,
+            Self::IgnoreRoiSelectedWithSurface { roi, surface_width, surface_height } => {
+                Self::IgnoreRoiSelectedWithSurface {
+                    roi: *roi,
+                    surface_width: *surface_width,
+                    surface_height: *surface_height,
+                }
+            }
+            Self::IgnoreRoiSelected(r) => Self::IgnoreRoiSelected(*r),
+            Self::IgnoreRoiSelectionCancelled => Self::IgnoreRoiSelectionCancelled,
+            Self::ClearIgnoreRoi => Self::ClearIgnoreRoi,
             Self::PresetSelected(p) => Self::PresetSelected(*p),
             Self::CaptureStarted(_, _) => Self::CaptureFailed("Cannot clone active session".into()),
             Self::CaptureFailed(s) => Self::CaptureFailed(s.clone()),
@@ -340,8 +380,40 @@ impl Clone for Message {
             Self::TogglePreviewMode(m) => Self::TogglePreviewMode(*m),
             Self::CloseApp => Self::CloseApp,
             Self::HudCleared => Self::HudCleared,
+            Self::OrchestratorEventReceived(e) => Self::OrchestratorEventReceived(e.clone()),
+            Self::ClearHistory => Self::ClearHistory,
+            Self::CopyHistoryEntry(s) => Self::CopyHistoryEntry(s.clone()),
         }
     }
+}
+
+static EVENT_BUS: std::sync::OnceLock<tokio::sync::broadcast::Sender<OrchestratorEvent>> =
+    std::sync::OnceLock::new();
+
+fn event_bus() -> &'static tokio::sync::broadcast::Sender<OrchestratorEvent> {
+    EVENT_BUS.get_or_init(|| {
+        let (tx, _rx) = tokio::sync::broadcast::channel(256);
+        tx
+    })
+}
+
+fn orchestrator_events_subscription() -> cosmic::iced::Subscription<Message> {
+    struct OrchestratorSub;
+
+    cosmic::iced::Subscription::run_with(
+        std::any::TypeId::of::<OrchestratorSub>(),
+        |_| {
+            cosmic::iced::stream::channel(64, |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| async move {
+                use cosmic::iced::futures::SinkExt;
+                let mut rx = event_bus().subscribe();
+                while let Ok(event) = rx.recv().await {
+                    if output.send(Message::OrchestratorEventReceived(event)).await.is_err() {
+                        break;
+                    }
+                }
+            })
+        },
+    )
 }
 
 fn global_shortcuts_subscription() -> cosmic::iced::Subscription<Message> {
@@ -419,9 +491,13 @@ impl cosmic::Application for AppModel {
     }
 
     fn init(
-        core: cosmic::Core,
+        mut core: cosmic::Core,
         _flags: Self::Flags,
     ) -> (Self, Task<cosmic::Action<Self::Message>>) {
+        let is_standalone = !std::env::args().any(|arg| arg == "--applet");
+        if is_standalone {
+            core.set_header_title("cosmic-ext-lingua".to_string());
+        }
         let (config_handler, config) =
             match cosmic_config::Config::new(Self::APP_ID, Config::VERSION) {
                 Ok(context) => {
@@ -437,7 +513,6 @@ impl cosmic::Application for AppModel {
         let app = AppModel {
             core,
             popup: None,
-            settings_window: None,
             config,
             config_handler,
             settings_state: SettingsState::new(),
@@ -451,20 +526,28 @@ impl cosmic::Application for AppModel {
             last_proc_preview: None,
             last_ocr_text: String::new(),
             last_translated_text: String::new(),
+            backlog: DialogueBacklog::default(),
         };
 
         (app, Task::none())
     }
 
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
-        global_shortcuts_subscription()
+        cosmic::iced::Subscription::batch([
+            global_shortcuts_subscription(),
+            orchestrator_events_subscription(),
+            self.core.watch_config::<Config>(Self::APP_ID).map(|u| {
+                if !u.errors.is_empty() {
+                    warn!("Errors updating config: {:?}", u.errors);
+                }
+                Message::ConfigChanged(Box::new(u.config))
+            }),
+        ])
     }
 
     fn on_close_requested(&self, id: Id) -> Option<Message> {
         if Some(id) == self.popup {
             Some(Message::PopupClosed(id))
-        } else if Some(id) == self.settings_window {
-            Some(Message::CloseSettingsWindow(id))
         } else if self.is_standalone() && self.core.main_window_id() == Some(id) {
             Some(Message::CloseApp)
         } else {
@@ -506,7 +589,7 @@ impl cosmic::Application for AppModel {
             }
 
             Message::OpenSettings => {
-                if self.is_standalone() || self.settings_window.is_some() {
+                if self.is_standalone() {
                     return Task::none();
                 }
                 let close_popup_task = if let Some(p) = self.popup.take() {
@@ -515,19 +598,40 @@ impl cosmic::Application for AppModel {
                     Task::none()
                 };
 
-                let (id, spawn_task) = cosmic::iced::window::open(cosmic::iced::window::Settings {
-                    size: (780.0, 560.0).into(),
-                    min_size: Some((580.0, 420.0).into()),
-                    resizable: true,
-                    decorations: true,
-                    ..Default::default()
-                });
-                self.settings_window = Some(id);
-                let _ = self.set_window_title(
-                    format!("cosmic-ext-lingua: {}", fl!("settings")),
-                    id,
+                let spawn_task = Task::perform(
+                    async move {
+                        let bin = applet_binary_path();
+                        let mut cmd = std::process::Command::new(bin);
+                        if let Err(e) = cmd.spawn() {
+                            error!("Failed to launch settings application: {e}");
+                        }
+                    },
+                    |_| cosmic::Action::None,
                 );
-                return Task::batch([close_popup_task, spawn_task.map(|_| cosmic::Action::None)]);
+
+                return Task::batch([close_popup_task, spawn_task]);
+            }
+
+            Message::ConfigChanged(new_config) => {
+                self.config = *new_config;
+                if let Some(ref session) = self.capture_session {
+                    let preset = RoiPreset::from_str_name(&self.config.preset);
+                    let region = CaptureRegion::new(preset, self.config.custom_roi, self.config.ignore_roi);
+                    session.update_region(region);
+                }
+                self.restart_orchestrator_if_active();
+
+                let font_size = self.config.font_size;
+                let opacity = self.config.hud_opacity;
+                let duration_ms = self.config.hud_duration_ms;
+                let position = self.config.hud_position.clone();
+                let offset_y = self.config.hud_offset_y;
+                return Task::perform(
+                    async move {
+                        ensure_hud_running_and_styled(font_size, opacity, duration_ms, &position, offset_y).await;
+                    },
+                    |_| cosmic::Action::None,
+                );
             }
 
             Message::CloseApp => {
@@ -552,11 +656,8 @@ impl cosmic::Application for AppModel {
                 return Task::batch([quit_task, close_task]);
             }
 
-            Message::CloseSettingsWindow(id) => {
-                if self.settings_window == Some(id) {
-                    self.settings_window = None;
-                }
-                return cosmic::iced::window::close(id);
+            Message::CloseSettingsWindow(_id) => {
+                return Task::none();
             }
 
             Message::ShortcutActivated(action) => match action {
@@ -594,7 +695,7 @@ impl cosmic::Application for AppModel {
                         self.config.preset = preset.as_str().to_string();
                         self.save_config();
                         if let Some(ref session) = self.capture_session {
-                            let region = CaptureRegion::new(preset, self.config.custom_roi);
+                            let region = CaptureRegion::new(preset, self.config.custom_roi, self.config.ignore_roi);
                             session.update_region(region);
                         }
                     }
@@ -608,6 +709,11 @@ impl cosmic::Application for AppModel {
                     }
                     SettingsMessage::BinarizeToggled(bin) => {
                         self.config.binarize = bin;
+                        self.save_config();
+                        self.restart_orchestrator_if_active();
+                    }
+                    SettingsMessage::BlurSubtractionToggled(val) => {
+                        self.config.blur_subtraction = val;
                         self.save_config();
                         self.restart_orchestrator_if_active();
                     }
@@ -856,9 +962,24 @@ impl cosmic::Application for AppModel {
                         self.save_config();
                         self.restart_orchestrator_if_active();
                     }
+                    SettingsMessage::SelectIgnoreRoi => {
+                        return self.update(Message::SelectIgnoreRoiRequested);
+                    }
+                    SettingsMessage::ClearIgnoreRoi => {
+                        return self.update(Message::ClearIgnoreRoi);
+                    }
+                    SettingsMessage::HistorySearchChanged(q) => {
+                        self.settings_state.history_search_query = q;
+                    }
+                    SettingsMessage::ClearHistory => {
+                        return self.update(Message::ClearHistory);
+                    }
+                    SettingsMessage::CopyHistoryEntry(text) => {
+                        return self.update(Message::CopyHistoryEntry(text));
+                    }
                     SettingsMessage::Close => {
-                        if let Some(id) = self.settings_window.take() {
-                            return cosmic::iced::window::close(id);
+                        if self.is_standalone() {
+                            return self.update(Message::CloseApp);
                         }
                     }
                 }
@@ -868,7 +989,7 @@ impl cosmic::Application for AppModel {
                 self.config.preset = preset.as_str().to_string();
                 self.save_config();
                 if let Some(ref session) = self.capture_session {
-                    let region = CaptureRegion::new(preset, self.config.custom_roi);
+                    let region = CaptureRegion::new(preset, self.config.custom_roi, self.config.ignore_roi);
                     session.update_region(region);
                 }
             }
@@ -971,13 +1092,147 @@ impl cosmic::Application for AppModel {
                 self.config.preset = RoiPreset::Custom.as_str().to_string();
                 self.save_config();
                 if let Some(ref session) = self.capture_session {
-                    let region = CaptureRegion::new(RoiPreset::Custom, Some(roi));
+                    let region = CaptureRegion::new(RoiPreset::Custom, Some(roi), self.config.ignore_roi);
                     session.update_region(region);
                 }
             }
 
             Message::RoiSelectionCancelled => {
                 info!("ROI selection was cancelled");
+            }
+
+            Message::SelectIgnoreRoiRequested => {
+                let bin = overlay_binary_path();
+                let requester = self.capture_session.as_ref().map(|s| s.snapshot_requester());
+
+                return Task::perform(
+                    async move {
+                        let full_snapshot = if let Some(req) = requester {
+                            req.get_full_snapshot().await
+                        } else {
+                            None
+                        };
+
+                        let preview_path = if let Some(img) = full_snapshot {
+                            let path = std::env::temp_dir().join(format!("cosmic-ext-lingua-ignore-{}.bmp", std::process::id()));
+                            if img.save_with_format(&path, image::ImageFormat::Bmp).is_ok() {
+                                Some(path)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        let mut cmd = tokio::process::Command::new(bin);
+                        cmd.arg("--selector");
+                        if let Some(ref p) = preview_path {
+                            cmd.arg(p);
+                        }
+                        let output = cmd.output().await;
+                        if let Some(ref p) = preview_path {
+                            let _ = std::fs::remove_file(p);
+                        }
+                        if let Ok(out) = output {
+                            let stdout_str = String::from_utf8_lossy(&out.stdout);
+                            for line in stdout_str.lines() {
+                                if let Some(json_str) = line.strip_prefix("ROI_SELECTED:") {
+                                    #[derive(serde::Deserialize)]
+                                    struct SelectedPayload {
+                                        x: u32,
+                                        y: u32,
+                                        width: u32,
+                                        height: u32,
+                                        surface_width: Option<u32>,
+                                        surface_height: Option<u32>,
+                                    }
+                                    if let Ok(p) = serde_json::from_str::<SelectedPayload>(json_str) {
+                                        let roi = Roi::new(p.x, p.y, p.width, p.height);
+                                        return Message::IgnoreRoiSelectedWithSurface {
+                                            roi,
+                                            surface_width: p.surface_width,
+                                            surface_height: p.surface_height,
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                        Message::IgnoreRoiSelectionCancelled
+                    },
+                    cosmic::Action::from,
+                );
+            }
+
+            Message::IgnoreRoiSelectedWithSurface { roi, surface_width, surface_height } => {
+                let effective_roi = if let (Some(sw), Some(sh), Some(ref session)) = (surface_width, surface_height, &self.capture_session) {
+                    if let Some(frame) = session.frame_receiver.borrow().as_ref() {
+                        let scaled = roi.scale_to_frame(sw, sh, frame.original_width, frame.original_height);
+                        info!("Scaled Ignore ROI from surface ({sw}x{sh}) to frame ({}x{}): {:?}", frame.original_width, frame.original_height, scaled);
+                        scaled
+                    } else {
+                        roi
+                    }
+                } else {
+                    roi
+                };
+                return self.update(Message::IgnoreRoiSelected(effective_roi));
+            }
+
+            Message::IgnoreRoiSelected(roi) => {
+                info!("Selected ignore ROI: {:?}", roi);
+                self.config.ignore_roi = Some(roi);
+                self.save_config();
+                if let Some(ref session) = self.capture_session {
+                    let preset = RoiPreset::from_str_name(&self.config.preset);
+                    let region = CaptureRegion::new(preset, self.config.custom_roi, Some(roi));
+                    session.update_region(region);
+                }
+                self.restart_orchestrator_if_active();
+            }
+
+            Message::IgnoreRoiSelectionCancelled => {
+                info!("Ignore ROI selection was cancelled");
+            }
+
+            Message::ClearIgnoreRoi => {
+                info!("Cleared ignore ROI");
+                self.config.ignore_roi = None;
+                self.save_config();
+                if let Some(ref session) = self.capture_session {
+                    let preset = RoiPreset::from_str_name(&self.config.preset);
+                    let region = CaptureRegion::new(preset, self.config.custom_roi, None);
+                    session.update_region(region);
+                }
+                self.restart_orchestrator_if_active();
+            }
+
+            Message::ClearHistory => {
+                self.backlog.clear();
+            }
+
+            Message::CopyHistoryEntry(text) => {
+                return cosmic::iced::clipboard::write(text);
+            }
+
+            Message::OrchestratorEventReceived(event) => {
+                match event {
+                    OrchestratorEvent::TextDetected { raw } => {
+                        self.last_ocr_text = raw;
+                    }
+                    OrchestratorEvent::TranslationReady { original, translated, cached: _ } => {
+                        let parsed = translator_core::translation::parse_speaker_tags(&original, &self.config.glossary);
+                        let speaker = parsed.resolved_speaker.or(parsed.raw_speaker);
+                        let source_text = if !parsed.dialogue.is_empty() {
+                            parsed.dialogue
+                        } else {
+                            original.clone()
+                        };
+                        self.last_ocr_text = original;
+                        self.last_translated_text = translated.clone();
+                        self.backlog.push(speaker, source_text, translated);
+                    }
+                    _ => {}
+                }
             }
 
             Message::OneShotTranslate => {
@@ -1003,6 +1258,7 @@ impl cosmic::Application for AppModel {
                 let src_lang = self.config.source_lang.clone();
                 let target_lang = self.config.target_lang.clone();
                 let binarize = self.config.binarize;
+                let blur_subtraction = self.config.blur_subtraction;
                 let glossary = self.config.glossary.clone();
                 let hud_duration = self.config.hud_duration_ms;
                 let ollama_ep = self.config.ollama_endpoint.clone();
@@ -1016,6 +1272,7 @@ impl cosmic::Application for AppModel {
                     async move {
                         let preprocess_cfg = PreprocessConfig {
                             binarize,
+                            blur_subtraction,
                             ..Default::default()
                         };
                         let gray = translator_core::pipeline::preprocess::preprocess_for_ocr(&frame.image, &preprocess_cfg);
@@ -1087,7 +1344,7 @@ impl cosmic::Application for AppModel {
                 let restore_token = self.config.restore_token.clone();
                 let src_lang = self.config.source_lang.clone();
                 let preset = RoiPreset::from_str_name(&self.config.preset);
-                let region = CaptureRegion::new(preset, self.config.custom_roi);
+                let region = CaptureRegion::new(preset, self.config.custom_roi, self.config.ignore_roi);
 
                 return Task::perform(
                     async move {
@@ -1137,6 +1394,11 @@ impl cosmic::Application for AppModel {
             Message::CaptureFailed(err) => {
                 error!("Capture start failed: {err}");
                 self.capture_active = false;
+                if self.config.restore_token.is_some() {
+                    warn!("Resetting invalid restore token after capture failure to prevent lockouts");
+                    self.config.restore_token = None;
+                    self.save_config();
+                }
             }
 
             Message::ToggleCapture(false) => {
@@ -1175,10 +1437,6 @@ impl cosmic::Application for AppModel {
     }
 
     fn view_window(&self, id: Id) -> Element<'_, Self::Message> {
-        if Some(id) == self.settings_window {
-            return self.settings_state.view(&self.config).map(Message::Settings);
-        }
-
         if Some(id) == self.popup {
             let status_text = if self.capture_active {
                 fl!("active")
@@ -1287,4 +1545,13 @@ fn overlay_binary_path() -> std::path::PathBuf {
         return target_debug;
     }
     std::path::PathBuf::from("cosmic-translator-overlay")
+}
+
+fn applet_binary_path() -> std::path::PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if exe.is_file() {
+            return exe;
+        }
+    }
+    std::path::PathBuf::from("cosmic-applet-translator")
 }

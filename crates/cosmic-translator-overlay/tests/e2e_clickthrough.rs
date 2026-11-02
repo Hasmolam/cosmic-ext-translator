@@ -175,3 +175,43 @@ async fn test_hud_styling_and_control_messages() {
 
     let _ = std::fs::remove_file(&socket_path);
 }
+
+#[test]
+fn test_hud_status_badge_coexistence_with_subtitles() {
+    let mut hud = SubtitleHudState {
+        current_text: "Active dialogue text".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(hud.current_text, "Active dialogue text");
+    assert!(hud.status_badge.is_none());
+
+    // 1. Verify layer settings input zone is strictly empty vec for click-through
+    let settings = hud.layer_settings();
+    assert!(settings.input_zone.is_some());
+    assert!(settings.input_zone.as_ref().unwrap().is_empty());
+
+    // 2. Set status badge active
+    hud.status_badge = Some("⏳ Rate Limited (HTTP 429): 20s remaining".to_string());
+    assert_eq!(hud.current_text, "Active dialogue text", "current_text must NOT be overwritten");
+    assert_eq!(
+        hud.status_badge.as_deref(),
+        Some("⏳ Rate Limited (HTTP 429): 20s remaining")
+    );
+
+    // 3. Render view with both badge and text
+    let _ = hud.view(|_| ());
+
+    // 4. Deactivate status badge
+    hud.status_badge = None;
+    assert_eq!(hud.current_text, "Active dialogue text", "current_text must remain intact when badge cleared");
+    assert!(hud.status_badge.is_none());
+
+    // 5. Render view with text only
+    let _ = hud.view(|_| ());
+
+    // 6. Clear text and render with badge only
+    hud.current_text.clear();
+    hud.status_badge = Some("Status only".to_string());
+    let _ = hud.view(|_| ());
+}
+

@@ -98,7 +98,7 @@ async fn test_capture_region_presets_computation() {
     let screen_h = 1080;
 
     // FullScreen preset
-    let full = CaptureRegion::new(RoiPreset::FullScreen, None);
+    let full = CaptureRegion::new(RoiPreset::FullScreen, None, None);
     let full_roi = full.compute(screen_w, screen_h).unwrap();
     assert_eq!(full_roi.width, 1920);
     assert_eq!(full_roi.height, 1080);
@@ -106,7 +106,7 @@ async fn test_capture_region_presets_computation() {
     assert_eq!(full_roi.y, 0);
 
     // Bottom 25% preset (typical RPG dialogue box: 5% margin each side)
-    let b25 = CaptureRegion::new(RoiPreset::Bottom25, None);
+    let b25 = CaptureRegion::new(RoiPreset::Bottom25, None, None);
     let b25_roi = b25.compute(screen_w, screen_h).unwrap();
     assert_eq!(b25_roi.x, 96);
     assert_eq!(b25_roi.y, 810);
@@ -114,7 +114,7 @@ async fn test_capture_region_presets_computation() {
     assert_eq!(b25_roi.height, 270);
 
     // Custom preset
-    let custom_preset = CaptureRegion::new(RoiPreset::Custom, Some(Roi::new(50, 60, 400, 200)));
+    let custom_preset = CaptureRegion::new(RoiPreset::Custom, Some(Roi::new(50, 60, 400, 200)), None);
     let custom_roi = custom_preset.compute(screen_w, screen_h).unwrap();
     assert_eq!(custom_roi.x, 50);
     assert_eq!(custom_roi.y, 60);

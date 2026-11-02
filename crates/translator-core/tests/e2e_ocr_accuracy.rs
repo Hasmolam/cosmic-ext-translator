@@ -152,6 +152,7 @@ fn test_image_preprocessing_polarity_and_scaling() {
         scale_factor: 1.5,
         binarize: true,
         auto_invert: true,
+        ..Default::default()
     };
 
     // 1. Test dark background image (white text on dark bg)

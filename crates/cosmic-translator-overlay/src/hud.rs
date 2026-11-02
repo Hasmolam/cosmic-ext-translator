@@ -21,6 +21,7 @@ pub enum HudUiMessage {
 pub struct SubtitleHudState {
     pub surface_id: Id,
     pub current_text: String,
+    pub status_badge: Option<String>,
     pub visible: bool,
     pub font_size: u16,
     pub opacity: f32,
@@ -35,6 +36,7 @@ impl Default for SubtitleHudState {
         Self {
             surface_id: Id::unique(),
             current_text: String::new(),
+            status_badge: None,
             visible: true,
             font_size: 22,
             opacity: 0.92,
@@ -103,7 +105,10 @@ impl SubtitleHudState {
     where
         F: Fn(HudUiMessage) -> Message + Copy + 'static,
     {
-        if !self.visible || (self.current_text.trim().is_empty() && !self.edit_mode) {
+        let has_text = !self.current_text.trim().is_empty();
+        let has_badge = self.status_badge.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+
+        if !self.visible || (!has_text && !has_badge && !self.edit_mode) {
             return widget::container(widget::text(""))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -169,20 +174,60 @@ impl SubtitleHudState {
                 .into();
         }
 
-        let pill_container = widget::container(label)
-            .padding(Padding::from([14, 28]))
-            .max_width(1200.0)
-            .style(move |_theme| widget::container::Style {
-                background: Some(Background::Color(Color::from_rgba(0.04, 0.04, 0.06, opacity))),
-                border: Border {
-                    color: Color::from_rgba(1.0, 1.0, 1.0, 0.35),
-                    width: 2.0,
-                    radius: 14.0.into(),
-                },
-                ..Default::default()
-            });
+        let badge_widget_opt = if let Some(ref badge_text) = self.status_badge {
+            if !badge_text.trim().is_empty() {
+                let badge_label = widget::text(badge_text.as_str())
+                    .size(13)
+                    .wrapping(cosmic::iced::widget::text::Wrapping::Word);
 
-        widget::container(pill_container)
+                let badge_pill = widget::container(badge_label)
+                    .padding(Padding::from([6, 16]))
+                    .style(|_theme| widget::container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.90, 0.45, 0.08, 0.95))),
+                        border: Border {
+                            color: Color::from_rgba(1.0, 0.75, 0.25, 0.95),
+                            width: 1.5,
+                            radius: 8.0.into(),
+                        },
+                        ..Default::default()
+                    });
+                Some(badge_pill)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let pill_container_opt = if has_text {
+            let pill = widget::container(label)
+                .padding(Padding::from([14, 28]))
+                .max_width(1200.0)
+                .style(move |_theme| widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.04, 0.04, 0.06, opacity))),
+                    border: Border {
+                        color: Color::from_rgba(1.0, 1.0, 1.0, 0.35),
+                        width: 2.0,
+                        radius: 14.0.into(),
+                    },
+                    ..Default::default()
+                });
+            Some(pill)
+        } else {
+            None
+        };
+
+        let content: Element<'_, Message> = match (badge_widget_opt, pill_container_opt) {
+            (Some(badge), Some(pill)) => widget::column![badge, pill]
+                .spacing(8)
+                .align_x(Alignment::Center)
+                .into(),
+            (Some(badge), None) => badge.into(),
+            (None, Some(pill)) => pill.into(),
+            (None, None) => widget::text("").into(),
+        };
+
+        widget::container(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(Alignment::Center)

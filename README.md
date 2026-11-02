@@ -7,15 +7,38 @@
 
 ---
 
-## Ne İşe Yarar ve Nasıl Çalışır?
+## Temel Özellikler ve Çalışma Mantığı
 
-Wayland üzerinde geleneksel X11 ekran yakalama ve pencere üstü çizim yöntemleri çalışmaz veya oyun performansını düşürür. `cosmic-ext-lingua`, doğrudan COSMIC ve Wayland protokollerini kullanarak sıfır odak kaybıyla çalışır:
+Wayland mimarisi üzerinde sıfır odak kaybı ve düşük kaynak tüketimi ile çalışacak şekilde tasarlanmıştır:
 
-1. **Kesintisiz Ekran Yakalama (`ashpd` + `PipeWire`):** XDG Desktop Portal Screencast API'si ve `restore_token` desteğiyle ekran izinlerini hatırlar, yalnızca seçili alt bölgeyi (ROI) kırpar.
-2. **Akıllı Kare Filtreleme (`dHash FrameDebouncer`):** Oyunlarda harf harf akan (typewriter efekti) diyalogların tamamlanmasını bekler; görüntü sabitlenmeden OCR çalıştırmayarak CPU/GPU tüketimini minimumda tutar.
-3. **Saf Rust Yerel OCR (`ocrs` + `rten`):** Harici C++ bağımlılığı olmadan (Tesseract gerektirmez) yerel sinir ağı modelleriyle ekrandaki metni okur.
-4. **Sözlük Destekli Çeviri (`Google Translate` & `Ollama`):** Özel oyun terimlerini (`Glossary`) koruyarak hızlı bulut çevirisi veya tamamen çevrimdışı yerel LLM (`Ollama`) ile bağlama duyarlı çeviri yapar ve LRU önbellekte tutar.
-5. **Click-Through Layer-Shell HUD (`wlr-layer-shell`):** Çevrilen altyazıyı tam ekran oyunların üzerinde gösteren ama fare tıklamalarını doğrudan arkadaki oyuna geçiren (`wl_region` boş input maskesi) özel Wayland katmanı.
+1. **Kesintisiz Ekran Yakalama (`ashpd` + `PipeWire`) & İç Alan Maskeleme:**
+   - XDG Desktop Portal Screencast API'si ve `restore_token` oturum önbelleklemesi ile ekran izinleri hatırlanır.
+   - Yalnızca seçili ilgi bölgesi (ROI) kırpılır; ham Spa buffer'ları kopyalanıp anında bırakılır (özel PipeWire OS iş parçacığında çalışır).
+   - **İç Alan Maskeleme (`ignore_roi`):** ROI sınırları içinde kalan karakter portreleri, avatarlar veya animasyonlu mini haritalar maskelenerek sahte tetiklemeler önlenir.
+
+2. **İki Aşamalı Hibrit Tetikleme (`TextGate` Debouncer) & Ön İşleme:**
+   - **64-bit dHash + Levenshtein Eşik Denetimi:** Daktilo (typewriter) efektiyle harf harf akan metinleri ve 3D arka plan hareketlerini ayırt eder; metin durağanlaşana kadar OCR çalıştırmaz.
+   - **Yüksek Geçiren Bulanıklık Çıkarma (Blur Subtraction):** Düşük kontrastlı metinleri dinamik arka planlardan ayırmak için Gauss tabanlı yüksek geçiren filtreleme uygular.
+
+3. **Gelişmiş OCR, Dikey Metin (Tategaki) ve Furigana Budama:**
+   - **Saf Rust OCR (`ocrs` + `rten`):** Harici C++ bağımlılığı olmadan yerel modellerle metin tespiti ve tanıması yapar.
+   - **Dikey CJK Topolojik Sıralayıcı:** Japonca/Çince dikey diyalog sütunlarını sağdan sola (RTL) ve yukarıdan aşağıya (TTB) doğru sıralar; satır içi CJK/Latin boşluklarını korur.
+   - **Geometrik Furigana Filtresi:** Kanjilerin yanındaki küçük okunuş (ruby/furigana) karakter kutularını noktalama işaretlerini bozmadan ana metinden ayıklar.
+
+4. **Bağlamsal Çeviri ve Sözlük Desteği:**
+   - **Konuşmacı Ayrıştırma:** 7 farklı parantez stilini (`【...】`, `〔...〕`, `「...」`, `[...]` vb.) tespit eder, isimleri karakter sözlüğü (Glossary) ile eşleştirir.
+   - **Kayan Diyalog Belleği (`TranslationContext`):** Önceki konuşma turlarını bellekte tutarak LLM çeviri motorlarına bağlam sağlar (gizli özne ve zamir çözümleme).
+   - **Çoklu Motor ve Çevrimdışı Destek:** Google Translate Web API, yerel LLM (Ollama) ve çevrimdışı nöral modeller (`OfflineTranslationBackend`).
+   - **Hız Limiti Yönetimi (HTTP 429):** API kota aşımlarında üstel geri çekilme (exponential backoff) uygular ve kalan süreyi HUD üzerinde canlı geri sayım olarak gösterir.
+   - **Morfolojik Japonca Sözlük:** Açgözlü (greedy) önek çözümlemesiyle yerleşik oyun sözlüğü araması sunar.
+
+5. **Click-Through Layer-Shell HUD (`wlr-layer-shell`):**
+   - Çevrilen altyazıyı ve durum rozetlerini tam ekran pencerelerin üzerinde gösterir.
+   - `input_zone: Some(vec![])` tanımlamasıyla tüm fare tıklamalarını %100 geçirgenlikle arkadaki oyuna iletir.
+
+6. **Diyalog Geçmişi (Backlog) ve 5 Sekmeli Ayarlar Penceresi:**
+   - Son 500 diyalog kaydını zaman damgası ve konuşmacı bilgisiyle hafızada tutar; aranabilir, filtrelenebilir ve panoya kopyalanabilir.
+   - Panel applet'i üzerinden ROI, ignore ROI koordinatları, bulanıklık filtresi, OCR parametreleri ve çeviri motoru tercihleri yapılandırılabilir.
 
 ---
 
@@ -23,9 +46,9 @@ Wayland üzerinde geleneksel X11 ekran yakalama ve pencere üstü çizim yöntem
 
 | Crate | Rolü |
 | :--- | :--- |
-| `crates/translator-core` | PipeWire yakalama, ROI kırpma, dHash debouncer, `ocrs` OCR motoru, Google/Ollama çeviri motorları, LRU önbellek, XDG Global Shortcuts ve Unix Domain Socket IPC protokolü. |
-| `crates/cosmic-translator-overlay` | İki modlu Wayland `layer-shell` ikilisi: `--hud` (tıklama geçirgen altyazı katmanı) ve `--selector` (etkileşimli ROI alan seçici). |
-| `crates/cosmic-applet-translator` | COSMIC Panel eklentisi (`com.system76.CosmicExtLingua`), hızlı durum açılır menüsü ve 4 sekmeli detaylı ayarlar penceresi. |
+| `crates/translator-core` | PipeWire yakalama döngüsü, ROI ve ignore-mask kırpma, TextGate dHash/Levenshtein debouncer, Gauss filtreleme, `rten` OCR motoru, dikey CJK ve furigana analizi, konuşmacı ayrıştırma, kayan diyalog geçmişi, Google/Ollama/çevrimdışı çeviri motorları, HTTP 429 yöneticisi, Japonca morfolojik sözlük, Unix Domain Socket IPC sunucusu. |
+| `crates/cosmic-translator-overlay` | İki modlu Wayland `layer-shell` ikilisi: `--hud` (tıklama geçirgen altyazı ve geri sayım rozeti katmanı) ve `--selector` (etkileşimli ROI alan seçici). |
+| `crates/cosmic-applet-translator` | COSMIC Panel eklentisi (`com.system76.CosmicExtLingua`), durum açılır menüsü, arka plan olay boşaltma döngüsü ve 5 sekmeli detaylı ayarlar penceresi (Genel, ROI & Maske, OCR & Görüntü, Çeviri & Sözlük, Diyalog Geçmişi). |
 
 ---
 
@@ -57,13 +80,30 @@ just test
 just build-release
 
 # Sisteme kur (/usr/bin altına ikilileri ve .desktop / metainfo / ikon dosyalarını yükler)
-sudo just install
+sudo $(which just) install
 ```
 
 Geliştirme sırasında doğrudan çalıştırmak için:
 
 ```bash
+# Geliştirme modunda tüm ikilileri derle (applet + overlay)
+just build
+
+# Panel applet'ini çalıştır (applet çeviri başladığında overlay ikilisini otomatik tetikler)
 just run-applet
+```
+
+Bileşenleri bağımsız olarak test etmek için:
+
+```bash
+# Alan seçiciyi (ROI selector) doğrudan başlat
+cargo run -p cosmic-translator-overlay -- --selector
+
+# Altyazı HUD katmanını doğrudan başlat
+cargo run -p cosmic-translator-overlay -- --hud
+
+# Ekran yakalama entegrasyon aracını test et (aktif Wayland oturumu gerektirir)
+just test-capture
 ```
 
 Kurulumu kaldırmak için:

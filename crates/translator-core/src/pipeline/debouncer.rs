@@ -186,6 +186,158 @@ impl FrameDebouncer {
     }
 }
 
+/// Action decided by the Stage-2 post-OCR text debouncer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextDiffAction {
+    /// Distinct text change or new dialogue turn; emit to translation and HUD immediately.
+    EmitTranslation,
+    /// Progressive typewriter expansion; hold emission and wait for text to finish typing.
+    TypewriterWait,
+    /// Micro-noise, identical string, or animation particle flutter; suppress emission.
+    SuppressJitter,
+}
+
+/// Stage-2 post-OCR text-level gating component.
+///
+/// Evaluates candidate strings recognized by OCR against previously emitted and candidate
+/// text to suppress rasterization jitter, avoid duplicate translation requests, and prevent
+/// subtitle stutter during progressive typewriter text streaming.
+#[derive(Debug, Clone)]
+pub struct TextGate {
+    pub last_emitted_text: String,
+    pub last_candidate_text: String,
+    pub last_candidate_time: Instant,
+    pub typewriter_settle_duration: Duration,
+    pub jitter_threshold: f64,
+    pub turn_threshold: f64,
+}
+
+impl Default for TextGate {
+    fn default() -> Self {
+        Self::new(Duration::from_millis(250), 0.92, 0.60)
+    }
+}
+
+impl TextGate {
+    #[must_use]
+    pub fn new(
+        typewriter_settle_duration: Duration,
+        jitter_threshold: f64,
+        turn_threshold: f64,
+    ) -> Self {
+        Self {
+            last_emitted_text: String::new(),
+            last_candidate_text: String::new(),
+            last_candidate_time: Instant::now(),
+            typewriter_settle_duration,
+            jitter_threshold: jitter_threshold.clamp(0.0, 1.0),
+            turn_threshold: turn_threshold.clamp(0.0, 1.0),
+        }
+    }
+
+    /// Evaluates a candidate string from OCR and determines whether to emit, hold, or suppress.
+    pub fn evaluate(&mut self, candidate: &str) -> TextDiffAction {
+        self.evaluate_at(candidate, Instant::now())
+    }
+
+    /// Evaluates a candidate string with an explicit timestamp (for deterministic headless unit testing).
+    pub fn evaluate_at(&mut self, candidate: &str, now: Instant) -> TextDiffAction {
+        let trimmed = candidate.trim();
+        if trimmed.is_empty() {
+            return TextDiffAction::SuppressJitter;
+        }
+
+        // 1. Exact duplicate while waiting on typewriter: suppress without extending deadline
+        if !self.last_candidate_text.is_empty() && trimmed == self.last_candidate_text {
+            return TextDiffAction::SuppressJitter;
+        }
+
+        // 2. Monotonic prefix expansion check (Typewriter stream)
+        // Must be evaluated BEFORE jitter threshold to avoid discarding 1-char expansions on long strings.
+        let is_prefix_expansion = (!self.last_candidate_text.is_empty()
+            && trimmed.starts_with(&self.last_candidate_text)
+            && trimmed.len() > self.last_candidate_text.len())
+            || (!self.last_emitted_text.is_empty()
+                && trimmed.starts_with(&self.last_emitted_text)
+                && trimmed.len() > self.last_emitted_text.len());
+
+        if is_prefix_expansion {
+            trace!(
+                "TextGate: typewriter expansion detected ('{}' -> '{}')",
+                if !self.last_candidate_text.is_empty() {
+                    &self.last_candidate_text
+                } else {
+                    &self.last_emitted_text
+                },
+                trimmed
+            );
+            self.last_candidate_text = trimmed.to_string();
+            self.last_candidate_time = now;
+            return TextDiffAction::TypewriterWait;
+        }
+
+        // 3. Jitter suppression against last emitted text
+        if !self.last_emitted_text.is_empty() {
+            let sim = strsim::normalized_levenshtein(trimmed, &self.last_emitted_text);
+            if sim >= self.jitter_threshold {
+                trace!(
+                    "TextGate: jitter suppressed (sim={:.3} >= {:.3}) for '{}'",
+                    sim,
+                    self.jitter_threshold,
+                    trimmed
+                );
+                return TextDiffAction::SuppressJitter;
+            }
+        }
+
+        // 4. New distinct line or dialogue turn (sim < jitter_threshold or initial text)
+        debug!("TextGate: new text accepted for translation: '{}'", trimmed);
+        self.last_emitted_text = trimmed.to_string();
+        self.last_candidate_text = trimmed.to_string();
+        self.last_candidate_time = now;
+        TextDiffAction::EmitTranslation
+    }
+
+    /// Flushes any pending typewriter candidate that has finished expanding.
+    ///
+    /// If `last_candidate_text` has expanded beyond `last_emitted_text`, commits
+    /// it to `last_emitted_text` and returns `Some(text)`.
+    pub fn flush_pending(&mut self) -> Option<String> {
+        if self.last_candidate_text.is_empty()
+            || self.last_candidate_text == self.last_emitted_text
+        {
+            None
+        } else {
+            self.last_emitted_text = self.last_candidate_text.clone();
+            Some(self.last_emitted_text.clone())
+        }
+    }
+
+    /// Checks if there is a pending typewriter expansion awaiting settle timeout.
+    #[must_use]
+    pub fn has_pending_expansion(&self) -> bool {
+        !self.last_candidate_text.is_empty()
+            && self.last_candidate_text != self.last_emitted_text
+    }
+
+    /// Resets the internal state (useful when switching game windows or changing ROI).
+    pub fn reset(&mut self) {
+        self.last_emitted_text.clear();
+        self.last_candidate_text.clear();
+        self.last_candidate_time = Instant::now();
+    }
+
+    #[must_use]
+    pub fn last_emitted_text(&self) -> &str {
+        &self.last_emitted_text
+    }
+
+    #[must_use]
+    pub fn last_candidate_text(&self) -> &str {
+        &self.last_candidate_text
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,5 +388,141 @@ mod tests {
         let settled = debouncer.process_frame(make_frame_with_blocks(2));
         assert!(settled.is_some(), "Debouncer should emit settled frame after stability window");
         assert_eq!(debouncer.state(), DebounceState::Idle);
+    }
+
+    #[test]
+    fn test_text_gate_jitter_suppression() {
+        let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
+        let base_text = "Press the button to initiate warp jump sequence.";
+
+        // 1. Initial emission
+        assert_eq!(gate.evaluate(base_text), TextDiffAction::EmitTranslation);
+        assert_eq!(gate.last_emitted_text(), base_text);
+
+        // 2. Exact duplicate
+        assert_eq!(gate.evaluate(base_text), TextDiffAction::SuppressJitter);
+
+        // 3. Leading/trailing whitespace
+        assert_eq!(
+            gate.evaluate("   Press the button to initiate warp jump sequence.   "),
+            TextDiffAction::SuppressJitter
+        );
+
+        // 4. Minor OCR punctuation jitter (missing period: sim ~0.979 >= 0.92)
+        assert_eq!(
+            gate.evaluate("Press the button to initiate warp jump sequence"),
+            TextDiffAction::SuppressJitter
+        );
+
+        // 5. Minor typo substitution (comma instead of period: sim ~0.979 >= 0.92)
+        assert_eq!(
+            gate.evaluate("Press the button to initiate warp jump sequence,"),
+            TextDiffAction::SuppressJitter
+        );
+
+        // 6. Empty string
+        assert_eq!(gate.evaluate("   "), TextDiffAction::SuppressJitter);
+
+        // Assert state is untouched
+        assert_eq!(gate.last_emitted_text(), base_text);
+        assert_eq!(gate.flush_pending(), None);
+    }
+
+    #[test]
+    fn test_text_gate_typewriter_progressive_expansion() {
+        let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
+        let t0 = Instant::now();
+
+        // 1. Initial word appears
+        assert_eq!(gate.evaluate_at("Wait", t0), TextDiffAction::EmitTranslation);
+        assert_eq!(gate.last_emitted_text(), "Wait");
+        assert_eq!(gate.last_candidate_text(), "Wait");
+
+        // 2. Progressive typewriter expansion 1
+        assert_eq!(
+            gate.evaluate_at("Wait, don't", t0 + Duration::from_millis(50)),
+            TextDiffAction::TypewriterWait
+        );
+        assert_eq!(gate.last_emitted_text(), "Wait");
+        assert_eq!(gate.last_candidate_text(), "Wait, don't");
+        assert!(gate.has_pending_expansion());
+
+        // 3. Progressive typewriter expansion 2
+        assert_eq!(
+            gate.evaluate_at("Wait, don't open", t0 + Duration::from_millis(100)),
+            TextDiffAction::TypewriterWait
+        );
+        assert_eq!(gate.last_candidate_text(), "Wait, don't open");
+
+        // 4. Progressive typewriter expansion 3 (final sentence text)
+        assert_eq!(
+            gate.evaluate_at("Wait, don't open that door!", t0 + Duration::from_millis(150)),
+            TextDiffAction::TypewriterWait
+        );
+        assert_eq!(gate.last_candidate_text(), "Wait, don't open that door!");
+
+        // 5. Duplicate candidate while waiting (game finished typing, screen idle)
+        assert_eq!(
+            gate.evaluate_at("Wait, don't open that door!", t0 + Duration::from_millis(200)),
+            TextDiffAction::SuppressJitter
+        );
+
+        // 6. Timeout expires: flush settled text
+        let flushed = gate.flush_pending();
+        assert_eq!(flushed, Some("Wait, don't open that door!".to_string()));
+        assert_eq!(gate.last_emitted_text(), "Wait, don't open that door!");
+        assert_eq!(gate.flush_pending(), None);
+    }
+
+    #[test]
+    fn test_text_gate_dialogue_turn_transition() {
+        let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
+
+        // Turn 1
+        let turn1 = "What a wonderful evening for a stroll through the forest.";
+        assert_eq!(gate.evaluate(turn1), TextDiffAction::EmitTranslation);
+        assert_eq!(gate.last_emitted_text(), turn1);
+
+        // Jitter on Turn 1
+        assert_eq!(
+            gate.evaluate("What a wonderful evening for a stroll through the forest"),
+            TextDiffAction::SuppressJitter
+        );
+
+        // Turn 2: completely distinct sentence from Character B (sim < 0.60)
+        let turn2 = "Look out! Goblins are attacking from the shadows!";
+        assert_eq!(gate.evaluate(turn2), TextDiffAction::EmitTranslation);
+        assert_eq!(gate.last_emitted_text(), turn2);
+
+        // Turn 3: short exclamation
+        let turn3 = "Draw your sword";
+        assert_eq!(gate.evaluate(turn3), TextDiffAction::EmitTranslation);
+        assert_eq!(gate.last_emitted_text(), turn3);
+
+        // Expansion on Turn 3
+        assert_eq!(
+            gate.evaluate("Draw your sword and defend yourself!"),
+            TextDiffAction::TypewriterWait
+        );
+        assert_eq!(
+            gate.flush_pending(),
+            Some("Draw your sword and defend yourself!".to_string())
+        );
+    }
+
+    #[test]
+    fn test_text_gate_cjk_support() {
+        let mut gate = TextGate::default();
+
+        // Japanese dialogue prefix expansion
+        assert_eq!(gate.evaluate("「こんにちは"), TextDiffAction::EmitTranslation);
+        assert_eq!(gate.evaluate("「こんにちは、世界」"), TextDiffAction::TypewriterWait);
+        assert_eq!(gate.flush_pending(), Some("「こんにちは、世界」".to_string()));
+
+        // Jitter on settled Japanese string
+        assert_eq!(gate.evaluate("「こんにちは、世界」"), TextDiffAction::SuppressJitter);
+
+        // Dialogue turn change
+        assert_eq!(gate.evaluate("【勇者】魔王を倒す時が来た！"), TextDiffAction::EmitTranslation);
     }
 }

@@ -8,6 +8,10 @@ pub struct PreprocessConfig {
     pub binarize: bool,
     /// Automatically invert to ensure dark text on light background.
     pub auto_invert: bool,
+    /// High-pass spatial filter: subtracts Gaussian-blurred background to remove smooth gradients.
+    pub blur_subtraction: bool,
+    /// Standard deviation sigma for Gaussian blur subtraction filter (default: 2.5).
+    pub blur_sigma: f32,
 }
 
 impl Default for PreprocessConfig {
@@ -16,8 +20,34 @@ impl Default for PreprocessConfig {
             scale_factor: 1.5,
             binarize: false,
             auto_invert: true,
+            blur_subtraction: false,
+            blur_sigma: 2.5,
         }
     }
+}
+
+/// Applies a high-pass spatial filter by subtracting a Gaussian-blurred low-frequency background.
+///
+/// For each pixel:
+/// $$I_{\text{hp}}(x, y) = \text{clamp}(128 + I(x, y) - I_{\text{blur}}(x, y), 0, 255)$$
+///
+/// Smooth background gradients, vignetting, and translucent game scenery are flattened
+/// to neutral gray (128), while high-frequency font glyph strokes are preserved.
+#[must_use]
+pub fn subtract_blur(gray: &GrayImage, sigma: f32) -> GrayImage {
+    if gray.is_empty() || gray.width() == 0 || gray.height() == 0 {
+        return GrayImage::new(gray.width(), gray.height());
+    }
+
+    let blurred = image::imageops::blur(gray, sigma);
+    let mut output = GrayImage::new(gray.width(), gray.height());
+
+    for (out, (orig, blr)) in output.pixels_mut().zip(gray.pixels().zip(blurred.pixels())) {
+        let diff = (orig[0] as i32) - (blr[0] as i32);
+        out[0] = (128 + diff).clamp(0, 255) as u8;
+    }
+
+    output
 }
 
 /// Applies game-optimized image preprocessing to maximize OCR accuracy:
@@ -32,7 +62,7 @@ pub fn preprocess_for_ocr(image: &RgbaImage, config: &PreprocessConfig) -> GrayI
 
     // 2. High-performance CatmullRom scaling (only for small text ROIs, 5x faster than Lanczos3)
     let should_scale = (config.scale_factor - 1.0).abs() > 0.05 && image.height() < 160;
-    let mut gray = if should_scale {
+    let gray_scaled = if should_scale {
         let new_w = ((image.width() as f32) * config.scale_factor).round() as u32;
         let new_h = ((image.height() as f32) * config.scale_factor).round() as u32;
         image::imageops::resize(&gray_base, new_w.max(1), new_h.max(1), FilterType::CatmullRom)
@@ -40,21 +70,30 @@ pub fn preprocess_for_ocr(image: &RgbaImage, config: &PreprocessConfig) -> GrayI
         gray_base
     };
 
-    if !config.binarize {
-        return gray;
-    }
-
-    // 3. Otsu's thresholding
-    let threshold = compute_otsu_threshold(&gray);
-
-    // 4. Polarity check: Detect if background is predominantly dark
+    // 3. Polarity check: Detect if original background is predominantly dark.
+    // Must be performed on the scaled grayscale image BEFORE blur subtraction,
+    // because blur subtraction centers the background at neutral gray (128).
     let is_dark_background = if config.auto_invert {
-        detect_dark_background(&gray)
+        detect_dark_background(&gray_scaled)
     } else {
         false
     };
 
-    // Apply binarization and inversion
+    // 4. High-pass blur subtraction filter
+    let mut gray = if config.blur_subtraction {
+        subtract_blur(&gray_scaled, config.blur_sigma)
+    } else {
+        gray_scaled
+    };
+
+    if !config.binarize {
+        return gray;
+    }
+
+    // 5. Otsu's thresholding
+    let threshold = compute_otsu_threshold(&gray);
+
+    // 6. Apply binarization and inversion to ensure black text on white background
     for pixel in gray.pixels_mut() {
         let is_bright = pixel[0] > threshold;
         if is_dark_background {
@@ -186,11 +225,134 @@ mod tests {
             scale_factor: 1.0,
             binarize: true,
             auto_invert: true,
+            ..Default::default()
         });
 
         // Background should be inverted to white (255)
         assert_eq!(processed.get_pixel(0, 0)[0], 255);
         // Text center should be converted to black (0) for OCR
         assert_eq!(processed.get_pixel(50, 50)[0], 0);
+    }
+
+    #[test]
+    fn test_high_pass_gradient_attenuation() {
+        let w = 200u32;
+        let h = 60u32;
+
+        // Linear gradient background: 20 at left -> 220 at right
+        let mut grad_img = GrayImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let val = (20.0 + (x as f64 / w as f64) * 200.0) as u8;
+                grad_img.put_pixel(x, y, image::Luma([val]));
+            }
+        }
+
+        // Compute baseline variance of raw gradient
+        let n = (w * h) as f64;
+        let mean_orig: f64 = grad_img.pixels().map(|p| p[0] as f64).sum::<f64>() / n;
+        let var_orig: f64 = grad_img.pixels().map(|p| (p[0] as f64 - mean_orig).powi(2)).sum::<f64>() / n;
+        assert!(var_orig > 3000.0, "Raw gradient should have high variance: {var_orig}");
+
+        // Apply high-pass blur subtraction
+        let filtered = subtract_blur(&grad_img, 2.5);
+
+        // Compute variance after high-pass filtering
+        let mean_filt: f64 = filtered.pixels().map(|p| p[0] as f64).sum::<f64>() / n;
+        let var_filt: f64 = filtered.pixels().map(|p| (p[0] as f64 - mean_filt).powi(2)).sum::<f64>() / n;
+
+        // Gradient variance must be attenuated by >99.9% (below 5.0)
+        assert!(
+            var_filt < 5.0,
+            "High-pass filter must flatten smooth gradient variance: {var_filt}"
+        );
+
+        // Baseline background level must be neutral gray (~128)
+        assert!((126..=130).contains(&(mean_filt.round() as i32)));
+    }
+
+    #[test]
+    fn test_high_pass_contrast_preservation() {
+        let w = 100u32;
+        let h = 50u32;
+
+        // 1. Bright text stroke (240) on dark gradient background (20..80)
+        let mut img = GrayImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let bg = (20.0 + (x as f64 / w as f64) * 60.0) as u8;
+                img.put_pixel(x, y, image::Luma([bg]));
+            }
+        }
+        // Draw 2-pixel wide vertical stroke at x = 50
+        for y in 10..40 {
+            img.put_pixel(50, y, image::Luma([240]));
+            img.put_pixel(51, y, image::Luma([240]));
+        }
+
+        let filtered = subtract_blur(&img, 2.5);
+
+        let stroke_val = filtered.get_pixel(50, 25)[0];
+        let left_bg_val = filtered.get_pixel(15, 25)[0];
+        let right_bg_val = filtered.get_pixel(85, 25)[0];
+
+        // Stroke must stand out significantly above the 128 baseline
+        assert!(stroke_val >= 200, "Stroke value must be high: {stroke_val}");
+        assert!((126..=130).contains(&left_bg_val), "Left background should be ~128: {left_bg_val}");
+        assert!((126..=130).contains(&right_bg_val), "Right background should be ~128: {right_bg_val}");
+
+        // Contrast between stroke and background must exceed 70 gray levels
+        let contrast = (stroke_val as i32) - (left_bg_val as i32);
+        assert!(contrast >= 70, "Contrast retention must be >= 70: {contrast}");
+    }
+
+    #[test]
+    fn test_preprocess_blur_subtraction_otsu_integration() {
+        let w = 200u32;
+        let h = 60u32;
+
+        // Create an RGBA image with a steep background gradient (30 -> 210)
+        // and white text strokes (250) in the middle
+        let mut rgba = RgbaImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let bg = (30.0 + (x as f64 / w as f64) * 180.0) as u8;
+                rgba.put_pixel(x, y, image::Rgba([bg, bg, bg, 255]));
+            }
+        }
+        for y in 20..40 {
+            for x in 99..101 {
+                rgba.put_pixel(x, y, image::Rgba([250, 250, 250, 255]));
+            }
+        }
+
+        let config = PreprocessConfig {
+            scale_factor: 1.0,
+            binarize: true,
+            auto_invert: true,
+            blur_subtraction: true,
+            blur_sigma: 2.5,
+        };
+
+        let processed = preprocess_for_ocr(&rgba, &config);
+
+        // Standard OCR target: Background must be white (255) on BOTH left and right sides
+        assert_eq!(
+            processed.get_pixel(10, 10)[0],
+            255,
+            "Left background must be white after Otsu"
+        );
+        assert_eq!(
+            processed.get_pixel(180, 10)[0],
+            255,
+            "Right background must be white after Otsu (no false text blob)"
+        );
+
+        // Text box center must be black (0) for OCR
+        assert_eq!(
+            processed.get_pixel(100, 30)[0],
+            0,
+            "Text strokes must be inverted to black (0)"
+        );
     }
 }

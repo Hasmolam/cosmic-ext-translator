@@ -31,6 +31,7 @@ custom-coords = Özel Koordinatlar
 draw-new-area = Yeni Alan Çiz
 no-custom-area = Tanımlı özel alan yok
 otsu-binarization = Otsu Binarizasyonu (1-bit)
+blur-subtraction = Yüksek Geçiren Bulanıklık Filtresi
 settle-threshold = Kare Sabitlenme Eşiği
 
 # Engine Settings
@@ -82,3 +83,16 @@ ocr-binarize = OCR Binarizasyonu
 last-detected-ocr = 📝 Son Algılanan Metin (OCR)
 translation-output = 🌐 Çeviri Çıktısı
 prompt-select-target = 🎯 Canlı görüntü denetimi için pencere seçin veya çeviriyi başlatın
+
+# History & Ignore Area
+tab-history = Diyalog Geçmişi
+ignore-roi = Hariç Tutulacak Alan (Portre/Bust)
+no-ignore-area = Tanımlı hariç tutulan alan yok
+draw-ignore-area = Hariç Tutulacak Alan Çiz
+clear-ignore-area = Temizle
+history-search-placeholder = Diyalog geçmişinde ara...
+clear-history = Geçmişi Temizle
+copy = Kopyala
+copied = Kopyalandı
+no-history-entries = Henüz diyalog geçmişi kaydedilmedi
+

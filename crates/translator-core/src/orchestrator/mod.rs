@@ -1,17 +1,18 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, watch};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::capture::pipewire_thread::CapturedFrame;
 use crate::ipc::{HudIpcClient, HudMessage};
 use crate::ocr::OcrBackend;
-use crate::pipeline::debouncer::FrameDebouncer;
+use crate::pipeline::debouncer::{FrameDebouncer, TextDiffAction, TextGate};
 use crate::pipeline::preprocess::PreprocessConfig;
 use crate::pipeline::spawn_recognition_pipeline;
 use crate::translation::{
-    FuzzyLruCache, TranslationBackend, TranslationContext, DEFAULT_CACHE_CAPACITY,
-    DEFAULT_SIMILARITY_THRESHOLD,
+    parse_speaker_tags, FuzzyLruCache, RateLimitManager, TranslationBackend, TranslationContext,
+    DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
 };
 
 /// Events emitted by the orchestrator for UI display and status monitoring.
@@ -41,6 +42,8 @@ pub struct OrchestratorConfig {
     pub forward_to_hud: bool,
     pub glossary: HashMap<String, String>,
     pub hud_duration_ms: u64,
+    pub typewriter_settle_duration: Duration,
+    pub max_history: usize,
 }
 
 impl Default for OrchestratorConfig {
@@ -54,14 +57,17 @@ impl Default for OrchestratorConfig {
             forward_to_hud: true,
             glossary: HashMap::new(),
             hud_duration_ms: 0, // 0 = persistent / stay until replaced by next dialogue
+            typewriter_settle_duration: Duration::from_millis(250),
+            max_history: 4,
         }
     }
 }
 
 /// Handle allowing caller to stop or monitor a running orchestrator session.
+#[derive(Clone)]
 pub struct OrchestratorHandle {
     stop_tx: watch::Sender<bool>,
-    events_rx: mpsc::Receiver<OrchestratorEvent>,
+    events_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<OrchestratorEvent>>>,
 }
 
 impl OrchestratorHandle {
@@ -72,7 +78,7 @@ impl OrchestratorHandle {
 
     /// Receives status events from the orchestrator.
     pub async fn next_event(&mut self) -> Option<OrchestratorEvent> {
-        self.events_rx.recv().await
+        self.events_rx.lock().await.recv().await
     }
 }
 
@@ -91,7 +97,7 @@ pub fn spawn_orchestrator(
     let (mut pipeline_handle, mut recognized_rx) = spawn_recognition_pipeline(
         frame_rx,
         debouncer,
-        config.preprocess,
+        config.preprocess.clone(),
         ocr_backend,
     );
 
@@ -100,15 +106,24 @@ pub fn spawn_orchestrator(
         info!("Translation orchestrator started");
 
         let mut cache = FuzzyLruCache::new(config.cache_capacity, config.similarity_threshold);
-        let mut context = TranslationContext::default();
+        let mut context = TranslationContext::new(config.max_history);
         for (term, repl) in &config.glossary {
             context.set_glossary_term(term.clone(), repl.clone());
         }
+        let mut rate_limit_manager = RateLimitManager::default();
+
         let hud_client = if config.forward_to_hud {
             Some(HudIpcClient::default_client())
         } else {
             None
         };
+
+        let mut text_gate = TextGate::new(
+            config.typewriter_settle_duration,
+            0.92,
+            0.60,
+        );
+        let mut typewriter_deadline: Option<tokio::time::Instant> = None;
 
         loop {
             tokio::select! {
@@ -119,75 +134,63 @@ pub fn spawn_orchestrator(
                         break;
                     }
                 }
+
+                // Typewriter settle timeout: fires when progressive text expansion pauses
+                _ = async {
+                    match typewriter_deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline).await,
+                        None => std::future::pending().await,
+                    }
+                }, if typewriter_deadline.is_some() => {
+                    typewriter_deadline = None;
+                    if let Some(settled_text) = text_gate.flush_pending() {
+                        debug!("Orchestrator: typewriter stream settled: \"{settled_text}\"");
+                        let mut state = OrchestratorSessionState {
+                            cache: &mut cache,
+                            context: &mut context,
+                            rate_limit_manager: &mut rate_limit_manager,
+                            translation_backend: &translation_backend,
+                            config: &config,
+                            hud_client: hud_client.as_ref(),
+                            event_tx: &event_tx,
+                        };
+                        dispatch_translation(settled_text, &mut state).await;
+                    }
+                }
+
                 event_opt = recognized_rx.recv() => {
                     let Some(event) = event_opt else {
                         debug!("Pipeline recognition channel closed");
                         break;
                     };
 
-                    let recognized = event.text.trim().to_string();
-                    if recognized.is_empty() {
+                    let candidate = event.text.trim();
+                    if candidate.is_empty() {
                         continue;
                     }
 
-                    let _ = event_tx.send(OrchestratorEvent::TextDetected {
-                        raw: recognized.clone(),
-                    }).await;
-
-                    // Check fuzzy cache first to prevent redundant remote translation calls
-                    let (translated, cached) = if let Some(hit) = cache.get(&recognized) {
-                        (hit, true)
-                    } else {
-                        match translation_backend.translate(
-                            &recognized,
-                            &config.src_lang,
-                            &config.target_lang,
-                            &context,
-                        ).await {
-                            Ok(tr) => {
-                                let tr_clean = tr.trim().to_string();
-                                cache.insert(&recognized, &tr_clean);
-                                context.add_turn(&recognized, &tr_clean);
-                                (tr_clean, false)
-                            }
-                            Err(err) => {
-                                let err_msg = format!("Translation failure: {err}");
-                                error!("{err_msg}");
-                                let _ = event_tx.send(OrchestratorEvent::Error(err_msg)).await;
-                                if let Some(ref client) = hud_client {
-                                    let err_summary = if err.to_string().contains("429") {
-                                        "Hız Sınırı Aşıldı (HTTP 429 Rate Limit)"
-                                    } else {
-                                        "Çeviri Hatası (Bağlantı/Servis)"
-                                    };
-                                    let _ = client
-                                        .send(&HudMessage::ShowSubtitle {
-                                            text: format!("⚠️ {err_summary}"),
-                                            original: Some(recognized.clone()),
-                                            duration_ms: 3500,
-                                        })
-                                        .await;
-                                }
-                                continue;
-                            }
+                    match text_gate.evaluate(candidate) {
+                        TextDiffAction::SuppressJitter => {
+                            trace!("Orchestrator: candidate \"{candidate}\" suppressed as jitter");
                         }
-                    };
-
-                    let _ = event_tx.send(OrchestratorEvent::TranslationReady {
-                        original: recognized.clone(),
-                        translated: translated.clone(),
-                        cached,
-                    }).await;
-
-                    // Forward to HUD overlay if configured
-                    if let Some(ref client) = hud_client {
-                        let msg = HudMessage::ShowSubtitle {
-                            text: translated,
-                            original: Some(recognized),
-                            duration_ms: config.hud_duration_ms,
-                        };
-                        if let Err(err) = client.send(&msg).await {
-                            debug!("HUD client send notice (HUD may not be listening): {err}");
+                        TextDiffAction::TypewriterWait => {
+                            debug!("Orchestrator: candidate \"{candidate}\" is expanding; holding emission");
+                            typewriter_deadline = Some(tokio::time::Instant::now() + config.typewriter_settle_duration);
+                        }
+                        TextDiffAction::EmitTranslation => {
+                            // Immediate dialogue turn transition: cancel any pending typewriter timer
+                            typewriter_deadline = None;
+                            let text = text_gate.last_emitted_text().to_string();
+                            let mut state = OrchestratorSessionState {
+                                cache: &mut cache,
+                                context: &mut context,
+                                rate_limit_manager: &mut rate_limit_manager,
+                                translation_backend: &translation_backend,
+                                config: &config,
+                                hud_client: hud_client.as_ref(),
+                                event_tx: &event_tx,
+                            };
+                            dispatch_translation(text, &mut state).await;
                         }
                     }
                 }
@@ -200,7 +203,135 @@ pub fn spawn_orchestrator(
 
     OrchestratorHandle {
         stop_tx,
-        events_rx: event_rx,
+        events_rx: Arc::new(tokio::sync::Mutex::new(event_rx)),
+    }
+}
+
+struct OrchestratorSessionState<'a> {
+    cache: &'a mut FuzzyLruCache,
+    context: &'a mut TranslationContext,
+    rate_limit_manager: &'a mut RateLimitManager,
+    translation_backend: &'a Arc<dyn TranslationBackend>,
+    config: &'a OrchestratorConfig,
+    hud_client: Option<&'a HudIpcClient>,
+    event_tx: &'a mpsc::Sender<OrchestratorEvent>,
+}
+
+async fn dispatch_translation(
+    text: String,
+    state: &mut OrchestratorSessionState<'_>,
+) {
+    // If rate-limited, notify HUD and throttle request dispatch
+    if let Some(remaining) = state.rate_limit_manager.remaining_pause() {
+        let secs = remaining.as_secs().max(1);
+        let status_text = format!("⏳ Hız Sınırı Aşıldı (HTTP 429): {secs}s sonra devam edilecek...");
+        warn!("Orchestrator rate-limited: {status_text}");
+        if let Some(client) = state.hud_client {
+            let _ = client
+                .send(&HudMessage::SetStatus {
+                    active: true,
+                    text: status_text,
+                })
+                .await;
+        }
+        return;
+    }
+
+    let _ = state.event_tx.send(OrchestratorEvent::TextDetected {
+        raw: text.clone(),
+    }).await;
+
+    // Parse speaker tag if present to translate dialogue body cleanly
+    let parsed = parse_speaker_tags(&text, state.context.glossary());
+    let text_to_translate = if parsed.bracket_style.is_some() && !parsed.dialogue.is_empty() {
+        &parsed.dialogue
+    } else {
+        &text
+    };
+
+    // Check fuzzy cache first to prevent redundant remote translation calls
+    let (translated, cached) = if let Some(hit) = state.cache.get(text_to_translate) {
+        (hit, true)
+    } else {
+        match state.translation_backend.translate(
+            text_to_translate,
+            &state.config.src_lang,
+            &state.config.target_lang,
+            state.context,
+        ).await {
+            Ok(tr) => {
+                let tr_clean = tr.trim().to_string();
+                state.cache.insert(text_to_translate, &tr_clean);
+                state.rate_limit_manager.record_success();
+                (tr_clean, false)
+            }
+            Err(err) => {
+                let err_msg = format!("Translation failure: {err}");
+                error!("{err_msg}");
+                let is_429 = err.to_string().contains("429");
+                if is_429 {
+                    let pause = state.rate_limit_manager.record_rate_limit();
+                    let secs = pause.as_secs().max(1);
+                    let status_text = format!("⏳ Hız Sınırı Aşıldı (HTTP 429): {secs}s sonra devam edilecek...");
+                    if let Some(client) = state.hud_client {
+                        let _ = client
+                            .send(&HudMessage::SetStatus {
+                                active: true,
+                                text: status_text,
+                            })
+                            .await;
+                    }
+                } else if let Some(client) = state.hud_client {
+                    let _ = client
+                        .send(&HudMessage::ShowSubtitle {
+                            text: "⚠️ Çeviri Hatası (Bağlantı/Servis)".to_string(),
+                            original: Some(text),
+                            duration_ms: 3500,
+                        })
+                        .await;
+                }
+                let _ = state.event_tx.send(OrchestratorEvent::Error(err_msg)).await;
+                return;
+            }
+        }
+    };
+
+    // Re-wrap translation with speaker tag if present
+    let final_translated = match (&parsed.bracket_style, &parsed.resolved_speaker) {
+        (Some(style), Some(speaker)) => {
+            let wrap = style.wrap(speaker);
+            if wrap.ends_with(' ') {
+                format!("{wrap}{translated}")
+            } else {
+                format!("{wrap} {translated}")
+            }
+        }
+        _ => translated.clone(),
+    };
+
+    // Record turn in context with resolved speaker attribution on both cache hits and fresh translations
+    state.context.add_turn_with_speaker(
+        parsed.resolved_speaker.as_deref(),
+        &text,
+        &final_translated,
+    );
+
+    let _ = state.event_tx.send(OrchestratorEvent::TranslationReady {
+        original: text.clone(),
+        translated: final_translated.clone(),
+        cached,
+    }).await;
+
+    // Forward to HUD overlay if configured
+    if let Some(client) = state.hud_client {
+        let msg = HudMessage::ShowSubtitle {
+            text: final_translated,
+            original: Some(text),
+            duration_ms: state.config.hud_duration_ms,
+        };
+        if let Err(err) = client.send(&msg).await {
+            debug!("HUD client send notice (HUD may not be listening): {err}");
+        }
     }
 }
 
