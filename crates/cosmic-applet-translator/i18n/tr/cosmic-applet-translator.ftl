@@ -24,6 +24,15 @@ tab-display = Altyazı HUD
 tab-glossary = Oyun Sözlüğü
 close-window = Pencereyi Kapat
 
+# Presets
+preset-bottom25-full = Alt %25 (RPG)
+preset-bottom33-full = Alt %33 (VN)
+preset-fullscreen-full = Tam Ekran
+preset-custom-full = Özel Alan
+preset-bottom25-short = Alt %25
+preset-bottom33-short = Alt %33
+preset-fullscreen-short = Tam Ekran
+
 # Capture Settings
 section-capture-title = Diyalog ve Yakalama Alanı
 preset-dialog-template = Diyalog Şablonu
@@ -51,6 +60,8 @@ connection-test = Bağlantı Testi
 test-button = Test Et
 testing-connection = Bağlantı test ediliyor...
 status-unknown = Durum bilinmiyor
+connection-success = Bağlantı başarılı ({ $count } model yüklü)
+connection-error = Hata: { $error }
 
 # Display & HUD
 hud-layer-title = Altyazı HUD Katmanı
@@ -75,6 +86,10 @@ glossary-source-placeholder = Orijinal Terim (örn: Potion)
 glossary-target-placeholder = Çevirisi (örn: İksir)
 add-button = Ekle
 delete-button = Sil
+add-new-term = Yeni Terim Ekle
+saved-terms = Kayıtlı Terimler:
+no-saved-terms = Henüz kayıtlı sözlük terimi bulunmuyor.
+duration-seconds = { $sec } sn
 
 # Live Inspection Dashboard
 live-inspection-title = Canlı Çeviri Alanı & Denetim

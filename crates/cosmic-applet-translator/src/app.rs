@@ -161,10 +161,10 @@ impl AppModel {
 
         let current_preset = RoiPreset::from_str_name(&self.config.preset);
         let preset_label = match current_preset {
-            RoiPreset::Bottom25 => "Alt %25 (RPG)",
-            RoiPreset::Bottom33 => "Alt %33 (VN)",
-            RoiPreset::FullScreen => "Tam Ekran",
-            RoiPreset::Custom => "Özel Alan",
+            RoiPreset::Bottom25 => fl!("preset-bottom25-full"),
+            RoiPreset::Bottom33 => fl!("preset-bottom33-full"),
+            RoiPreset::FullScreen => fl!("preset-fullscreen-full"),
+            RoiPreset::Custom => fl!("preset-custom-full"),
         };
 
         let roi_desc = match current_preset {
@@ -175,7 +175,7 @@ impl AppModel {
                     fl!("custom-roi-unset")
                 }
             }
-            _ => preset_label.to_string(),
+            _ => preset_label.clone(),
         };
 
         let header = row![
@@ -838,13 +838,15 @@ impl cosmic::Application for AppModel {
                         match res {
                             Ok(models) => {
                                 self.settings_state.ollama_test_status = Some(format!(
-                                    "✓ Bağlantı Başarılı ({} model yüklü)",
-                                    models.len()
+                                    "✓ {}",
+                                    fl!("connection-success", count = models.len())
                                 ));
                             }
                             Err(err) => {
-                                self.settings_state.ollama_test_status =
-                                    Some(format!("✗ Hata: {}", err));
+                                self.settings_state.ollama_test_status = Some(format!(
+                                    "✗ {}",
+                                    fl!("connection-error", error = err.as_str())
+                                ));
                             }
                         }
                     }
@@ -1445,7 +1447,12 @@ impl cosmic::Application for AppModel {
             };
 
             let current_preset = RoiPreset::from_str_name(&self.config.preset);
-            let preset_label = current_preset.label();
+            let preset_label = match current_preset {
+                RoiPreset::Bottom25 => fl!("preset-bottom25-full"),
+                RoiPreset::Bottom33 => fl!("preset-bottom33-full"),
+                RoiPreset::FullScreen => fl!("preset-fullscreen-full"),
+                RoiPreset::Custom => fl!("preset-custom-full"),
+            };
 
             let roi_desc = match current_preset {
                 RoiPreset::Custom => {
@@ -1455,16 +1462,16 @@ impl cosmic::Application for AppModel {
                         fl!("custom-roi-unset")
                     }
                 }
-                _ => preset_label.to_string(),
+                _ => preset_label.clone(),
             };
 
             let mut preset_buttons = row![].spacing(4);
             for p in [RoiPreset::Bottom25, RoiPreset::Bottom33, RoiPreset::FullScreen] {
                 let label = match p {
-                    RoiPreset::Bottom25 => "Alt %25",
-                    RoiPreset::Bottom33 => "Alt %33",
-                    RoiPreset::FullScreen => "Tam Ekran",
-                    _ => "",
+                    RoiPreset::Bottom25 => fl!("preset-bottom25-short"),
+                    RoiPreset::Bottom33 => fl!("preset-bottom33-short"),
+                    RoiPreset::FullScreen => fl!("preset-fullscreen-short"),
+                    _ => String::new(),
                 };
                 let btn = if p == current_preset {
                     button::suggested(label)

@@ -24,6 +24,15 @@ tab-display = Subtitle HUD
 tab-glossary = Game Glossary
 close-window = Close Window
 
+# Presets
+preset-bottom25-full = Bottom 25% (RPG)
+preset-bottom33-full = Bottom 33% (VN)
+preset-fullscreen-full = Full Screen
+preset-custom-full = Custom Area
+preset-bottom25-short = Bottom 25%
+preset-bottom33-short = Bottom 33%
+preset-fullscreen-short = Full Screen
+
 # Capture Settings
 section-capture-title = Dialogue and Capture Area
 preset-dialog-template = Dialogue Template
@@ -51,6 +60,8 @@ connection-test = Connection Test
 test-button = Test Connection
 testing-connection = Testing connection...
 status-unknown = Status unknown
+connection-success = Connection successful ({ $count } models installed)
+connection-error = Error: { $error }
 
 # Display & HUD
 hud-layer-title = Subtitle HUD Layer
@@ -75,6 +86,10 @@ glossary-source-placeholder = Original Term (e.g. Potion)
 glossary-target-placeholder = Translation (e.g. Elixir)
 add-button = Add
 delete-button = Delete
+add-new-term = Add New Term
+saved-terms = Saved Terms:
+no-saved-terms = No glossary terms defined yet.
+duration-seconds = { $sec } s
 
 # Live Inspection Dashboard
 live-inspection-title = Live Capture Area & Inspection

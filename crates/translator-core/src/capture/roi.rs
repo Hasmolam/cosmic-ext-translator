@@ -225,10 +225,10 @@ impl RoiPreset {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Bottom25 => "RPG Maker / JRPG (Alt %25)",
-            Self::Bottom33 => "Visual Novel (Alt %33)",
-            Self::FullScreen => "Tam Ekran",
-            Self::Custom => "Özel Seçim",
+            Self::Bottom25 => "RPG Maker / JRPG (Bottom 25%)",
+            Self::Bottom33 => "Visual Novel (Bottom 33%)",
+            Self::FullScreen => "Full Screen",
+            Self::Custom => "Custom Area",
         }
     }
 

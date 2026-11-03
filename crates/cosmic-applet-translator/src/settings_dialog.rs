@@ -120,10 +120,10 @@ impl SettingsState {
         let mut preset_row = row![].spacing(6);
         for p in RoiPreset::ALL {
             let label = match p {
-                RoiPreset::Bottom25 => "Alt %25 (RPG)",
-                RoiPreset::Bottom33 => "Alt %33 (VN)",
-                RoiPreset::FullScreen => "Tam Ekran",
-                RoiPreset::Custom => "Özel Alan",
+                RoiPreset::Bottom25 => fl!("preset-bottom25-full"),
+                RoiPreset::Bottom33 => fl!("preset-bottom33-full"),
+                RoiPreset::FullScreen => fl!("preset-fullscreen-full"),
+                RoiPreset::Custom => fl!("preset-custom-full"),
             };
             let is_active = p == current_preset;
             let btn = if is_active {
@@ -398,7 +398,7 @@ impl SettingsState {
                         |val| SettingsMessage::DurationChanged(val as u64),
                     )
                     .width(180),
-                    text(format!("{:.1} sn", dur as f32 / 1000.0)).size(14),
+                    text(fl!("duration-seconds", sec = format!("{:.1}", dur as f32 / 1000.0))).size(14),
                 ]
                 .spacing(10)
                 .align_y(Alignment::Center),
@@ -448,17 +448,17 @@ impl SettingsState {
         }
 
         let section = widget::settings::section()
-            .title("Oyun Sözlüğü (Glossary)")
+            .title(fl!("glossary-title"))
             .add(widget::settings::item(
-                "Yeni Terim Ekle",
+                fl!("add-new-term"),
                 add_row,
             ));
 
         column![
             section,
-            text("Kayıtlı Terimler:").size(14),
+            text(fl!("saved-terms")).size(14),
             if config.glossary.is_empty() {
-                Element::from(text("Henüz kayıtlı sözlük terimi bulunmuyor.").size(13))
+                Element::from(text(fl!("no-saved-terms")).size(13))
             } else {
                 Element::from(list_col)
             }
