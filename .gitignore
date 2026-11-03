@@ -4,4 +4,5 @@ Cargo.lock
 .env
 *.log
 *.png
+!docs/assets/*.png
 .agents/

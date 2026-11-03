@@ -4,6 +4,8 @@
 
 `cosmic-ext-translator` is a native COSMIC desktop translation suite designed for full-screen games, visual novels, and desktop applications. It captures on-screen text in real time, runs OCR and contextual machine translation, and renders translated text into an input-transparent (click-through) Wayland layer-shell HUD overlay without focus stealing or frame pacing degradation.
 
+![Capture & Area Settings](docs/assets/settings_capture.png)
+
 ---
 
 ## Technical Pipeline & Capabilities
@@ -41,6 +43,38 @@ The architecture is designed around zero focus loss, deterministic buffer lifecy
 6. **Dialogue Backlog and Standalone Settings Dashboard:**
    - Retains up to 500 translation entries in a searchable and copyable FIFO history buffer.
    - Launches settings as a standalone COSMIC desktop application (`cosmic::app::run`) with full window decorations and system headerbar, syncing changes live to the panel applet via `cosmic-config` subscription (`watch_config`).
+
+### Settings Interface Showcase
+
+<details open>
+<summary><b>Capture & Dialogue Area</b></summary>
+
+![Capture & Area](docs/assets/settings_capture.png)
+</details>
+
+<details>
+<summary><b>Translation Engine Selection (Google, DeepL, Ollama, OpenAI)</b></summary>
+
+![Translation Engine](docs/assets/settings_engine.png)
+</details>
+
+<details>
+<summary><b>Subtitle HUD Customization & Positioning Calibration</b></summary>
+
+![Subtitle HUD](docs/assets/settings_hud.png)
+</details>
+
+<details>
+<summary><b>In-Game Terminology Glossary</b></summary>
+
+![Game Glossary](docs/assets/settings_glossary.png)
+</details>
+
+<details>
+<summary><b>Searchable Dialogue History & Backlog</b></summary>
+
+![Dialogue History](docs/assets/settings_history.png)
+</details>
 
 ---
 
