@@ -33,6 +33,23 @@ build *args:
 build-release *args:
     cargo build --release --workspace {{args}}
 
+# Build Debian/Ubuntu package (.deb)
+deb: build-release
+    rm -rf target/deb-pkg
+    mkdir -p target/deb-pkg/DEBIAN
+    mkdir -p target/deb-pkg/usr/bin
+    mkdir -p target/deb-pkg/usr/share/applications
+    mkdir -p target/deb-pkg/usr/share/metainfo
+    mkdir -p target/deb-pkg/usr/share/icons/hicolor/scalable/apps
+    install -Dm0755 target/release/cosmic-applet-translator target/deb-pkg/usr/bin/cosmic-applet-translator
+    install -Dm0755 target/release/cosmic-translator-overlay target/deb-pkg/usr/bin/cosmic-translator-overlay
+    strip target/deb-pkg/usr/bin/*
+    install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.desktop target/deb-pkg/usr/share/applications/{{appid}}.desktop
+    install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml target/deb-pkg/usr/share/metainfo/{{appid}}.metainfo.xml
+    install -Dm0644 crates/cosmic-applet-translator/resources/icon.svg target/deb-pkg/usr/share/icons/hicolor/scalable/apps/{{appid}}.svg
+    printf "Package: cosmic-ext-translator\nVersion: 0.1.0\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Hasmolam <hasanhuseyinyolcu25@gmail.com>\nDepends: libc6, libpipewire-0.3-0, libxkbcommon0\nDescription: Real-time Wayland screen and game subtitle translator for COSMIC Desktop\n Translates on-screen text in games and visual novels on the COSMIC desktop.\n It reads a screen region you choose, runs OCR locally, and shows the\n translation as a subtitle line on top of the game.\n" > target/deb-pkg/DEBIAN/control
+    dpkg-deb --build --root-owner-group target/deb-pkg target/cosmic-ext-translator_0.1.0_amd64.deb
+
 # Install both binaries and desktop integration files
 install:
     install -Dm0755 target/release/cosmic-applet-translator {{bindir}}/cosmic-applet-translator
