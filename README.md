@@ -37,39 +37,67 @@ Translates on-screen text in games and visual novels on the COSMIC desktop. It r
 
 ## Installation
 
-### Pre-built Package (Pop!_OS / Ubuntu)
+### Method 1: Single-Line Quick Install
+
+Downloads the prebuilt release binary, installs desktop entry and icons, and reloads the panel (no root required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/install.sh | bash
+```
+
+To uninstall:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/uninstall.sh | bash
+```
+
+### Method 2: Pop!_OS / Ubuntu (.deb Package)
 
 Download the `.deb` package from the [latest release](https://github.com/Hasmolam/cosmic-ext-translator/releases/latest) and install it:
 
-```sh
+```bash
 sudo apt install ./cosmic-ext-translator_0.1.0_amd64.deb
 ```
 
 Or double-click the `.deb` file in your file manager to install via the COSMIC App Center.
 
 To uninstall:
-```sh
+```bash
 sudo apt remove cosmic-ext-translator
 ```
 
-### Build from Source
+### Method 3: Arch Linux (PKGBUILD)
 
-```sh
-git clone https://github.com/hasmolam/cosmic-ext-translator
+```bash
+git clone https://github.com/hasmolam/cosmic-ext-translator.git
+cd cosmic-ext-translator/packaging/arch
+makepkg -si
+```
+
+### Method 4: Build from Source
+
+```bash
+git clone https://github.com/hasmolam/cosmic-ext-translator.git
 cd cosmic-ext-translator
 just build-release
+
+# Install for current user only to ~/.local (no root required):
+just install-user
+
+# Or system-wide installation (installs to /usr, requires sudo):
 sudo $(which just) install
 ```
 
 *(You can also build a `.deb` package locally by running `just deb`.)*
 
-This installs `cosmic-applet-translator` and `cosmic-translator-overlay` to `/usr/bin`, plus the desktop entry, metainfo, and icon under `/usr/share`.
+### Adding to the Panel
 
-Then add the applet to the panel: **Settings → Desktop → Panel → Configure panel applets → Add applet → Screen Translator**.
+In COSMIC Desktop settings:
+**Settings → Desktop → Panel → (Select Panel) → Configure panel applets → Add Applet → "Screen Translator"**
 
 To uninstall a source install:
-
-```sh
+```bash
+just uninstall-user
+# or for system-wide:
 sudo $(which just) uninstall
 ```
 

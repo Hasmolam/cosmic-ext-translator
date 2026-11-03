@@ -1,0 +1,30 @@
+# Maintainer: Hasan Hüseyin Yolcu <hasanhuseyinyolcu25@gmail.com>
+pkgname=cosmic-ext-translator-git
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Real-time Wayland screen and game subtitle translator for COSMIC Desktop"
+arch=('x86_64')
+url="https://github.com/Hasmolam/cosmic-ext-translator"
+license=('GPL-3.0-or-later')
+depends=('libpipewire' 'libxkbcommon' 'wayland' 'hicolor-icon-theme')
+makedepends=('cargo' 'just' 'git' 'clang' 'pkgconf')
+provides=('cosmic-ext-translator')
+conflicts=('cosmic-ext-translator')
+source=("git+https://github.com/Hasmolam/cosmic-ext-translator.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "${srcdir}/${pkgname%-git}"
+    git describe --long --tags --always 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' ||
+    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+    cd "${srcdir}/${pkgname%-git}"
+    just build-release
+}
+
+package() {
+    cd "${srcdir}/${pkgname%-git}"
+    just rootdir="${pkgdir}" prefix="/usr" install
+}

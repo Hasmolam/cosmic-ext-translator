@@ -66,6 +66,26 @@ uninstall:
     rm -f {{metainfo_dst}}
     rm -f {{icon_dst}}
 
+# Install for current user only to ~/.local (no root required)
+install-user:
+    install -Dm0755 target/release/cosmic-applet-translator {{home}}/.local/bin/cosmic-applet-translator
+    install -Dm0755 target/release/cosmic-translator-overlay {{home}}/.local/bin/cosmic-translator-overlay
+    install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.desktop {{home}}/.local/share/applications/{{appid}}.desktop
+    install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml {{home}}/.local/share/metainfo/{{appid}}.metainfo.xml
+    install -Dm0644 crates/cosmic-applet-translator/resources/icon.svg {{home}}/.local/share/icons/hicolor/scalable/apps/{{appid}}.svg
+    update-desktop-database {{home}}/.local/share/applications 2>/dev/null || true
+    killall cosmic-panel 2>/dev/null || true
+
+# Uninstall user-local installation
+uninstall-user:
+    rm -f {{home}}/.local/bin/cosmic-applet-translator
+    rm -f {{home}}/.local/bin/cosmic-translator-overlay
+    rm -f {{home}}/.local/share/applications/{{appid}}.desktop
+    rm -f {{home}}/.local/share/metainfo/{{appid}}.metainfo.xml
+    rm -f {{home}}/.local/share/icons/hicolor/scalable/apps/{{appid}}.svg
+    update-desktop-database {{home}}/.local/share/applications 2>/dev/null || true
+    killall cosmic-panel 2>/dev/null || true
+
 # Run capture test utility
 test-capture:
     cargo run -p translator-core --example test_capture
