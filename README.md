@@ -37,6 +37,23 @@ Translates on-screen text in games and visual novels on the COSMIC desktop. It r
 
 ## Installation
 
+### Pre-built Package (Pop!_OS / Ubuntu)
+
+Download the `.deb` package from the [latest release](https://github.com/Hasmolam/cosmic-ext-translator/releases/latest) and install it:
+
+```sh
+sudo apt install ./cosmic-ext-translator_0.1.0_amd64.deb
+```
+
+Or double-click the `.deb` file in your file manager to install via the COSMIC App Center.
+
+To uninstall:
+```sh
+sudo apt remove cosmic-ext-translator
+```
+
+### Build from Source
+
 ```sh
 git clone https://github.com/hasmolam/cosmic-ext-translator
 cd cosmic-ext-translator
@@ -44,11 +61,13 @@ just build-release
 sudo $(which just) install
 ```
 
+*(You can also build a `.deb` package locally by running `just deb`.)*
+
 This installs `cosmic-applet-translator` and `cosmic-translator-overlay` to `/usr/bin`, plus the desktop entry, metainfo, and icon under `/usr/share`.
 
 Then add the applet to the panel: **Settings → Desktop → Panel → Configure panel applets → Add applet → Screen Translator**.
 
-To uninstall:
+To uninstall a source install:
 
 ```sh
 sudo $(which just) uninstall
