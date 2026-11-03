@@ -1,131 +1,148 @@
 # cosmic-ext-lingua
 
-**COSMIC Masaüstü Ortamı için Gerçek Zamanlı Ekran ve Oyun Çevirmeni**  
-*(Real-time Wayland Screen & Game Subtitle Translator for COSMIC Desktop)*
+[English](README.md) | [Türkçe](README.tr.md)
 
-`cosmic-ext-lingua`, tam ekran oyunlarda, görsel romanlarda (Visual Novel), RPG diyaloglarında veya yabancı dildeki uygulamalarda ekrandaki metinleri gerçek zamanlı yakalayıp çevirerek oyun/uygulama üzerinde tıklamaları engellemeyen (click-through) şeffaf bir altyazı katmanı (HUD) olarak gösteren yerel bir COSMIC panel eklentisidir.
+**Real-time Wayland Screen and Game Subtitle Translator for COSMIC Desktop**
 
----
-
-## Temel Özellikler ve Çalışma Mantığı
-
-Wayland mimarisi üzerinde sıfır odak kaybı ve düşük kaynak tüketimi ile çalışacak şekilde tasarlanmıştır:
-
-1. **Kesintisiz Ekran Yakalama (`ashpd` + `PipeWire`) & İç Alan Maskeleme:**
-   - XDG Desktop Portal Screencast API'si ve `restore_token` oturum önbelleklemesi ile ekran izinleri hatırlanır.
-   - Yalnızca seçili ilgi bölgesi (ROI) kırpılır; ham Spa buffer'ları kopyalanıp anında bırakılır (özel PipeWire OS iş parçacığında çalışır).
-   - **İç Alan Maskeleme (`ignore_roi`):** ROI sınırları içinde kalan karakter portreleri, avatarlar veya animasyonlu mini haritalar maskelenerek sahte tetiklemeler önlenir.
-
-2. **İki Aşamalı Hibrit Tetikleme (`TextGate` Debouncer) & Ön İşleme:**
-   - **64-bit dHash + Levenshtein Eşik Denetimi:** Daktilo (typewriter) efektiyle harf harf akan metinleri ve 3D arka plan hareketlerini ayırt eder; metin durağanlaşana kadar OCR çalıştırmaz.
-   - **Yüksek Geçiren Bulanıklık Çıkarma (Blur Subtraction):** Düşük kontrastlı metinleri dinamik arka planlardan ayırmak için Gauss tabanlı yüksek geçiren filtreleme uygular.
-
-3. **Gelişmiş OCR, Dikey Metin (Tategaki) ve Furigana Budama:**
-   - **Saf Rust OCR (`ocrs` + `rten`):** Harici C++ bağımlılığı olmadan yerel modellerle metin tespiti ve tanıması yapar.
-   - **Dikey CJK Topolojik Sıralayıcı:** Japonca/Çince dikey diyalog sütunlarını sağdan sola (RTL) ve yukarıdan aşağıya (TTB) doğru sıralar; satır içi CJK/Latin boşluklarını korur.
-   - **Geometrik Furigana Filtresi:** Kanjilerin yanındaki küçük okunuş (ruby/furigana) karakter kutularını noktalama işaretlerini bozmadan ana metinden ayıklar.
-
-4. **Bağlamsal Çeviri ve Sözlük Desteği:**
-   - **Konuşmacı Ayrıştırma:** 7 farklı parantez stilini (`【...】`, `〔...〕`, `「...」`, `[...]` vb.) tespit eder, isimleri karakter sözlüğü (Glossary) ile eşleştirir.
-   - **Kayan Diyalog Belleği (`TranslationContext`):** Önceki konuşma turlarını bellekte tutarak LLM çeviri motorlarına bağlam sağlar (gizli özne ve zamir çözümleme).
-   - **Çoklu Motor ve Çevrimdışı Destek:** Google Translate Web API, yerel LLM (Ollama) ve çevrimdışı nöral modeller (`OfflineTranslationBackend`).
-   - **Hız Limiti Yönetimi (HTTP 429):** API kota aşımlarında üstel geri çekilme (exponential backoff) uygular ve kalan süreyi HUD üzerinde canlı geri sayım olarak gösterir.
-   - **Morfolojik Japonca Sözlük:** Açgözlü (greedy) önek çözümlemesiyle yerleşik oyun sözlüğü araması sunar.
-
-5. **Click-Through Layer-Shell HUD (`wlr-layer-shell`):**
-   - Çevrilen altyazıyı ve durum rozetlerini tam ekran pencerelerin üzerinde gösterir.
-   - `input_zone: Some(vec![])` tanımlamasıyla tüm fare tıklamalarını %100 geçirgenlikle arkadaki oyuna iletir.
-
-6. **Diyalog Geçmişi (Backlog) ve 5 Sekmeli Ayarlar Penceresi:**
-   - Son 500 diyalog kaydını zaman damgası ve konuşmacı bilgisiyle hafızada tutar; aranabilir, filtrelenebilir ve panoya kopyalanabilir.
-   - Panel applet'i üzerinden ROI, ignore ROI koordinatları, bulanıklık filtresi, OCR parametreleri ve çeviri motoru tercihleri yapılandırılabilir.
+`cosmic-ext-lingua` is a native COSMIC desktop translation suite designed for full-screen games, visual novels, and desktop applications. It captures on-screen text in real time, runs OCR and contextual machine translation, and renders translated text into an input-transparent (click-through) Wayland layer-shell HUD overlay without focus stealing or frame pacing degradation.
 
 ---
 
-## Mimari Yapı (Workspace Crates)
+## Technical Pipeline & Capabilities
 
-| Crate | Rolü |
+The architecture is designed around zero focus loss, deterministic buffer lifecycles, and low CPU/GPU overhead:
+
+1. **Non-blocking Screen Capture (`ashpd` + PipeWire):**
+   - Utilizes XDG Desktop Portal Screencast with `restore_token` caching to remember screen capture permissions across launches.
+   - PipeWire event loop executes on a dedicated OS worker thread (`std::thread`), decoupled from Tokio async execution.
+   - Buffer negotiation acquires only the user-defined Region of Interest (ROI) and immediately drops the raw Spa buffer (`dequeue_buffer()`), preventing buffer starvation or compositor session drops.
+   - **Inner Ignore Masking (`ignore_roi`):** Sub-regions within the active capture area (such as animated character portraits, live busts, or mini-maps) can be masked out prior to debouncing and OCR to eliminate false positive triggers.
+
+2. **Two-Stage Hybrid Trigger (`TextGate` Debouncer):**
+   - **64-bit dHash + Levenshtein Similarity:** Distinguishes dialogue typewriter animation (letter-by-letter streaming in RPGs/VNs) and 3D background movement.
+   - Frames must remain stable for `settle_duration` (configurable, default 250ms) before triggering OCR inference, preventing rate-limit exhaustion and compute waste.
+   - **High-Pass Blur Subtraction Filter:** Optional Gaussian blur subtraction filter attenuates smooth background gradients and illumination shifts while sharpening low-contrast text edges.
+
+3. **Pure-Rust OCR, Vertical CJK Layout, and Furigana Pruning:**
+   - **Local Inference (`ocrs` + `rten`):** Runs pure-Rust neural OCR models locally with SIMD acceleration (`opt-level = 3`), eliminating external C++ runtime dependencies.
+   - **Vertical CJK Topological Sorter:** Classifies aspect ratios ($H/W > 1.4$), clusters vertical columns via horizontal overlap metrics, and enforces right-to-left (RTL) column ordering with top-to-bottom (TTB) reading sequences for Japanese and Chinese text. Preserves space-aware joins between Western and CJK tokens.
+   - **Geometric Furigana Filter:** Identifies and filters out undersized phonetic ruby/furigana annotations adjacent to kanji characters while preserving essential punctuation marks.
+
+4. **Context-Aware Translation and Speaker Disambiguation:**
+   - **Speaker Tag Extraction:** Parses speaker names enclosed in 7 standard bracket styles (`【...】`, `〔...〕`, `「...」`, `[...]`, `Name:`, etc.), separating the speaker label from dialogue text.
+   - **In-Memory Glossary:** Replaces recognized speaker names and in-game lore terminology based on user-defined glossary pairs.
+   - **Sliding Turn History (`TranslationContext`):** Maintains recent dialogue history in memory to provide context for LLM translation backends (resolving omitted pronouns and gender references in Japanese).
+   - **Engines Supported:** Google Translate Web API, local Ollama LLMs (`qwen2.5:3b`, etc.), DeepL API, OpenAI-compatible endpoints, and modular offline neural engine traits (`OfflineTranslationBackend`).
+   - **HTTP 429 Rate-Limit Manager:** Employs exponential backoff with retry-after parsing when remote APIs throttle requests, surfacing an active countdown pill directly on the HUD.
+   - **Morphological Japanese Dictionary:** Built-in longest-prefix tokenizer and lexical lookup for Japanese game dialogue.
+
+5. **Input-Transparent Layer-Shell HUD (`wlr-layer-shell`):**
+   - Displays translations and status notifications as an overlay above full-screen windows.
+   - Configured with `input_zone: Some(vec![])` to guarantee 100% click-through transparency to underlying game windows.
+
+6. **Dialogue Backlog and Standalone Settings Dashboard:**
+   - Retains up to 500 translation entries in a searchable and copyable FIFO history buffer.
+   - Launches settings as a standalone COSMIC desktop application (`cosmic::app::run`) with full window decorations and system headerbar, syncing changes live to the panel applet via `cosmic-config` subscription (`watch_config`).
+
+---
+
+## Workspace Architecture
+
+The project is structured as a multi-crate Rust workspace under GPL-3.0-or-later:
+
+| Crate | Purpose |
 | :--- | :--- |
-| `crates/translator-core` | PipeWire yakalama döngüsü, ROI ve ignore-mask kırpma, TextGate dHash/Levenshtein debouncer, Gauss filtreleme, `rten` OCR motoru, dikey CJK ve furigana analizi, konuşmacı ayrıştırma, kayan diyalog geçmişi, Google/Ollama/çevrimdışı çeviri motorları, HTTP 429 yöneticisi, Japonca morfolojik sözlük, Unix Domain Socket IPC sunucusu. |
-| `crates/cosmic-translator-overlay` | İki modlu Wayland `layer-shell` ikilisi: `--hud` (tıklama geçirgen altyazı ve geri sayım rozeti katmanı) ve `--selector` (etkileşimli ROI alan seçici). |
-| `crates/cosmic-applet-translator` | COSMIC Panel eklentisi (`com.system76.CosmicExtLingua`), durum açılır menüsü, arka plan olay boşaltma döngüsü ve 5 sekmeli detaylı ayarlar penceresi (Genel, ROI & Maske, OCR & Görüntü, Çeviri & Sözlük, Diyalog Geçmişi). |
+| `crates/translator-core` | Headless core engine: PipeWire capture thread, ROI and ignore masking, TextGate debouncer, blur subtraction, `ocrs` OCR inference, vertical CJK reading order sorter, furigana pruner, speaker parser, translation context, HTTP 429 manager, Japanese dictionary, and IPC socket server. |
+| `crates/cosmic-translator-overlay` | Dual-mode Wayland layer-shell binary: `--hud` (click-through subtitle HUD and countdown pill) and `--selector` (interactive screen region picker). |
+| `crates/cosmic-applet-translator` | COSMIC panel applet (`com.system76.CosmicExtLingua`), popup quick-actions, and 5-tab standalone settings dashboard (Capture, Engine, Display, Glossary, History). |
 
 ---
 
-## Sistem Gereksinimleri
+## System Requirements
 
-Derleme ve çalışma zamanı için aşağıdaki sistem paketlerinin kurulu olması gerekir (Ubuntu / Pop!_OS 24.04+):
+The following packages are required for compilation on Ubuntu or Pop!_OS 24.04+:
 
 ```bash
-sudo apt install build-essential pkg-config clang libclang-dev \
+sudo apt update
+sudo apt install -y build-essential pkg-config clang libclang-dev \
     libpipewire-0.3-dev libspa-0.2-dev libwayland-dev libxkbcommon-dev \
     libdbus-1-dev just
 ```
 
-- **Masaüstü Ortamı:** COSMIC Desktop (`cosmic-comp` ve `xdg-desktop-portal-cosmic`)
-- **Opsiyonel (Yerel LLM Çevirisi için):** [Ollama](https://ollama.com/) (`ollama pull qwen2.5:3b`)
+* **Desktop Environment:** COSMIC Desktop (`cosmic-comp` and `xdg-desktop-portal-cosmic`)
+* **Optional (for local LLM translation):** [Ollama](https://ollama.com/) (`ollama pull qwen2.5:3b`)
 
 ---
 
-## Derleme ve Kurulum
+## Building and Installation
 
-Proje kök dizininde `just` komutlarını kullanarak derleyebilir ve sisteme kurabilirsiniz:
+The project uses `just` for workflow automation.
+
+### Build and Test
 
 ```bash
-# Tüm çalışma alanını kontrol et ve testleri çalıştır
+# Verify workspace compilation
 just check
-just test
 
-# Release modunda her iki ikiliyi (applet + overlay) derle
+# Run Clippy lints
+just lint
+
+# Execute all workspace unit, integration, and adversarial tests (180 tests)
+just test
+```
+
+### Installation
+
+```bash
+# Build optimized release binaries
 just build-release
 
-# Sisteme kur (/usr/bin altına ikilileri ve .desktop / metainfo / ikon dosyalarını yükler)
+# Install binaries, .desktop launcher, metainfo, and icon to system directories (/usr/bin and /usr/share)
 sudo $(which just) install
 ```
 
-Geliştirme sırasında doğrudan çalıştırmak için:
+To remove the installation:
 
 ```bash
-# Geliştirme modunda tüm ikilileri derle (applet + overlay)
-just build
-
-# Panel applet'ini çalıştır (applet çeviri başladığında overlay ikilisini otomatik tetikler)
-just run-applet
+sudo $(which just) uninstall
 ```
 
-Bileşenleri bağımsız olarak test etmek için:
+---
+
+## Development and Direct Execution
 
 ```bash
-# Alan seçiciyi (ROI selector) doğrudan başlat
+# Run the standalone configuration dashboard and inspection window
+cargo run -p cosmic-applet-translator
+
+# Run in COSMIC panel applet mode
+just run-applet
+
+# Launch interactive region selector directly
 cargo run -p cosmic-translator-overlay -- --selector
 
-# Altyazı HUD katmanını doğrudan başlat
+# Launch HUD subtitle overlay directly
 cargo run -p cosmic-translator-overlay -- --hud
 
-# Ekran yakalama entegrasyon aracını test et (aktif Wayland oturumu gerektirir)
+# Test PipeWire capture pipeline (requires active Wayland session)
 just test-capture
 ```
 
-Kurulumu kaldırmak için:
-
-```bash
-sudo just uninstall
-```
-
 ---
 
-## Küresel Kısayollar (Global Shortcuts)
+## Global Shortcuts
 
-XDG Global Shortcuts portalı üzerinden oyun içindeyken pencere değiştirmeden kullanabileceğiniz varsayılan kısayollar:
+Registered via the XDG Desktop Portal Global Shortcuts API for in-game control:
 
-| Kısayol | İşlev |
+| Shortcut | Action |
 | :--- | :--- |
-| `Super + Alt + S` | Ekranda çevrilecek özel alanı (ROI) fare ile seç (`--selector`) |
-| `Super + Alt + T` | Gerçek zamanlı ekran çevirisini başlat / duraklat |
-| `Super + Alt + H` | Altyazı HUD katmanını gizle / göster |
+| `Super + Alt + S` | Select capture region interactively (`--selector`) |
+| `Super + Alt + T` | Toggle continuous real-time translation loop |
+| `Super + Alt + H` | Toggle subtitle HUD overlay visibility |
+| `Super + Alt + C` | Translate current screen immediately (one-shot trigger) |
 
 ---
 
-## Lisans
+## License
 
-Bu proje **GPL-3.0-or-later** lisansı altında sunulmaktadır.
+This project is licensed under the [GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later).
