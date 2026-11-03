@@ -1490,7 +1490,13 @@ impl cosmic::Application for AppModel {
                     fl!("enable-translation"),
                     widget::toggler(self.capture_active).on_toggle(Message::ToggleCapture),
                 ))
-                .add(widget::settings::item(fl!("preset"), preset_buttons))
+                .add(
+                    widget::column![
+                        widget::text(fl!("preset")).size(14),
+                        preset_buttons
+                    ]
+                    .spacing(8)
+                )
                 .add(widget::settings::item(
                     fl!("active-region"),
                     widget::text(roi_desc),
@@ -1512,7 +1518,9 @@ impl cosmic::Application for AppModel {
                         .on_press(Message::OpenSettings),
                 );
 
-            return self.core.applet.popup_container(content_list).into();
+            return self.core.applet.popup_container(
+                widget::container(content_list).width(360)
+            ).into();
         }
 
         widget::text("").into()
