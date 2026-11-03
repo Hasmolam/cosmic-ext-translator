@@ -44,9 +44,15 @@ The architecture is designed around zero focus loss, deterministic buffer lifecy
    - Retains up to 500 translation entries in a searchable and copyable FIFO history buffer.
    - Launches settings as a standalone COSMIC desktop application (`cosmic::app::run`) with full window decorations and system headerbar, syncing changes live to the panel applet via `cosmic-config` subscription (`watch_config`).
 
-### Settings Interface Showcase
+### Interface Showcase
 
 <details open>
+<summary><b>COSMIC Panel Applet Popup</b></summary>
+
+![Panel Applet Popup](docs/assets/applet_popup.png)
+</details>
+
+<details>
 <summary><b>Capture & Dialogue Area</b></summary>
 
 ![Capture & Area](docs/assets/settings_capture.png)
