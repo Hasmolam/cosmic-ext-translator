@@ -1,10 +1,25 @@
+<div align="center">
+
 # cosmic-ext-translator
 
 **Real-time Wayland Screen and Game Subtitle Translator for COSMIC Desktop**
 
-`cosmic-ext-translator` is a native COSMIC desktop translation suite designed for full-screen games, visual novels, and desktop applications. It captures on-screen text in real time, runs OCR and contextual machine translation, and renders translated text into an input-transparent (click-through) Wayland layer-shell HUD overlay without focus stealing or frame pacing degradation.
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![COSMIC Desktop](https://img.shields.io/badge/DE-COSMIC-purple.svg)](https://github.com/pop-os/cosmic-epoch)
+[![Language](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
+[![Tests](https://img.shields.io/badge/Tests-180%20Passed-brightgreen.svg)]()
 
-![Capture & Area Settings](docs/assets/settings_capture.png)
+<br/>
+
+<p align="center">
+  <img src="docs/assets/settings_capture.png" width="63%" alt="Standalone Configuration & Inspection Dashboard" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/applet_popup.png" width="29%" alt="COSMIC Panel Applet Popup" />
+</p>
+
+*Non-blocking PipeWire capture, pure-Rust neural OCR, contextual machine translation, and 100% click-through Wayland layer-shell HUD subtitles for full-screen games and visual novels.*
+
+</div>
 
 ---
 
@@ -44,43 +59,60 @@ The architecture is designed around zero focus loss, deterministic buffer lifecy
    - Retains up to 500 translation entries in a searchable and copyable FIFO history buffer.
    - Launches settings as a standalone COSMIC desktop application (`cosmic::app::run`) with full window decorations and system headerbar, syncing changes live to the panel applet via `cosmic-config` subscription (`watch_config`).
 
-### Interface Showcase
+---
 
-<details open>
-<summary><b>COSMIC Panel Applet Popup</b></summary>
+## User Interface & Features
 
-![Panel Applet Popup](docs/assets/applet_popup.png)
-</details>
-
-<details>
-<summary><b>Capture & Dialogue Area</b></summary>
-
-![Capture & Area](docs/assets/settings_capture.png)
-</details>
-
-<details>
-<summary><b>Translation Engine Selection (Google, DeepL, Ollama, OpenAI)</b></summary>
-
-![Translation Engine](docs/assets/settings_engine.png)
-</details>
-
-<details>
-<summary><b>Subtitle HUD Customization & Positioning Calibration</b></summary>
-
-![Subtitle HUD](docs/assets/settings_hud.png)
-</details>
-
-<details>
-<summary><b>In-Game Terminology Glossary</b></summary>
-
-![Game Glossary](docs/assets/settings_glossary.png)
-</details>
-
-<details>
-<summary><b>Searchable Dialogue History & Backlog</b></summary>
-
-![Dialogue History](docs/assets/settings_history.png)
-</details>
+<table>
+  <tr>
+    <td width="50%" valign="top" align="center">
+      <b>Live Inspection & Capture Area</b>
+      <br/><br/>
+      <img src="docs/assets/settings_capture.png" alt="Capture & Area" width="100%" />
+      <br/><br/>
+      <sub>Interactive ROI definition, ignore masking (busts/mini-maps), Otsu binarization inspection, and settle timing threshold.</sub>
+    </td>
+    <td width="50%" valign="top" align="center">
+      <b>COSMIC Panel Applet</b>
+      <br/><br/>
+      <img src="docs/assets/applet_popup.png" alt="Panel Applet" width="56%" />
+      <br/><br/>
+      <sub>System tray popup for instant translation toggling, preset switching (RPG 25%, VN 33%, Full Screen), and one-shot capture.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top" align="center">
+      <b>Translation Engine Configuration</b>
+      <br/><br/>
+      <img src="docs/assets/settings_engine.png" alt="Translation Engine" width="100%" />
+      <br/><br/>
+      <sub>Multi-backend routing with support for Google Translate, DeepL API, local Ollama models (e.g. Qwen2.5), and OpenAI endpoints.</sub>
+    </td>
+    <td width="50%" valign="top" align="center">
+      <b>Subtitle HUD & Calibration</b>
+      <br/><br/>
+      <img src="docs/assets/settings_hud.png" alt="Subtitle HUD" width="100%" />
+      <br/><br/>
+      <sub>Input-transparent layer-shell overlay positioning, background opacity control, and interactive screen calibration.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top" align="center">
+      <b>In-Game Terminology Glossary</b>
+      <br/><br/>
+      <img src="docs/assets/settings_glossary.png" alt="Game Glossary" width="100%" />
+      <br/><br/>
+      <sub>User-defined substitution dictionary for recurring character names, fantasy terminology, and dialogue consistency.</sub>
+    </td>
+    <td width="50%" valign="top" align="center">
+      <b>Searchable Dialogue Backlog</b>
+      <br/><br/>
+      <img src="docs/assets/settings_history.png" alt="Dialogue History" width="100%" />
+      <br/><br/>
+      <sub>500-turn in-memory FIFO backlog with real-time text query filtering and single-click clipboard copying.</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -93,6 +125,19 @@ The project is structured as a multi-crate Rust workspace under GPL-3.0-or-later
 | `crates/translator-core` | Headless core engine: PipeWire capture thread, ROI and ignore masking, TextGate debouncer, blur subtraction, `ocrs` OCR inference, vertical CJK reading order sorter, furigana pruner, speaker parser, translation context, HTTP 429 manager, Japanese dictionary, and IPC socket server. |
 | `crates/cosmic-translator-overlay` | Dual-mode Wayland layer-shell binary: `--hud` (click-through subtitle HUD and countdown pill) and `--selector` (interactive screen region picker). |
 | `crates/cosmic-applet-translator` | COSMIC panel applet (`com.system76.CosmicExtTranslator`), popup quick-actions, and 5-tab standalone settings dashboard (Capture, Engine, Display, Glossary, History). |
+
+---
+
+## Global Shortcuts
+
+Registered via the XDG Desktop Portal Global Shortcuts API for in-game control:
+
+| Shortcut | Action |
+| :--- | :--- |
+| `Super + Alt + S` | Select capture region interactively (`--selector`) |
+| `Super + Alt + T` | Toggle continuous real-time translation loop |
+| `Super + Alt + H` | Toggle subtitle HUD overlay visibility |
+| `Super + Alt + C` | Translate current screen immediately (one-shot trigger) |
 
 ---
 
@@ -165,19 +210,6 @@ cargo run -p cosmic-translator-overlay -- --hud
 # Test PipeWire capture pipeline (requires active Wayland session)
 just test-capture
 ```
-
----
-
-## Global Shortcuts
-
-Registered via the XDG Desktop Portal Global Shortcuts API for in-game control:
-
-| Shortcut | Action |
-| :--- | :--- |
-| `Super + Alt + S` | Select capture region interactively (`--selector`) |
-| `Super + Alt + T` | Toggle continuous real-time translation loop |
-| `Super + Alt + H` | Toggle subtitle HUD overlay visibility |
-| `Super + Alt + C` | Translate current screen immediately (one-shot trigger) |
 
 ---
 
