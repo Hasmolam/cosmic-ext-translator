@@ -1465,22 +1465,36 @@ impl cosmic::Application for AppModel {
                 _ => preset_label.clone(),
             };
 
-            let mut preset_buttons = row![].spacing(6).width(cosmic::iced::Length::Fill);
-            for p in [RoiPreset::Bottom25, RoiPreset::Bottom33, RoiPreset::FullScreen] {
-                let label = match p {
-                    RoiPreset::Bottom25 => fl!("preset-bottom25-short"),
-                    RoiPreset::Bottom33 => fl!("preset-bottom33-short"),
-                    RoiPreset::FullScreen => fl!("preset-fullscreen-short"),
-                    _ => String::new(),
-                };
-                let btn = if p == current_preset {
-                    button::suggested(label)
-                } else {
-                    button::standard(label)
-                }
-                .width(cosmic::iced::Length::Fill);
-                preset_buttons = preset_buttons.push(btn.on_press(Message::PresetSelected(p)));
+            let btn_b25 = if current_preset == RoiPreset::Bottom25 {
+                button::suggested(fl!("preset-bottom25-short"))
+            } else {
+                button::standard(fl!("preset-bottom25-short"))
             }
+            .width(cosmic::iced::Length::Fill)
+            .on_press(Message::PresetSelected(RoiPreset::Bottom25));
+
+            let btn_b33 = if current_preset == RoiPreset::Bottom33 {
+                button::suggested(fl!("preset-bottom33-short"))
+            } else {
+                button::standard(fl!("preset-bottom33-short"))
+            }
+            .width(cosmic::iced::Length::Fill)
+            .on_press(Message::PresetSelected(RoiPreset::Bottom33));
+
+            let btn_full = if current_preset == RoiPreset::FullScreen {
+                button::suggested(fl!("preset-fullscreen-short"))
+            } else {
+                button::standard(fl!("preset-fullscreen-short"))
+            }
+            .width(cosmic::iced::Length::Fill)
+            .on_press(Message::PresetSelected(RoiPreset::FullScreen));
+
+            let preset_controls = widget::column![
+                widget::text(fl!("preset")).size(14),
+                row![btn_b25, btn_b33].spacing(6).width(cosmic::iced::Length::Fill),
+                row![btn_full].width(cosmic::iced::Length::Fill),
+            ]
+            .spacing(6);
 
             let content_list = widget::list_column()
                 .add(widget::settings::item(
@@ -1491,13 +1505,7 @@ impl cosmic::Application for AppModel {
                     fl!("enable-translation"),
                     widget::toggler(self.capture_active).on_toggle(Message::ToggleCapture),
                 ))
-                .add(
-                    widget::column![
-                        widget::text(fl!("preset")).size(14),
-                        preset_buttons
-                    ]
-                    .spacing(8)
-                )
+                .add(preset_controls)
                 .add(widget::settings::item(
                     fl!("active-region"),
                     widget::text(roi_desc),
