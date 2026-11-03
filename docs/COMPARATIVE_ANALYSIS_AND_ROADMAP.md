@@ -330,7 +330,7 @@ In `cosmic-translator-overlay` (`crates/cosmic-translator-overlay/src/hud.rs:51-
   input_zone: Some(vec![])
   ```
   An empty input region vector instructs `cosmic-comp` to route 100% of mouse clicks, scrolls, and cursor events through to the underlying application.
-- **MORT Interactive Positioning Mode**: When the user activates HUD repositioning (`SetEditMode`), the overlay temporarily sets `input_zone: None` and `KeyboardInteractivity::OnDemand` to allow dragging and clicking buttons, reverting to `Some(vec![])` upon locking.
+- **Interactive HUD Calibration Mode**: When the user activates HUD repositioning (`SetEditMode`), the overlay temporarily sets `input_zone: None` and `KeyboardInteractivity::OnDemand` to allow dragging and clicking buttons, reverting to `Some(vec![])` upon locking.
 
 #### Race Condition Mitigation: Sequence Counters
 In `cosmic-translator-overlay`, auto-hide timers could clear newly arrived subtitles if an earlier subtitle's timer expires.
@@ -794,7 +794,7 @@ Capture & Debounce  OCR & CJK Modernization         Context & Offline  Overlay &
   - `crates/translator-core/src/dictionary/mod.rs` (new module)
   - `crates/cosmic-translator-overlay/src/hud.rs`
 - **Architecture & Algorithm**:
-  Incorporate `lindera` (pure-Rust Japanese morphological tokenizer) and JMdict into `translator-core`. When in MORT edit mode or when hovering over subtitle tokens, parse the source Japanese text into base morphemes and render definitions, readings, and JLPT levels (resembling Yomitan/Rikaichan).
+  Incorporate `lindera` (pure-Rust Japanese morphological tokenizer) and JMdict into `translator-core`. When in calibration edit mode or when hovering over subtitle tokens, parse the source Japanese text into base morphemes and render definitions, readings, and JLPT levels (resembling Yomitan/Rikaichan).
 - **Proposed Rust API**:
   ```rust
   // In crates/translator-core/src/dictionary/mod.rs

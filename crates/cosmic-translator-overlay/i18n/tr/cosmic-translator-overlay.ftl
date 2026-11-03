@@ -1,6 +1,6 @@
 hud-active = Altyazı Katmanı Aktif
-mort-positioning-active = Konumlandırma Modu Aktif
-mort-mode-title = Konumlandırma Modu (Dikey Ofset: { $offset } px)
+positioning-active = Konumlandırma Kalibrasyonu Aktif
+positioning-title = Katman Kalibrasyonu (Dikey Ofset: { $offset } px)
 lock-position = Konumu Sabitle
 pos-top = Üst
 pos-center = Orta

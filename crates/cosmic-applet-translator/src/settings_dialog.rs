@@ -54,7 +54,7 @@ pub enum SettingsMessage {
     OpacityChanged(u8),
     DurationChanged(u64),
     TestHudRequested,
-    StartMortPositioning,
+    StartInteractivePositioning,
     GlossarySourceChanged(String),
     GlossaryTargetChanged(String),
     AddGlossaryTerm,
@@ -406,9 +406,9 @@ impl SettingsState {
         }
 
         section = section.add(widget::settings::item(
-            fl!("mort-positioning"),
-            button::suggested(fl!("mort-button"))
-                .on_press(SettingsMessage::StartMortPositioning),
+            fl!("interactive-positioning"),
+            button::suggested(fl!("positioning-button"))
+                .on_press(SettingsMessage::StartInteractivePositioning),
         ));
 
         section = section.add(widget::settings::item(

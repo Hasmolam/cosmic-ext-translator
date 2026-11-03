@@ -79,7 +79,7 @@ impl SubtitleHudState {
         };
 
         let input_zone = if self.edit_mode {
-            None // Accept clicks and button interactions in MORT edit mode
+            None // Accept clicks and button interactions in interactive calibration mode
         } else {
             Some(vec![]) // 100% click-through to games in normal mode
         };
@@ -116,7 +116,7 @@ impl SubtitleHudState {
         }
 
         let display_text = if self.current_text.trim().is_empty() {
-            crate::fl!("mort-positioning-active")
+            crate::fl!("positioning-active")
         } else {
             self.current_text.clone()
         };
@@ -128,7 +128,7 @@ impl SubtitleHudState {
 
         if self.edit_mode {
             let edit_title = widget::text(crate::fl!(
-                "mort-mode-title",
+                "positioning-title",
                 offset = self.offset_y
             ))
             .size(13);
@@ -159,7 +159,7 @@ impl SubtitleHudState {
             .style(move |_theme| widget::container::Style {
                 background: Some(Background::Color(Color::from_rgba(0.04, 0.04, 0.08, 0.95))),
                 border: Border {
-                    color: Color::from_rgba(0.9, 0.6, 0.2, 0.95), // Glowing amber border in MORT mode
+                    color: Color::from_rgba(0.9, 0.6, 0.2, 0.95), // Amber border in calibration mode
                     width: 3.0,
                     radius: 14.0.into(),
                 },

@@ -261,7 +261,7 @@ impl cosmic::Application for OverlayApp {
                 tracing::info!("HUD edit mode updated via IPC: {}", edit_mode);
                 self.hud.edit_mode = edit_mode;
                 if edit_mode && self.hud.current_text.is_empty() {
-                    self.hud.current_text = cosmic_translator_overlay::fl!("mort-positioning-active");
+                    self.hud.current_text = cosmic_translator_overlay::fl!("positioning-active");
                 }
                 let mut settings = self.hud.layer_settings();
                 settings.id = self.hud_id;

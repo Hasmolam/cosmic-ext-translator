@@ -1,6 +1,6 @@
 hud-active = Subtitle Overlay Active
-mort-positioning-active = Positioning Mode Active
-mort-mode-title = Positioning Mode (Vertical Offset: { $offset } px)
+positioning-active = Positioning Calibration Active
+positioning-title = Overlay Calibration (Vertical Offset: { $offset } px)
 lock-position = Lock Position
 pos-top = Top
 pos-center = Center

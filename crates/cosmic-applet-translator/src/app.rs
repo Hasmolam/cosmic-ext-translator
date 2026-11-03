@@ -925,7 +925,7 @@ impl cosmic::Application for AppModel {
                             |_| cosmic::Action::None,
                         );
                     }
-                    SettingsMessage::StartMortPositioning => {
+                    SettingsMessage::StartInteractivePositioning => {
                         let font_size = self.config.font_size;
                         let opacity = self.config.hud_opacity;
                         let dur = self.config.hud_duration_ms;

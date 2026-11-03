@@ -439,7 +439,7 @@ fn test_clickthrough_input_zone_is_strictly_empty_vec_in_normal_mode() {
                     // In edit mode: input_zone is None (accepts clicks)
                     assert!(
                         edit_settings.input_zone.is_none(),
-                        "Edit mode input_zone must be None so MORT buttons can be clicked"
+                        "Edit mode input_zone must be None so calibration controls can be clicked"
                     );
                     assert_eq!(
                         edit_settings.keyboard_interactivity,
