@@ -1,6 +1,6 @@
 app-title = Screen Translator
 app-comment = Real-time Screen and Game Translator for COSMIC
-app-keywords = translate;translator;screen;game;cosmic;ocr;lingua;
+app-keywords = translate;translator;screen;game;cosmic;ocr;
 about = About
 status = Status
 active = Active
@@ -10,7 +10,7 @@ preset = Preset
 active-region = Active Region
 custom-roi-unset = No Custom Area Selected
 select-roi = Select Capture Area
-select-target = 🎯 Select Window / Screen
+select-target = Select Window / Screen
 settings = Settings
 translate-now = Translate Screen Now
 profile = Game Profile
@@ -61,9 +61,10 @@ background-opacity = Background Opacity
 hud-persistent = Keep Subtitle on Screen (Persistent)
 hud-auto-hide-time = Auto-Hide Duration
 mort-positioning = MORT Live Positioning
-mort-button = ✥ Position Live on Screen (MORT Mode)
+mort-button = Position Live on Screen (MORT Mode)
 live-preview = Live Preview
 show-test-hud-message = Show Test Message on HUD
+test-subtitle-content = Subtitle Overlay Active
 pos-bottom = Screen Bottom
 pos-top = Screen Top
 pos-center = Screen Center
@@ -76,13 +77,13 @@ add-button = Add
 delete-button = Delete
 
 # Live Inspection Dashboard
-live-inspection-title = 🔍 Live Capture Area & Inspection
+live-inspection-title = Live Capture Area & Inspection
 preview-mode = Preview Mode
 raw-crop = Raw Cropped
 ocr-binarize = OCR Binarization
-last-detected-ocr = 📝 Last Detected Text (OCR)
-translation-output = 🌐 Translation Output
-prompt-select-target = 🎯 Select a window or start capture for live image inspection
+last-detected-ocr = Last Detected Text (OCR)
+translation-output = Translation Output
+prompt-select-target = Select a window or start capture for live image inspection
 
 # History & Ignore Area
 tab-history = Dialogue History

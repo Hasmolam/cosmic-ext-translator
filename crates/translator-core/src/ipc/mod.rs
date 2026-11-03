@@ -11,9 +11,9 @@ pub const DEFAULT_SUBTITLE_DURATION_MS: u64 = 6000;
 /// Default socket path resolution.
 pub fn default_socket_path() -> PathBuf {
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-        PathBuf::from(runtime_dir).join("cosmic-ext-lingua-hud.sock")
+        PathBuf::from(runtime_dir).join("cosmic-ext-translator-hud.sock")
     } else {
-        std::env::temp_dir().join("cosmic-ext-lingua-hud.sock")
+        std::env::temp_dir().join("cosmic-ext-translator-hud.sock")
     }
 }
 

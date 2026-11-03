@@ -1,4 +1,4 @@
-# Project: cosmic-ext-lingua Core & UX Enhancements
+# Project: cosmic-ext-translator Core & UX Enhancements
 
 ## Architecture
 Multi-crate workspace under GPL-3.0-or-later:

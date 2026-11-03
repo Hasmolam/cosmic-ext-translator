@@ -7,7 +7,7 @@ pub fn default_offline_model_dir() -> PathBuf {
     if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
         if !data_home.trim().is_empty() {
             return PathBuf::from(data_home)
-                .join("cosmic-ext-lingua")
+                .join("cosmic-ext-translator")
                 .join("models")
                 .join("translation");
         }
@@ -17,17 +17,17 @@ pub fn default_offline_model_dir() -> PathBuf {
             return PathBuf::from(home)
                 .join(".local")
                 .join("share")
-                .join("cosmic-ext-lingua")
+                .join("cosmic-ext-translator")
                 .join("models")
                 .join("translation");
         }
     }
-    PathBuf::from("/tmp/cosmic-ext-lingua/models/translation")
+    PathBuf::from("/tmp/cosmic-ext-translator/models/translation")
 }
 
 /// Offline translation engine operating without external network access.
 ///
-/// Supports local neural model paths under `$XDG_DATA_HOME/cosmic-ext-lingua/models/translation/`
+/// Supports local neural model paths under `$XDG_DATA_HOME/cosmic-ext-translator/models/translation/`
 /// and provides local rule/dictionary translation fallback.
 #[derive(Debug, Clone)]
 pub struct OfflineTranslationBackend {

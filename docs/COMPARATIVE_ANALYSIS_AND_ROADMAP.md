@@ -1,4 +1,4 @@
-# Comparative Architectural Analysis and Technical Roadmap for `cosmic-ext-lingua`
+# Comparative Architectural Analysis and Technical Roadmap for `cosmic-ext-translator`
 
 ## Executive Summary
 
@@ -10,16 +10,16 @@ Real-time screen and game translation systems must operate at the intersection o
 - Resilience to network latency and cloud translation rate limiting (HTTP 429).
 
 This report presents an architectural inspection and comparative synthesis across six prominent translation systems in the open-source and reverse-engineered ecosystem:
-1. **`cosmic-ext-lingua`**: Pure-Rust screen and game translation system built natively for the Pop!_OS COSMIC Desktop Environment (Wayland), featuring a dedicated PipeWire capture thread, pure-Rust neural OCR (`ocrs` + `rten`), and `wlr-layer-shell` HUD.
+1. **`cosmic-ext-translator`**: Pure-Rust screen and game translation system built natively for the Pop!_OS COSMIC Desktop Environment (Wayland), featuring a dedicated PipeWire capture thread, pure-Rust neural OCR (`ocrs` + `rten`), and `wlr-layer-shell` HUD.
 2. **Aurex Translator**: Hybrid C++/Qt6 desktop and in-game translator (Kirizaku) utilizing PipeWire/X11/GDI capture, OpenCV preprocessing with two-stage diff gating, and runtime memory injection hooks (`ptrace`/`CreateRemoteThread`) with an in-process Dear ImGui swapchain overlay.
 3. **LunaTranslator**: Feature-dense Windows game translation platform (HIllya51) combining memory hooking, screen capture (WGC/DXGI), an ensemble OCR suite (PaddleOCR, Manga-OCR, Windows Media OCR), WebView2 overlay with Yomitan dictionary integration, and AnkiConnect export.
 4. **Sugoi Japanese Translator**: Local offline neural machine translation (NMT) system (MingShiba) pioneering CTranslate2-optimized Transformer inference with INT8 quantization for sub-50ms offline Japanese-to-English translation.
 5. **Translumo**: Real-time C#/WPF screen translator (Danily07 / ramjke) featuring multi-engine OCR voting, dynamic thresholding, and click-through WPF overlays.
 6. **Manga-Image-Translator & BallonsTranslator**: Deep-learning comic translation pipelines (zyddnys / dmMaze) implementing end-to-end speech bubble detection, ViT OCR, LaMa deep inpainting, and automated typesetting.
 
-Furthermore, this report documents the **Headless Verification** of `cosmic-ext-lingua` (Requirement R4), confirming 0 compilation errors, 0 clippy warnings under `-D warnings`, and 49 passing test cases in an environment without an active graphical display server.
+Furthermore, this report documents the **Headless Verification** of `cosmic-ext-translator` (Requirement R4), confirming 0 compilation errors, 0 clippy warnings under `-D warnings`, and 49 passing test cases in an environment without an active graphical display server.
 
-Finally, an actionable four-phase technical roadmap details high-leverage architectural upgrades for `cosmic-ext-lingua`, complete with target files, concrete Rust APIs, algorithms, and trade-off analyses.
+Finally, an actionable four-phase technical roadmap details high-leverage architectural upgrades for `cosmic-ext-translator`, complete with target files, concrete Rust APIs, algorithms, and trade-off analyses.
 
 ---
 
@@ -27,7 +27,7 @@ Finally, an actionable four-phase technical roadmap details high-leverage archit
 
 The following matrix contrasts all six systems across core architectural dimensions:
 
-| Architectural Dimension | `cosmic-ext-lingua` | Aurex Translator | LunaTranslator | Sugoi Translator | Translumo | Manga-Image-Translator |
+| Architectural Dimension | `cosmic-ext-translator` | Aurex Translator | LunaTranslator | Sugoi Translator | Translumo | Manga-Image-Translator |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Primary OS Target** | Linux (COSMIC / Wayland) | Linux (X11/Wayland), Windows | Windows 10/11 (Win32) | Windows, Linux (Server/CLI) | Windows 10/11 (.NET/WPF) | Cross-platform (CLI / Web) |
 | **Language & Runtime** | Rust (Edition 2021), Tokio | C++17, Qt6, OpenCV 4 | C#, C++, Python, Win32 | Python, C++ (CTranslate2) | C# (.NET 8, WPF), Python.NET | Python, PyTorch, ONNX |
@@ -55,11 +55,11 @@ The following matrix contrasts all six systems across core architectural dimensi
 #### Wayland PipeWire Architecture: `ashpd` Screencast & Stream Negotiation
 Under Wayland, security isolation prevents any application from reading pixels belonging to another application's window surface or querying global desktop coordinates. All desktop and window screen capture must be mediated by the `org.freedesktop.portal.ScreenCast` D-Bus interface.
 
-In `cosmic-ext-lingua`:
+In `cosmic-ext-translator`:
 - `ScreencastManager::create_stream` (`crates/translator-core/src/capture/screencast.rs:24-41`) negotiates with `ashpd::desktop::screencast::Screencast`.
 - It sets `PersistMode::ExplicitlyRevoked` and `CursorMode::Hidden` to avoid capturing cursor graphics that degrade OCR accuracy.
 - Upon user authorization in the COSMIC compositor (`cosmic-comp`), the portal returns a PipeWire Node ID and an `OwnedFd` to the PipeWire remote socket via `proxy.open_pipe_wire_remote()`.
-- **Session Restoration (`restore_token`)**: While `ashpd` supports a `restore_token` string to bypass repeated interactive permission dialogs across restarts, `cosmic-ext-lingua` currently falls back to requesting a new session if none is provided. Aurex Translator persistently saves `"screencast_portal": { "restore_token": "..." }` in its JSON configuration, allowing seamless background reconnection.
+- **Session Restoration (`restore_token`)**: While `ashpd` supports a `restore_token` string to bypass repeated interactive permission dialogs across restarts, `cosmic-ext-translator` currently falls back to requesting a new session if none is provided. Aurex Translator persistently saves `"screencast_portal": { "restore_token": "..." }` in its JSON configuration, allowing seamless background reconnection.
 
 #### Memory Plane Lifecycles: `SPA_DATA_DmaBuf` vs `SPA_DATA_MemFd`
 PipeWire supports two primary memory representations for video stream frames:
@@ -73,7 +73,7 @@ PipeWire supports two primary memory representations for video stream frames:
 ```
 
 1. **`SPA_DATA_MemFd` (Shared Memory File Descriptors)**:
-   - Used by both `cosmic-ext-lingua` and Aurex Translator.
+   - Used by both `cosmic-ext-translator` and Aurex Translator.
    - The compositor copies pixels from GPU VRAM back over the PCIe bus into host system RAM via shared memory buffers.
    - **Overhead**: For a 4K 60 FPS display (3840×2160 at 32 bpp = ~31.6 MB per frame), this incurs ~1.9 GB/s of continuous memory bandwidth, causing L3 CPU cache pollution and 15–30 ms of capture latency.
 2. **`SPA_DATA_DmaBuf` (Direct Memory Access Buffers)**:
@@ -83,9 +83,9 @@ PipeWire supports two primary memory representations for video stream frames:
    - Zero PCIe bus traffic occurs; capture latency drops to 2–5 ms.
 
 #### Buffer Starvation & Protocol Violations: The PipeWire Callback Anti-Pattern
-A critical architectural divergence exists between `cosmic-ext-lingua` and Aurex Translator in how PipeWire buffer lifetimes are managed:
+A critical architectural divergence exists between `cosmic-ext-translator` and Aurex Translator in how PipeWire buffer lifetimes are managed:
 
-- **`cosmic-ext-lingua` (`pipewire_thread.rs:252-322`)**:
+- **`cosmic-ext-translator` (`pipewire_thread.rs:252-322`)**:
   - The PipeWire main loop (`pw::main_loop::MainLoopRc`) runs on an isolated native OS thread (`std::thread`).
   - Inside the stream `process` callback:
     ```rust
@@ -119,11 +119,11 @@ A critical architectural divergence exists between `cosmic-ext-lingua` and Aurex
 
 #### Backpressure & Frame Queuing: Drop-Oldest Ring Buffers
 Deep learning OCR inference requires between 40 ms and 250 ms per frame. If frames arriving at 60 FPS (every 16.6 ms) are placed in an unbounded FIFO channel, a 200 ms OCR delay introduces a 12-frame queue backlog, causing multi-second subtitle lag.
-- `cosmic-ext-lingua` solves this by delivering cropped frames from the PipeWire thread to the Tokio async pipeline over a **`tokio::sync::watch::channel`** (`watch::Sender<Option<CapturedFrame>>`).
+- `cosmic-ext-translator` solves this by delivering cropped frames from the PipeWire thread to the Tokio async pipeline over a **`tokio::sync::watch::channel`** (`watch::Sender<Option<CapturedFrame>>`).
 - A `watch` channel maintains a capacity of exactly 1 with **drop-oldest semantics**. If the OCR pipeline is busy, intermediate frames are overwritten without allocation overhead, ensuring that upon completing an inference cycle, the pipeline immediately processes the latest frame.
 
 #### Coordinate Transformation & HiDPI Scaling
-Wayland surfaces communicate in logical units, whereas PipeWire delivers buffers in physical pixel dimensions. For fractional scaling factors (e.g., 150% scaling on a 2560×1440 panel), `cosmic-ext-lingua` implements pixel-perfect scaling in `Roi::scale_to_frame` (`crates/translator-core/src/capture/roi.rs:52-65`):
+Wayland surfaces communicate in logical units, whereas PipeWire delivers buffers in physical pixel dimensions. For fractional scaling factors (e.g., 150% scaling on a 2560×1440 panel), `cosmic-ext-translator` implements pixel-perfect scaling in `Roi::scale_to_frame` (`crates/translator-core/src/capture/roi.rs:52-65`):
 $$\text{scale}_x = \frac{\text{frame}_w}{\text{surface}_w}, \quad \text{scale}_y = \frac{\text{frame}_h}{\text{surface}_h}$$
 $$x_{\text{phys}} = \lfloor x_{\text{logical}} \times \text{scale}_x \rceil, \quad y_{\text{phys}} = \lfloor y_{\text{logical}} \times \text{scale}_y \rceil$$
 
@@ -157,12 +157,12 @@ $$x_{\text{phys}} = \lfloor x_{\text{logical}} \times \text{scale}_x \rceil, \qu
 ```
 
 #### Pure-Rust `ocrs` & `rten` Engine
-`cosmic-ext-lingua` uniquely utilizes a 100% pure-Rust neural OCR stack (`crates/translator-core/src/ocr/mod.rs`):
+`cosmic-ext-translator` uniquely utilizes a 100% pure-Rust neural OCR stack (`crates/translator-core/src/ocr/mod.rs`):
 - **Detection**: DBNet (`text-detection.rten`, ~5 MB), outputting word and text line bounding polygons.
 - **Recognition**: CRNN with CTC greedy decoding (`text-recognition.rten`, ~11 MB).
 - **Runtime**: `rten` (Rust Tensor Engine) with multi-threaded vector math (`rten-vecmath`).
 - **Thread Safety & Offloading**: The OCR engine is wrapped in an `Arc<OcrEngine>` and executed inside `tokio::task::spawn_blocking` to prevent blocking the async runtime reactor.
-- **Limitations**: `ocrs` is currently constrained to Latin character sets. For CJK languages (`ja`, `zh`, `ko`), `cosmic-ext-lingua` delegates to `TesseractBackend` via external CLI invocation.
+- **Limitations**: `ocrs` is currently constrained to Latin character sets. For CJK languages (`ja`, `zh`, `ko`), `cosmic-ext-translator` delegates to `TesseractBackend` via external CLI invocation.
 
 #### SOTA CJK Models in the Gaming Ecosystem
 1. **Manga-OCR (`kha-white/manga-ocr`)**:
@@ -276,7 +276,7 @@ DROP / NOISE  RESET SETTLE TIMER  EMIT IMMEDIATELY
   - DeepL delivers high fluency for CJK dialogue, but adds 150–400 ms of network latency.
   - Public untokenized endpoints (Google GTX) aggressively rate-limit (HTTP 429) during rapid dialogue skipping.
 - **Large Language Models (Ollama, OpenAI-compatible REST)**:
-  - `cosmic-ext-lingua` integrates Ollama (`qwen2.5:3b`, temperature 0.2) and OpenAI ChatCompletions.
+  - `cosmic-ext-translator` integrates Ollama (`qwen2.5:3b`, temperature 0.2) and OpenAI ChatCompletions.
   - Excels at fantasy terminology, colloquial slang, and character dialects (*tsundere*, archaic forms).
 
 #### Pro-Drop Resolution via Multi-Turn Dialogue Context
@@ -304,14 +304,14 @@ Visual novels enclose character names in standard bracket types (`【...】`, `�
 3. **HTTP 429 Exponential Backoff**:
    When public translation endpoints emit HTTP 429, Aurex Translator doubles pause time:
    $$T_{\text{pause}} = 30000\text{ ms} \times 2^{\min(\text{failures}, 6)} \quad (\text{up to } 30 \text{ minutes})$$
-   It displays a visual countdown notification in the HUD. `cosmic-ext-lingua` currently emits an error subtitle, which can be upgraded to an automatic exponential backoff state with retry timer feedback.
+   It displays a visual countdown notification in the HUD. `cosmic-ext-translator` currently emits an error subtitle, which can be upgraded to an automatic exponential backoff state with retry timer feedback.
 
 ---
 
 ### 5. Overlay & Interaction Architecture
 
 #### Presentation Paradigms: Floating HUD vs In-Place Inpainting
-1. **Subtitle HUD (`cosmic-ext-lingua`, Translumo, LunaTranslator HUD)**:
+1. **Subtitle HUD (`cosmic-ext-translator`, Translumo, LunaTranslator HUD)**:
    - Floating translucent banner docked to the top or bottom of the display.
    - Decoupled from the game rendering loop: updates asynchronously only when dialogue settles.
    - Extremely lightweight (<1 ms GPU composite). Preserves original art and gameplay visibility.
@@ -334,14 +334,14 @@ In `cosmic-translator-overlay` (`crates/cosmic-translator-overlay/src/hud.rs:51-
 
 #### Race Condition Mitigation: Sequence Counters
 In `cosmic-translator-overlay`, auto-hide timers could clear newly arrived subtitles if an earlier subtitle's timer expires.
-- `cosmic-ext-lingua` tracks a 64-bit sequence counter `subtitle_seq`.
+- `cosmic-ext-translator` tracks a 64-bit sequence counter `subtitle_seq`.
 - When an auto-hide timer expires, it checks `if timer_seq == self.subtitle_seq`. If a newer subtitle arrived in the interim, the old clear command is discarded.
 
 ---
 
 ## Headless Verification Summary
 
-In accordance with Requirement R4, the entire `cosmic-ext-lingua` workspace was audited and verified in a strict headless Linux environment (`env -u WAYLAND_DISPLAY -u DISPLAY`) by `teamwork_worker_1`.
+In accordance with Requirement R4, the entire `cosmic-ext-translator` workspace was audited and verified in a strict headless Linux environment (`env -u WAYLAND_DISPLAY -u DISPLAY`) by `teamwork_worker_1`.
 
 ### Environment Specifications
 - **Operating System**: Pop!_OS 24.04 LTS (x86_64-unknown-linux-gnu, Linux 6.9.3-76060903-generic)
@@ -378,10 +378,10 @@ Stage 3: cargo test --workspace (Headless)
 
 ---
 
-## Actionable Technical Improvement Roadmap for `cosmic-ext-lingua`
+## Actionable Technical Improvement Roadmap for `cosmic-ext-translator`
 
 ```
-                                  cosmic-ext-lingua
+                                  cosmic-ext-translator
                              Modular Improvement Roadmap
                                           │
        ┌──────────────────┬───────────────┴───────────────┬──────────────────┐
@@ -748,7 +748,7 @@ Capture & Debounce  OCR & CJK Modernization         Context & Offline  Overlay &
   ```
 - **Benefits & Trade-offs**:
   - *Benefits*: 100% offline, privacy-safe, sub-60ms translation with zero cloud dependencies or rate limits.
-  - *Trade-offs*: Requires an initial model download of ~800 MB to `$XDG_DATA_HOME/cosmic-ext-lingua/models/`.
+  - *Trade-offs*: Requires an initial model download of ~800 MB to `$XDG_DATA_HOME/cosmic-ext-translator/models/`.
 
 ---
 
@@ -826,7 +826,7 @@ Capture & Debounce  OCR & CJK Modernization         Context & Offline  Overlay &
   }
   ```
 - **Benefits & Trade-offs**:
-  - *Benefits*: Converts `cosmic-ext-lingua` into an exceptional language-learning tool for language students playing untranslated games.
+  - *Benefits*: Converts `cosmic-ext-translator` into an exceptional language-learning tool for language students playing untranslated games.
   - *Trade-offs*: JMdict dictionary data requires ~25 MB compressed disk space.
 
 #### 4.3 HTTP 429 Exponential Backoff & UI Countdown State
@@ -876,9 +876,9 @@ Capture & Debounce  OCR & CJK Modernization         Context & Offline  Overlay &
 
 ## Conclusion
 
-`cosmic-ext-lingua` possesses a resilient, modern architectural foundation:
+`cosmic-ext-translator` possesses a resilient, modern architectural foundation:
 - Its dedicated OS thread PipeWire loop with immediate ROI cropping and buffer release guarantees zero Wayland compositor crashes (`Protocol error 1`).
 - Its `wlr-layer-shell` HUD with `input_zone: Some(vec![])` delivers true 100% click-through transparency without the security risks and maintenance burden of Windows-style DLL injection or `ptrace` hooks.
 - Its pure-Rust core maintains memory safety, backpressure-free frame dropping, and clean module separation.
 
-By implementing the four roadmap phases outlined above—starting with screencast `restore_token` caching, inner ignore ROIs, two-stage Levenshtein debouncing, and blur subtraction, followed by ONNX PP-OCRv4/Manga-OCR with vertical layout parsing, sliding dialogue context, and offline CTranslate2 inference—`cosmic-ext-lingua` will match and exceed the capabilities of legacy Windows translation tools, delivering the premier game and visual novel translation experience on the modern Linux desktop.
+By implementing the four roadmap phases outlined above—starting with screencast `restore_token` caching, inner ignore ROIs, two-stage Levenshtein debouncing, and blur subtraction, followed by ONNX PP-OCRv4/Manga-OCR with vertical layout parsing, sliding dialogue context, and offline CTranslate2 inference—`cosmic-ext-translator` will match and exceed the capabilities of legacy Windows translation tools, delivering the premier game and visual novel translation experience on the modern Linux desktop.

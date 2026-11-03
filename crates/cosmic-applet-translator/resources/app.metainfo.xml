@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.system76.CosmicExtLingua</id>
+  <id>com.system76.CosmicExtTranslator</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>Screen Translator</name>
   <summary>Real-time Screen and Game Translator for COSMIC</summary>
-  <launchable type="desktop-id">com.system76.CosmicExtLingua.desktop</launchable>
+  <launchable type="desktop-id">com.system76.CosmicExtTranslator.desktop</launchable>
   <provides>
     <id>com.system76.CosmicApplet</id>
     <binaries>

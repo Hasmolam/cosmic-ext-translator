@@ -1,4 +1,4 @@
-# cosmic-ext-lingua Developer Guidelines
+# cosmic-ext-translator Developer Guidelines
 
 ## Workspace Structure & Entrypoints
 
@@ -8,7 +8,7 @@ Multi-crate workspace under GPL-3.0-or-later:
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary (`cosmic-translator-overlay`).
   - `--selector`: Interactive screen region picker (`Layer::Overlay`, `KeyboardInteractivity::Exclusive`). Emits `ROI_SELECTED:{"x":...,"y":...,"width":...,"height":...}` to stdout on release and exits 0.
   - `--hud`: Click-through subtitle overlay (`Layer::Overlay`, `input_zone: Some(vec![])`). Listens on Unix domain socket for `HudMessage` payloads.
-- `crates/cosmic-applet-translator`: COSMIC panel applet (`com.system76.CosmicExtLingua`). Owns applet popup, 4-tab settings window, `cosmic-config` persistence, and global shortcuts subscription.
+- `crates/cosmic-applet-translator`: COSMIC panel applet (`com.system76.CosmicExtTranslator`). Owns applet popup, 5-tab settings window, `cosmic-config` persistence, and global shortcuts subscription.
 
 ## Development & Verification Commands
 
@@ -55,12 +55,12 @@ sudo just install
    - Do not request keyboard interactivity or set non-empty input zones on the HUD surface.
 
 3. **IPC Protocol:**
-   - Applet communicates with HUD via Unix domain socket at `$XDG_RUNTIME_DIR/cosmic-ext-lingua-hud.sock` (fallback: `/tmp/cosmic-ext-lingua-hud.sock`).
+   - Applet communicates with HUD via Unix domain socket at `$XDG_RUNTIME_DIR/cosmic-ext-translator-hud.sock` (fallback: `/tmp/cosmic-ext-translator-hud.sock`).
    - If HUD binary is not running when translation starts, `cosmic-applet-translator` auto-spawns `cosmic-translator-overlay --hud`.
 
 4. **OCR & Dev Profile Speed:**
    - Dev builds will be extremely slow at OCR inference unless optimization is enabled. Workspace `Cargo.toml` overrides `ocrs`, `rten`, and `rten-vecmath` with `opt-level = 3` in dev profile. Keep this intact.
-   - Models are stored in `$XDG_DATA_HOME/cosmic-ext-lingua/models`. Tests must use `MockOcrBackend` to avoid mandatory network access during CI.
+   - Models are stored in `$XDG_DATA_HOME/cosmic-ext-translator/models`. Tests must use `MockOcrBackend` to avoid mandatory network access during CI.
 
 5. **Typewriter Debouncing:**
    - Dialogue streams in RPGs/VNs letter-by-letter. `FrameDebouncer` uses 64-bit dHash and Hamming distance.

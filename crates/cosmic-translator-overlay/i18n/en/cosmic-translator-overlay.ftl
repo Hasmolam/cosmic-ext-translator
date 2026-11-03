@@ -1,0 +1,9 @@
+hud-active = Subtitle Overlay Active
+mort-positioning-active = Positioning Mode Active
+mort-mode-title = Positioning Mode (Vertical Offset: { $offset } px)
+lock-position = Lock Position
+pos-top = Top
+pos-center = Center
+pos-bottom = Bottom
+nudge-up = Up (-20px)
+nudge-down = Down (+20px)

@@ -218,7 +218,7 @@ fn run_pipewire_loop(
 
     let stream = pw::stream::StreamBox::new(
         &core,
-        "cosmic-ext-lingua-capture",
+        "cosmic-ext-translator-capture",
         pw::properties::properties! {
             *pw::keys::MEDIA_TYPE => "Video",
             *pw::keys::MEDIA_CATEGORY => "Capture",

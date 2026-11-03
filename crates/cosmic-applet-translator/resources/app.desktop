@@ -2,7 +2,7 @@
 Name=Screen Translator
 Comment=Real-time Screen and Game Translator for COSMIC
 Type=Application
-Icon=com.system76.CosmicExtLingua
+Icon=com.system76.CosmicExtTranslator
 Exec=cosmic-applet-translator --applet %F
 Terminal=false
 StartupNotify=true

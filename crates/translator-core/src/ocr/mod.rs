@@ -191,7 +191,7 @@ impl OcrsBackend {
         "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten";
 
     pub fn default_models_dir() -> std::path::PathBuf {
-        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-lingua/models");
+        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-translator/models");
         if system_dir.join("text-detection.rten").exists()
             && system_dir.join("text-recognition.rten").exists()
         {
@@ -199,11 +199,11 @@ impl OcrsBackend {
         }
 
         if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
-            std::path::PathBuf::from(data_home).join("cosmic-ext-lingua/models")
+            std::path::PathBuf::from(data_home).join("cosmic-ext-translator/models")
         } else if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(".local/share/cosmic-ext-lingua/models")
+            std::path::PathBuf::from(home).join(".local/share/cosmic-ext-translator/models")
         } else {
-            std::env::temp_dir().join("cosmic-ext-lingua/models")
+            std::env::temp_dir().join("cosmic-ext-translator/models")
         }
     }
 
@@ -237,7 +237,7 @@ impl OcrsBackend {
 
     /// Loads the OCR models from the default models directory, downloading them if missing.
     pub async fn load_default_or_download() -> Result<Self> {
-        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-lingua/models");
+        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-translator/models");
         let sys_det = system_dir.join("text-detection.rten");
         let sys_rec = system_dir.join("text-recognition.rten");
 
@@ -254,15 +254,56 @@ impl OcrsBackend {
         let det_path = models_dir.join("text-detection.rten");
         let rec_path = models_dir.join("text-recognition.rten");
 
-        if !det_path.exists() {
+        if !det_path.exists() || !rec_path.exists() {
+            if let Ok(home) = std::env::var("HOME") {
+                let legacy_dir =
+                    std::path::PathBuf::from(home).join(".local/share/cosmic-ext-lingua/models");
+                let leg_det = legacy_dir.join("text-detection.rten");
+                let leg_rec = legacy_dir.join("text-recognition.rten");
+                if leg_det.exists() && leg_rec.exists() {
+                    let _ = tokio::fs::copy(&leg_det, &det_path).await;
+                    let _ = tokio::fs::copy(&leg_rec, &rec_path).await;
+                }
+            }
+        }
+
+        let det_valid = det_path
+            .metadata()
+            .map(|m| m.len() >= 100_000)
+            .unwrap_or(false);
+        if !det_valid {
             tracing::info!("Downloading OCR detection model...");
-            let resp = reqwest::get(Self::DETECTION_URL).await?.bytes().await?;
+            let resp = reqwest::get(Self::DETECTION_URL)
+                .await?
+                .error_for_status()?
+                .bytes()
+                .await?;
+            if resp.len() < 100_000 {
+                anyhow::bail!(
+                    "Downloaded detection model is corrupt or invalid (size: {} bytes)",
+                    resp.len()
+                );
+            }
             tokio::fs::write(&det_path, resp).await?;
         }
 
-        if !rec_path.exists() {
+        let rec_valid = rec_path
+            .metadata()
+            .map(|m| m.len() >= 100_000)
+            .unwrap_or(false);
+        if !rec_valid {
             tracing::info!("Downloading OCR recognition model...");
-            let resp = reqwest::get(Self::RECOGNITION_URL).await?.bytes().await?;
+            let resp = reqwest::get(Self::RECOGNITION_URL)
+                .await?
+                .error_for_status()?
+                .bytes()
+                .await?;
+            if resp.len() < 100_000 {
+                anyhow::bail!(
+                    "Downloaded recognition model is corrupt or invalid (size: {} bytes)",
+                    resp.len()
+                );
+            }
             tokio::fs::write(&rec_path, resp).await?;
         }
 
@@ -513,9 +554,11 @@ mod tests {
     #[tokio::test]
     async fn test_ocrs_backend_load() {
         let models_dir = OcrsBackend::default_models_dir();
-        if !models_dir.join("text-detection.rten").exists()
-            || !models_dir.join("text-recognition.rten").exists()
-        {
+        let det_path = models_dir.join("text-detection.rten");
+        let rec_path = models_dir.join("text-recognition.rten");
+        let det_size = det_path.metadata().map(|m| m.len()).unwrap_or(0);
+        let rec_size = rec_path.metadata().map(|m| m.len()).unwrap_or(0);
+        if det_size < 100_000 || rec_size < 100_000 {
             // Skip when models have not been pre-downloaded to ensure CI offline resilience
             return;
         }

@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     println!("=======================================================");
-    println!("COSMIC Ext Lingua - PipeWire Capture Test Utility");
+    println!("COSMIC Ext Translator - PipeWire Capture Test Utility");
     println!("Requesting ScreenCast portal session...");
     println!("(Please select a screen/window in the system dialog)");
     println!("=======================================================");

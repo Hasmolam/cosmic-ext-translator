@@ -81,7 +81,7 @@ impl cosmic::Application for OverlayApp {
         let subtitle_seq = 1;
 
         let initial_text = if mode == AppMode::Hud {
-            "🎮 cosmic-ext-lingua: Altyazı Katmanı Aktif".to_string()
+            cosmic_translator_overlay::fl!("hud-active")
         } else {
             String::new()
         };
@@ -261,7 +261,7 @@ impl cosmic::Application for OverlayApp {
                 tracing::info!("HUD edit mode updated via IPC: {}", edit_mode);
                 self.hud.edit_mode = edit_mode;
                 if edit_mode && self.hud.current_text.is_empty() {
-                    self.hud.current_text = "🎮 Test Altyazı: MORT Konumlandırma Modu Aktif".to_string();
+                    self.hud.current_text = cosmic_translator_overlay::fl!("mort-positioning-active");
                 }
                 let mut settings = self.hud.layer_settings();
                 settings.id = self.hud_id;
@@ -335,6 +335,8 @@ impl cosmic::Application for OverlayApp {
 
 fn main() -> cosmic::iced::Result {
     let _ = tracing_subscriber::fmt::try_init();
+    let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
+    cosmic_translator_overlay::i18n::init(&requested_languages);
     let args: Vec<String> = env::args().collect();
     let mode = if args.iter().any(|arg| arg == "--selector") {
         let preview_path = args

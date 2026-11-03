@@ -116,9 +116,9 @@ impl SubtitleHudState {
         }
 
         let display_text = if self.current_text.trim().is_empty() {
-            "🎮 Test Altyazı: MORT Konumlandırma Modu Aktif"
+            crate::fl!("mort-positioning-active")
         } else {
-            &self.current_text
+            self.current_text.clone()
         };
 
         let label = widget::text(display_text)
@@ -127,23 +127,23 @@ impl SubtitleHudState {
         let opacity = self.opacity.clamp(0.1, 1.0);
 
         if self.edit_mode {
-            let edit_title = widget::text(format!(
-                "✥ MORT Konumlandırma Modu (Dikey Ofset: {} px)",
-                self.offset_y
+            let edit_title = widget::text(crate::fl!(
+                "mort-mode-title",
+                offset = self.offset_y
             ))
             .size(13);
 
-            let lock_btn = widget::button::suggested("🔒 Sabitle (Oyuna Dön)")
+            let lock_btn = widget::button::suggested(crate::fl!("lock-position"))
                 .on_press(map_ui(HudUiMessage::LockPosition));
-            let top_btn = widget::button::standard("Üst")
+            let top_btn = widget::button::standard(crate::fl!("pos-top"))
                 .on_press(map_ui(HudUiMessage::SetPresetPos(HudPosition::Top)));
-            let center_btn = widget::button::standard("Orta")
+            let center_btn = widget::button::standard(crate::fl!("pos-center"))
                 .on_press(map_ui(HudUiMessage::SetPresetPos(HudPosition::Center)));
-            let btm_btn = widget::button::standard("Alt")
+            let btm_btn = widget::button::standard(crate::fl!("pos-bottom"))
                 .on_press(map_ui(HudUiMessage::SetPresetPos(HudPosition::Bottom)));
-            let dec_btn = widget::button::standard("▲ Yukarı (-20px)")
+            let dec_btn = widget::button::standard(crate::fl!("nudge-up"))
                 .on_press(map_ui(HudUiMessage::NudgeOffset(-20)));
-            let inc_btn = widget::button::standard("▼ Aşağı (+20px)")
+            let inc_btn = widget::button::standard(crate::fl!("nudge-down"))
                 .on_press(map_ui(HudUiMessage::NudgeOffset(20)));
 
             let controls = widget::row![top_btn, center_btn, btm_btn, dec_btn, inc_btn, lock_btn]

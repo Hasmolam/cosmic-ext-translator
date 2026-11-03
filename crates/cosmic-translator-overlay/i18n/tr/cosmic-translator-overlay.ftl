@@ -1,0 +1,9 @@
+hud-active = Altyazı Katmanı Aktif
+mort-positioning-active = Konumlandırma Modu Aktif
+mort-mode-title = Konumlandırma Modu (Dikey Ofset: { $offset } px)
+lock-position = Konumu Sabitle
+pos-top = Üst
+pos-center = Orta
+pos-bottom = Alt
+nudge-up = Yukarı (-20px)
+nudge-down = Aşağı (+20px)

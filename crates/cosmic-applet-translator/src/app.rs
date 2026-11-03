@@ -179,7 +179,7 @@ impl AppModel {
         };
 
         let header = row![
-            widget::text("cosmic-ext-lingua")
+            widget::text("cosmic-ext-translator")
                 .size(20)
                 .wrapping(cosmic::iced::widget::text::Wrapping::Word),
             cosmic::iced::widget::space::horizontal(),
@@ -480,7 +480,7 @@ impl cosmic::Application for AppModel {
     type Flags = ();
     type Message = Message;
 
-    const APP_ID: &'static str = "com.system76.CosmicExtLingua";
+    const APP_ID: &'static str = "com.system76.CosmicExtTranslator";
 
     fn core(&self) -> &cosmic::Core {
         &self.core
@@ -496,7 +496,7 @@ impl cosmic::Application for AppModel {
     ) -> (Self, Task<cosmic::Action<Self::Message>>) {
         let is_standalone = !std::env::args().any(|arg| arg == "--applet");
         if is_standalone {
-            core.set_header_title("cosmic-ext-lingua".to_string());
+            core.set_header_title("cosmic-ext-translator".to_string());
         }
         let (config_handler, config) =
             match cosmic_config::Config::new(Self::APP_ID, Config::VERSION) {
@@ -913,10 +913,10 @@ impl cosmic::Application for AppModel {
                             async move {
                                 ensure_hud_running_and_styled(font_size, opacity, dur, &pos, offset_y).await;
                                 let client = HudIpcClient::default_client();
+                                let test_text = fl!("test-subtitle-content");
                                 let _ = client
                                     .send(&HudMessage::ShowSubtitle {
-                                        text: "🎮 Test Altyazısı: cosmic-ext-lingua aktif ve hazır!"
-                                            .to_string(),
+                                        text: test_text,
                                         original: Some("Test Subtitle".to_string()),
                                         duration_ms: dur,
                                     })
@@ -1022,7 +1022,7 @@ impl cosmic::Application for AppModel {
                         };
 
                         let preview_path = if let Some(img) = full_snapshot {
-                            let path = std::env::temp_dir().join(format!("cosmic-ext-lingua-full-{}.bmp", std::process::id()));
+                            let path = std::env::temp_dir().join(format!("cosmic-ext-translator-full-{}.bmp", std::process::id()));
                             if img.save_with_format(&path, image::ImageFormat::Bmp).is_ok() {
                                 Some(path)
                             } else {
@@ -1114,7 +1114,7 @@ impl cosmic::Application for AppModel {
                         };
 
                         let preview_path = if let Some(img) = full_snapshot {
-                            let path = std::env::temp_dir().join(format!("cosmic-ext-lingua-ignore-{}.bmp", std::process::id()));
+                            let path = std::env::temp_dir().join(format!("cosmic-ext-translator-ignore-{}.bmp", std::process::id()));
                             if img.save_with_format(&path, image::ImageFormat::Bmp).is_ok() {
                                 Some(path)
                             } else {

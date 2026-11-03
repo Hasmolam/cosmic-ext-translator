@@ -1,6 +1,6 @@
 app-title = Ekran Çevirmeni
 app-comment = COSMIC için Gerçek Zamanlı Ekran ve Oyun Çevirmeni
-app-keywords = çeviri;çevirmen;ekran;oyun;cosmic;ocr;lingua;
+app-keywords = çeviri;çevirmen;ekran;oyun;cosmic;ocr;
 about = Hakkında
 status = Durum
 active = Aktif
@@ -10,7 +10,7 @@ preset = Şablon
 active-region = Aktif Bölge
 custom-roi-unset = Özel Alan Seçilmedi
 select-roi = Yakalama Alanı Seç
-select-target = 🎯 Hedef Pencere / Ekran Seç
+select-target = Hedef Pencere / Ekran Seç
 settings = Ayarlar
 translate-now = Şu Anki Ekranı Çevir
 profile = Oyun Profili
@@ -61,9 +61,10 @@ background-opacity = Arka Plan Opaklığı
 hud-persistent = Altyazıyı Ekranda Tut (Sürekli)
 hud-auto-hide-time = Otomatik Kaybolma Süresi
 mort-positioning = MORT Tarzı Konumlandırma
-mort-button = ✥ Ekranda Canlı Konumlandır (MORT Modu)
+mort-button = Ekranda Canlı Konumlandır (MORT Modu)
 live-preview = Canlı Önizleme
 show-test-hud-message = HUD'da Test Mesajı Göster
+test-subtitle-content = Altyazı Katmanı Aktif
 pos-bottom = Ekran Altı
 pos-top = Ekran Üstü
 pos-center = Ekran Ortası
@@ -76,13 +77,13 @@ add-button = Ekle
 delete-button = Sil
 
 # Live Inspection Dashboard
-live-inspection-title = 🔍 Canlı Çeviri Alanı & Denetim
+live-inspection-title = Canlı Çeviri Alanı & Denetim
 preview-mode = Önizleme Modu
 raw-crop = Orijinal Kırpma
 ocr-binarize = OCR Binarizasyonu
-last-detected-ocr = 📝 Son Algılanan Metin (OCR)
-translation-output = 🌐 Çeviri Çıktısı
-prompt-select-target = 🎯 Canlı görüntü denetimi için pencere seçin veya çeviriyi başlatın
+last-detected-ocr = Son Algılanan Metin (OCR)
+translation-output = Çeviri Çıktısı
+prompt-select-target = Canlı görüntü denetimi için pencere seçin veya çeviriyi başlatın
 
 # History & Ignore Area
 tab-history = Diyalog Geçmişi
