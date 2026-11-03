@@ -1,7 +1,5 @@
 # cosmic-ext-lingua
 
-[English](README.md) | [Türkçe](README.tr.md)
-
 **Real-time Wayland Screen and Game Subtitle Translator for COSMIC Desktop**
 
 `cosmic-ext-lingua` is a native COSMIC desktop translation suite designed for full-screen games, visual novels, and desktop applications. It captures on-screen text in real time, runs OCR and contextual machine translation, and renders translated text into an input-transparent (click-through) Wayland layer-shell HUD overlay without focus stealing or frame pacing degradation.
