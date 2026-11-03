@@ -1465,7 +1465,7 @@ impl cosmic::Application for AppModel {
                 _ => preset_label.clone(),
             };
 
-            let mut preset_buttons = row![].spacing(4);
+            let mut preset_buttons = row![].spacing(6).width(cosmic::iced::Length::Fill);
             for p in [RoiPreset::Bottom25, RoiPreset::Bottom33, RoiPreset::FullScreen] {
                 let label = match p {
                     RoiPreset::Bottom25 => fl!("preset-bottom25-short"),
@@ -1477,7 +1477,8 @@ impl cosmic::Application for AppModel {
                     button::suggested(label)
                 } else {
                     button::standard(label)
-                };
+                }
+                .width(cosmic::iced::Length::Fill);
                 preset_buttons = preset_buttons.push(btn.on_press(Message::PresetSelected(p)));
             }
 
@@ -1519,7 +1520,7 @@ impl cosmic::Application for AppModel {
                 );
 
             return self.core.applet.popup_container(
-                widget::container(content_list).width(360)
+                widget::container(content_list).width(380)
             ).into();
         }
 
