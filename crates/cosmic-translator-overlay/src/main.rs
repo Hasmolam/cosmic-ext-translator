@@ -65,7 +65,7 @@ impl cosmic::Application for OverlayApp {
     type Flags = AppMode;
     type Message = Message;
 
-    const APP_ID: &'static str = "com.system76.CosmicTranslatorOverlay";
+    const APP_ID: &'static str = "io.github.hasmolam.CosmicTranslatorOverlay";
 
     fn core(&self) -> &cosmic::Core {
         &self.core

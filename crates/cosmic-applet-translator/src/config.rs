@@ -1,7 +1,16 @@
 use cosmic::cosmic_config::{self, cosmic_config_derive::CosmicConfigEntry, CosmicConfigEntry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io;
+use std::path::{Path, PathBuf};
+use tracing::{info, warn};
 use translator_core::Roi;
+
+/// Application ID: desktop entry, AppStream component and `cosmic-config` namespace.
+pub const APP_ID: &str = "io.github.hasmolam.CosmicExtTranslator";
+
+/// Application ID used up to 0.1.x. Settings stored under it are migrated once.
+pub const LEGACY_APP_ID: &str = "com.system76.CosmicExtTranslator";
 
 #[derive(Debug, Clone, CosmicConfigEntry, Eq, PartialEq, Serialize, Deserialize)]
 #[version = 1]
@@ -81,9 +90,97 @@ impl Default for Config {
     }
 }
 
+/// Copies settings saved under [`LEGACY_APP_ID`] to [`APP_ID`] if the new location has
+/// no settings yet. The old directory is left in place so an older build still works.
+pub fn migrate_legacy_config() {
+    let Some(base) = cosmic_config_base() else {
+        return;
+    };
+    match migrate_config_dir(&base, LEGACY_APP_ID, APP_ID, Config::VERSION) {
+        Ok(true) => info!("Migrated settings from {LEGACY_APP_ID} to {APP_ID}"),
+        Ok(false) => {}
+        Err(err) => warn!("Cannot migrate settings from {LEGACY_APP_ID}: {err}"),
+    }
+}
+
+/// `$XDG_CONFIG_HOME/cosmic`, falling back to `~/.config/cosmic`.
+fn cosmic_config_base() -> Option<PathBuf> {
+    let config_home = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+    Some(config_home.join("cosmic"))
+}
+
+/// Copies `<base>/<from>/v<version>/*` to `<base>/<to>/v<version>/`.
+///
+/// Returns `Ok(false)` when there is nothing to migrate or the target already exists.
+/// Files are copied into a temporary directory that is renamed into place, so an
+/// interrupted migration does not leave a partial settings directory.
+pub fn migrate_config_dir(base: &Path, from: &str, to: &str, version: u64) -> io::Result<bool> {
+    let version_dir = format!("v{version}");
+    let src = base.join(from).join(&version_dir);
+    let dst_parent = base.join(to);
+    let dst = dst_parent.join(&version_dir);
+    if dst.exists() || !src.is_dir() {
+        return Ok(false);
+    }
+
+    let tmp = dst_parent.join(format!(".{version_dir}.migrating"));
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?;
+    }
+    std::fs::create_dir_all(&tmp)?;
+    for entry in std::fs::read_dir(&src)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            std::fs::copy(entry.path(), tmp.join(entry.file_name()))?;
+        }
+    }
+    std::fs::rename(&tmp, &dst)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_base(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "cosmic-ext-translator-cfg-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn legacy_config_is_copied_once() {
+        let base = temp_base("migrate");
+        let old = base.join("old.Id/v1");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("target_lang"), "\"de\"").unwrap();
+
+        assert!(migrate_config_dir(&base, "old.Id", "new.Id", 1).unwrap());
+        let migrated = base.join("new.Id/v1/target_lang");
+        assert_eq!(std::fs::read_to_string(&migrated).unwrap(), "\"de\"");
+        assert!(old.join("target_lang").exists(), "legacy settings are kept");
+
+        // Settings changed after migration are not overwritten by a second run.
+        std::fs::write(&migrated, "\"fr\"").unwrap();
+        assert!(!migrate_config_dir(&base, "old.Id", "new.Id", 1).unwrap());
+        assert_eq!(std::fs::read_to_string(&migrated).unwrap(), "\"fr\"");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn missing_legacy_config_is_not_an_error() {
+        let base = temp_base("missing");
+        assert!(!migrate_config_dir(&base, "old.Id", "new.Id", 1).unwrap());
+        assert!(!base.join("new.Id").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn test_default_config() {

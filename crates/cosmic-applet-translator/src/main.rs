@@ -1,4 +1,4 @@
-use cosmic_applet_translator::{app, i18n};
+use cosmic_applet_translator::{app, config, i18n};
 
 fn main() -> cosmic::iced::Result {
     let _ = tracing_subscriber::fmt()
@@ -9,6 +9,7 @@ fn main() -> cosmic::iced::Result {
         .try_init();
     let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
     i18n::init(&requested_languages);
+    config::migrate_legacy_config();
 
     if std::env::args().any(|arg| arg == "--applet") {
         cosmic::applet::run::<app::AppModel>(())

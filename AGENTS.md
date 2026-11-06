@@ -8,7 +8,7 @@ Multi-crate workspace under GPL-3.0-or-later:
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary (`cosmic-translator-overlay`).
   - `--selector`: Interactive screen region picker (`Layer::Overlay`, `KeyboardInteractivity::Exclusive`). Emits `ROI_SELECTED:{"x":...,"y":...,"width":...,"height":...}` to stdout on release and exits 0.
   - `--hud`: Click-through subtitle overlay (`Layer::Overlay`, `input_zone: Some(vec![])`). Listens on Unix domain socket for `HudMessage` payloads.
-- `crates/cosmic-applet-translator`: COSMIC panel applet (`com.system76.CosmicExtTranslator`). Owns applet popup, 5-tab settings window, `cosmic-config` persistence, and global shortcuts subscription.
+- `crates/cosmic-applet-translator`: COSMIC panel applet (`io.github.hasmolam.CosmicExtTranslator`, 0.1.x: `com.system76.CosmicExtTranslator`, migrated in `config.rs`). Owns applet popup, 5-tab settings window, `cosmic-config` persistence, and global shortcuts subscription.
 
 ## Development & Verification Commands
 
