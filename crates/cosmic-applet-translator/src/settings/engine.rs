@@ -5,7 +5,7 @@ use cosmic::widget::{self, button, row, text};
 use cosmic::Element;
 use translator_core::ocr::{paddle, OcrEngineChoice, OrientationMode};
 use translator_core::translation::OllamaTranslationBackend;
-use translator_core::SourceLanguage;
+use translator_core::{SourceLanguage, TargetLanguage};
 
 use super::{choice_button, Update};
 use crate::config::Config;
@@ -96,9 +96,7 @@ pub fn view<'a>(state: &'a State, config: &'a Config) -> Element<'a, Message> {
         .add(widget::settings::item(fl!("active-engine"), engine_buttons))
         .add(widget::settings::item(
             fl!("target-language"),
-            widget::text_input("tr", &config.target_lang)
-                .on_input(Message::TargetLangChanged)
-                .width(100),
+            target_language_dropdown(&config.target_lang),
         ))
         .add(widget::settings::item(
             fl!("source-language"),
@@ -217,6 +215,55 @@ pub fn view<'a>(state: &'a State, config: &'a Config) -> Element<'a, Message> {
     section.into()
 }
 
+/// Target language selection. A stored code outside [`TargetLanguage::ALL`] is kept and
+/// shown as an extra entry, so it is not replaced until another language is picked.
+fn target_language_dropdown(current: &str) -> Element<'static, Message> {
+    let (labels, selected) = target_language_options(current);
+    let current = current.to_string();
+    widget::dropdown(labels, selected, move |idx| {
+        let code = TargetLanguage::ALL
+            .get(idx)
+            .map_or_else(|| current.clone(), |lang| lang.code().to_string());
+        Message::TargetLangChanged(code)
+    })
+    .into()
+}
+
+/// Dropdown labels in [`TargetLanguage::ALL`] order, plus an entry for an unknown
+/// stored code, and the index of the current selection.
+fn target_language_options(current: &str) -> (Vec<String>, Option<usize>) {
+    let mut labels: Vec<String> = TargetLanguage::ALL
+        .iter()
+        .map(|lang| match lang {
+            TargetLanguage::Turkish => fl!("target-lang-tr"),
+            TargetLanguage::English => fl!("target-lang-en"),
+            TargetLanguage::German => fl!("target-lang-de"),
+            TargetLanguage::French => fl!("target-lang-fr"),
+            TargetLanguage::Spanish => fl!("target-lang-es"),
+            TargetLanguage::Italian => fl!("target-lang-it"),
+            TargetLanguage::Portuguese => fl!("target-lang-pt"),
+            TargetLanguage::Russian => fl!("target-lang-ru"),
+            TargetLanguage::Ukrainian => fl!("target-lang-uk"),
+            TargetLanguage::Polish => fl!("target-lang-pl"),
+            TargetLanguage::Dutch => fl!("target-lang-nl"),
+            TargetLanguage::Arabic => fl!("target-lang-ar"),
+            TargetLanguage::Japanese => fl!("target-lang-ja"),
+            TargetLanguage::ChineseSimplified => fl!("target-lang-zh"),
+            TargetLanguage::Korean => fl!("target-lang-ko"),
+        })
+        .collect();
+
+    let selected = match TargetLanguage::from_code(current) {
+        Some(lang) => Some(lang.index()),
+        None if current.trim().is_empty() => None,
+        None => {
+            labels.push(fl!("target-lang-custom", code = current.trim()));
+            Some(labels.len() - 1)
+        }
+    };
+    (labels, selected)
+}
+
 /// Localised dropdown labels, in [`OcrEngineChoice::ALL`] order.
 fn ocr_engine_labels() -> Vec<String> {
     OcrEngineChoice::ALL
@@ -283,5 +330,26 @@ mod tests {
             .ollama_test_status
             .as_deref()
             .is_some_and(|s| s.contains("refused")));
+    }
+
+    #[test]
+    fn known_target_is_selected() {
+        crate::i18n::init(&[]);
+        let (labels, selected) = target_language_options("de");
+        assert_eq!(labels.len(), TargetLanguage::ALL.len());
+        assert_eq!(selected, Some(TargetLanguage::German.index()));
+    }
+
+    #[test]
+    fn unknown_target_is_kept_as_extra_entry() {
+        crate::i18n::init(&[]);
+        let (labels, selected) = target_language_options("sv");
+        assert_eq!(labels.len(), TargetLanguage::ALL.len() + 1);
+        assert_eq!(selected, Some(TargetLanguage::ALL.len()));
+        assert!(labels.last().is_some_and(|l| l.contains("sv")));
+
+        let (labels, selected) = target_language_options("");
+        assert_eq!(labels.len(), TargetLanguage::ALL.len());
+        assert_eq!(selected, None);
     }
 }

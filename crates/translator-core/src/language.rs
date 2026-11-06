@@ -1,8 +1,10 @@
-//! Source language selection and its mapping to OCR scripts.
+//! Source and target language selection, and the mapping of source languages to OCR
+//! scripts.
 //!
-//! The applet stores the source language as a plain code string in `cosmic-config`.
-//! This module normalises user-entered or legacy codes (`jp`, `JPN`, `japanese`, ...)
-//! into a fixed set of languages the OCR pipeline knows how to handle.
+//! The applet stores both languages as plain code strings in `cosmic-config`. This
+//! module normalises user-entered or legacy codes (`jp`, `JPN`, `japanese`, ...) into
+//! fixed sets of languages: source languages the OCR pipeline can read, and target
+//! languages every translation engine accepts.
 
 /// Writing system that determines which OCR backend can read a language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -151,6 +153,91 @@ impl SourceLanguage {
     }
 }
 
+/// Target languages offered in the settings UI.
+///
+/// Limited to languages that Google Translate, DeepL and common LLMs all accept as a
+/// target, so switching engines never leaves an unsupported target selected. A code
+/// outside this list can still be stored in the config and is passed through unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TargetLanguage {
+    Turkish,
+    English,
+    German,
+    French,
+    Spanish,
+    Italian,
+    Portuguese,
+    Russian,
+    Ukrainian,
+    Polish,
+    Dutch,
+    Arabic,
+    Japanese,
+    ChineseSimplified,
+    Korean,
+}
+
+impl TargetLanguage {
+    /// All selectable languages, in settings dropdown order.
+    pub const ALL: [Self; 15] = [
+        Self::Turkish,
+        Self::English,
+        Self::German,
+        Self::French,
+        Self::Spanish,
+        Self::Italian,
+        Self::Portuguese,
+        Self::Russian,
+        Self::Ukrainian,
+        Self::Polish,
+        Self::Dutch,
+        Self::Arabic,
+        Self::Japanese,
+        Self::ChineseSimplified,
+        Self::Korean,
+    ];
+
+    /// Code stored in config and passed to translation engines.
+    #[must_use]
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Turkish => "tr",
+            Self::English => "en",
+            Self::German => "de",
+            Self::French => "fr",
+            Self::Spanish => "es",
+            Self::Italian => "it",
+            Self::Portuguese => "pt",
+            Self::Russian => "ru",
+            Self::Ukrainian => "uk",
+            Self::Polish => "pl",
+            Self::Dutch => "nl",
+            Self::Arabic => "ar",
+            Self::Japanese => "ja",
+            Self::ChineseSimplified => "zh",
+            Self::Korean => "ko",
+        }
+    }
+
+    /// Parses a language code, case-insensitively. Region variants (`en-US`, `pt_BR`,
+    /// `zh-CN`) map to the base language. Unknown or empty codes return `None`.
+    #[must_use]
+    pub fn from_code(raw: &str) -> Option<Self> {
+        let code = raw.trim().to_ascii_lowercase().replace('_', "-");
+        let base = match code.as_str() {
+            "zh-tw" | "zh-hant" | "zh-hk" => return None,
+            other => other.split('-').next().unwrap_or(other),
+        };
+        Self::ALL.into_iter().find(|lang| lang.code() == base)
+    }
+
+    /// Position in [`TargetLanguage::ALL`].
+    #[must_use]
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|l| *l == self).unwrap_or(0)
+    }
+}
+
 /// Normalises a stored source-language string to the code sent to translation engines.
 ///
 /// Known aliases collapse to their canonical code. Unknown codes are kept (trimmed and
@@ -229,5 +316,33 @@ mod tests {
             assert_eq!(SourceLanguage::from_code(lang.code()), Some(*lang));
             assert_eq!(lang.index(), i);
         }
+    }
+
+    #[test]
+    fn target_codes_roundtrip_and_index() {
+        for (i, lang) in TargetLanguage::ALL.iter().enumerate() {
+            assert_eq!(TargetLanguage::from_code(lang.code()), Some(*lang));
+            assert_eq!(lang.index(), i);
+        }
+    }
+
+    #[test]
+    fn target_region_variants_map_to_base_language() {
+        assert_eq!(
+            TargetLanguage::from_code(" EN-us "),
+            Some(TargetLanguage::English)
+        );
+        assert_eq!(
+            TargetLanguage::from_code("pt_BR"),
+            Some(TargetLanguage::Portuguese)
+        );
+        assert_eq!(
+            TargetLanguage::from_code("zh-CN"),
+            Some(TargetLanguage::ChineseSimplified)
+        );
+        // Traditional Chinese is a different target; it must not be shown as Simplified.
+        assert_eq!(TargetLanguage::from_code("zh-TW"), None);
+        assert_eq!(TargetLanguage::from_code("sv"), None);
+        assert_eq!(TargetLanguage::from_code(""), None);
     }
 }

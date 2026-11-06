@@ -162,7 +162,7 @@ The settings window has five tabs. Open it from the applet, or run `cosmic-apple
 | Tab | What it controls |
 | :--- | :--- |
 | Capture | Region, ignore region, settle time, binarization, background blur filter. Includes a live preview of what the OCR sees. |
-| Engine | Translation engine, credentials, source and target language (defaults: auto → Turkish). For Japanese, Chinese and Korean also the OCR engine and text direction. |
+| Engine | Translation engine, credentials, source and target language (defaults: auto → Turkish). The target list contains the 15 languages accepted by all engines; a code set by hand in the config file is kept. For Japanese, Chinese and Korean also the OCR engine and text direction. |
 | Display | Subtitle position, vertical offset, font size, opacity, display duration. |
 | Glossary | Fixed translations for character names and game terms. |
 | History | The last 500 translations. Searchable, with copy to clipboard. |

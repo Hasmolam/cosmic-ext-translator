@@ -127,6 +127,24 @@ lang-es = Spanish
 lang-it = Italian
 lang-pt = Portuguese
 lang-tr = Turkish
+
+# Target languages: names only, no OCR notes.
+target-lang-tr = Turkish
+target-lang-en = English
+target-lang-de = German
+target-lang-fr = French
+target-lang-es = Spanish
+target-lang-it = Italian
+target-lang-pt = Portuguese
+target-lang-ru = Russian
+target-lang-uk = Ukrainian
+target-lang-pl = Polish
+target-lang-nl = Dutch
+target-lang-ar = Arabic
+target-lang-ja = Japanese
+target-lang-zh = Chinese, Simplified
+target-lang-ko = Korean
+target-lang-custom = { $code } (custom code)
 ocr-engine = OCR engine
 ocr-engine-auto = Automatic (PaddleOCR, then Tesseract)
 ocr-engine-paddle = PaddleOCR (downloads about 21 MB on first use)

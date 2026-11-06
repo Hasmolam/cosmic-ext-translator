@@ -16,6 +16,9 @@ the section of the released version.
 
 ### Changed
 
+- The target language is chosen from a list of 15 languages that Google, DeepL and LLM
+  engines all accept, instead of typing a code. A code outside the list that was set
+  earlier is kept and shown as a separate entry.
 - Applet code split into `app/` and `settings/` modules, one settings module per tab.
   Config changes are applied from the difference between old and new settings, so
   saving a setting no longer restarts translation twice, and changing a setting no

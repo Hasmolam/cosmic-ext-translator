@@ -127,6 +127,24 @@ lang-es = İspanyolca
 lang-it = İtalyanca
 lang-pt = Portekizce
 lang-tr = Türkçe
+
+# Hedef diller: yalnızca dil adları, OCR notu yok.
+target-lang-tr = Türkçe
+target-lang-en = İngilizce
+target-lang-de = Almanca
+target-lang-fr = Fransızca
+target-lang-es = İspanyolca
+target-lang-it = İtalyanca
+target-lang-pt = Portekizce
+target-lang-ru = Rusça
+target-lang-uk = Ukraynaca
+target-lang-pl = Lehçe
+target-lang-nl = Felemenkçe
+target-lang-ar = Arapça
+target-lang-ja = Japonca
+target-lang-zh = Çince, Basitleştirilmiş
+target-lang-ko = Korece
+target-lang-custom = { $code } (özel kod)
 ocr-engine = OCR motoru
 ocr-engine-auto = Otomatik (önce PaddleOCR, sonra Tesseract)
 ocr-engine-paddle = PaddleOCR (ilk kullanımda yaklaşık 21 MB indirir)

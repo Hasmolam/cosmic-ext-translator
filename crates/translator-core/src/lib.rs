@@ -26,7 +26,9 @@ pub use pipeline::{spawn_recognition_pipeline, PipelineHandle, RecognizedEvent};
 
 pub use error::{CaptureError, OcrInitError, Result};
 pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage, HudPosition};
-pub use language::{normalize_source_code, script_for_code, Script, SourceLanguage};
+pub use language::{
+    normalize_source_code, script_for_code, Script, SourceLanguage, TargetLanguage,
+};
 pub use ocr::{
     create_ocr_backend, create_ocr_backend_for_lang, detect_dominant_orientation, filter_furigana,
     is_cjk_char, is_cjk_text, join_cjk_or_latin_tokens, normalize_cjk_text, sort_cjk_reading_order,
