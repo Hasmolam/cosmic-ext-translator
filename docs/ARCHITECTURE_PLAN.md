@@ -244,9 +244,24 @@ incremental build after touching `app.rs`, test time, and binary sizes.
 - `services::process` holds executable lookup and the settings-window launch.
 - `app.rs`: 1880 -> 1514 lines.
 
-**A3. Applet modules.**
-- Move settings tabs into `settings/<page>.rs` with page messages.
-- Split `app.rs` into `app/` modules.
+**A3. Applet modules.** Done.
+- `settings/` has one module per tab (`capture`, `engine`, `display`, `glossary`,
+  `history`), each with its own `Message`, `update` and `view`. Pages change `Config`
+  directly and return `Update { task, request }`; `Request` covers the two actions
+  that need app state (`SelectRegion`, `Close`). `SettingsMessage` has 7 variants
+  instead of 38.
+- Side effects of config changes are derived from the old and new config in
+  `app::changes::ConfigDelta` (region, OCR, translation, HUD style). The same path
+  handles edits in this process and changes picked up from `cosmic-config`, so a
+  write echoed back by the config watcher no longer restarts the orchestrator, and a
+  config change no longer starts the HUD.
+- `app/` modules: `mod.rs` (model, messages, routing; 405 lines), `capture.rs`,
+  `ocr.rs`, `translation.rs` (backend selection shared by the orchestrator and
+  one-shot translation), `changes.rs`, `dashboard.rs`, `popup.rs`, `shortcuts.rs`.
+  `update()` is one line per message.
+- Removed messages without a sender or with a single caller: `CloseSettingsWindow`,
+  `HudCleared`, `RoiSelected`, `IgnoreRoiSelected`, `SelectIgnoreRoiRequested`,
+  `ClearIgnoreRoi`, `ClearHistory`, `CopyHistoryEntry`.
 
 **A4. Extract crates.**
 - First `translator-protocol`, then switch the overlay to depend only on it and measure

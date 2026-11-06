@@ -14,6 +14,14 @@ the section of the released version.
 - The status shows "Starting…" while the screen share dialog is open, and the reason
   when capture cannot be started. Cancelling the dialog is not reported as an error.
 
+### Changed
+
+- Applet code split into `app/` and `settings/` modules, one settings module per tab.
+  Config changes are applied from the difference between old and new settings, so
+  saving a setting no longer restarts translation twice, and changing a setting no
+  longer starts the HUD.
+- Glossary terms are listed in alphabetical order instead of hash order.
+
 ### Fixed
 
 - HUD and settings window processes started by the applet stayed as zombies after

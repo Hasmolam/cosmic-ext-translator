@@ -1,6 +1,6 @@
 use cosmic_applet_translator::config::Config;
 use cosmic_applet_translator::history::{DialogueBacklog, DEFAULT_MAX_HISTORY_ENTRIES};
-use cosmic_applet_translator::settings_dialog::{SettingsState, SettingsTab};
+use cosmic_applet_translator::settings::{SettingsState, SettingsTab};
 use translator_core::region::{Roi, RoiPreset};
 
 #[test]
@@ -90,8 +90,8 @@ fn test_settings_dialog_history_and_ignore_roi_integration() {
     let _ = state.view(&config, &backlog);
 
     // 2. Search filtering
-    state.history_search_query = "NPC_3".to_string();
-    assert_eq!(backlog.search(&state.history_search_query).len(), 1);
+    state.history.query = "NPC_3".to_string();
+    assert_eq!(backlog.search(&state.history.query).len(), 1);
     let _ = state.view(&config, &backlog);
 
     // 3. Clear History
@@ -233,15 +233,15 @@ fn test_ui_glossary_term_management() {
     let mut state = SettingsState::new();
 
     // 1. Initial empty glossary inputs
-    assert!(state.new_glossary_source.is_empty());
-    assert!(state.new_glossary_target.is_empty());
+    assert!(state.glossary.new_source.is_empty());
+    assert!(state.glossary.new_target.is_empty());
 
     // 2. Populate inputs
-    state.new_glossary_source = "  Phoenix Down  ".to_string();
-    state.new_glossary_target = "  Anka Kuşu Tüyü  ".to_string();
+    state.glossary.new_source = "  Phoenix Down  ".to_string();
+    state.glossary.new_target = "  Anka Kuşu Tüyü  ".to_string();
 
-    let src = state.new_glossary_source.trim().to_string();
-    let trg = state.new_glossary_target.trim().to_string();
+    let src = state.glossary.new_source.trim().to_string();
+    let trg = state.glossary.new_target.trim().to_string();
     assert_eq!(src, "Phoenix Down");
     assert_eq!(trg, "Anka Kuşu Tüyü");
 
@@ -282,13 +282,13 @@ fn test_ui_history_view_and_search() {
     let _ = state.view(&config, &backlog);
 
     // View with search filter
-    state.history_search_query = "protagonist".to_string();
-    assert_eq!(backlog.search(&state.history_search_query).len(), 1);
+    state.history.query = "protagonist".to_string();
+    assert_eq!(backlog.search(&state.history.query).len(), 1);
     let _ = state.view(&config, &backlog);
 
     // View with non-matching filter
-    state.history_search_query = "nonexistent".to_string();
-    assert_eq!(backlog.search(&state.history_search_query).len(), 0);
+    state.history.query = "nonexistent".to_string();
+    assert_eq!(backlog.search(&state.history.query).len(), 0);
     let _ = state.view(&config, &backlog);
 }
 
