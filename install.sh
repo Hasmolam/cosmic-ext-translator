@@ -3,6 +3,11 @@
 # COSMIC Screen Translator (cosmic-ext-translator) - Installer
 # Author: Hasan Hüseyin Yolcu <hasanhuseyinyolcu25@gmail.com>
 # License: GPL-3.0-or-later
+#
+# Installs to ~/.local without root. Binary sources, in order:
+#   1. binaries next to this script (extracted release tarball)
+#   2. target/release in a source checkout
+#   3. the GitHub release (latest, or --version vX.Y.Z), verified against SHA256SUMS
 # ==============================================================================
 
 set -euo pipefail
@@ -14,31 +19,103 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+APP_ID="io.github.hasmolam.CosmicExtTranslator"
+LEGACY_APP_ID="com.system76.CosmicExtTranslator"
+GITHUB_REPO="Hasmolam/cosmic-ext-translator"
+TARGET_TRIPLE="x86_64-unknown-linux-gnu"
+
 TARGET_DIR="${HOME}/.local/bin"
 APP_DIR="${HOME}/.local/share/applications"
 METAINFO_DIR="${HOME}/.local/share/metainfo"
 ICON_DIR="${HOME}/.local/share/icons/hicolor/scalable/apps"
 
 SCRIPT_PATH="${BASH_SOURCE[0]:-}"
-if [[ -n "${SCRIPT_PATH}" ]]; then
-    REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")" 2>/dev/null && pwd || pwd)"
+if [[ -n "${SCRIPT_PATH}" && -f "${SCRIPT_PATH}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
 else
-    REPO_ROOT="$(pwd)"
+    # Piped through `curl | bash`: no local files to use.
+    SCRIPT_DIR=""
 fi
-GITHUB_REPO="Hasmolam/cosmic-ext-translator"
-RAW_BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/master"
-DEFAULT_ARCHIVE_NAME="cosmic-ext-translator-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
 
-for arg in "$@"; do
-    case "$arg" in
+REQUESTED_TAG=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --version)
+            REQUESTED_TAG="${2:?--version needs a tag, e.g. v0.2.0}"
+            shift 2
+            ;;
         --help|-h)
-            echo "Usage: ./install.sh [OPTIONS]"
-            echo "Options:"
-            echo "  --help, -h    Show this help message"
+            echo "Usage: install.sh [--version vX.Y.Z]"
+            echo "  --version TAG   Install a specific release instead of the latest one"
+            echo "  --help, -h      Show this help message"
             exit 0
+            ;;
+        *)
+            echo -e "${RED}[x] Unknown option: $1${NC}" >&2
+            exit 2
             ;;
     esac
 done
+
+die() {
+    echo -e "${RED}[x] $*${NC}" >&2
+    exit 1
+}
+
+fetch() {
+    # fetch <url> <output>
+    if command -v curl &>/dev/null; then
+        curl -fsSL --retry 3 "$1" -o "$2"
+    elif command -v wget &>/dev/null; then
+        wget -qO "$2" "$1"
+    else
+        die "Neither curl nor wget found."
+    fi
+}
+
+latest_tag() {
+    # Follows the releases/latest redirect; avoids the rate-limited REST API.
+    local url
+    if command -v curl &>/dev/null; then
+        url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${GITHUB_REPO}/releases/latest")
+    else
+        url=$(wget -q --max-redirect=5 -S --spider "https://github.com/${GITHUB_REPO}/releases/latest" 2>&1 |
+            sed -n 's/^ *Location: //p' | tail -n 1)
+    fi
+    url="${url%$'\r'}"
+    [[ "${url}" == */tag/* ]] || return 1
+    echo "${url##*/tag/}"
+}
+
+# Installs desktop entry, AppStream metadata and icon from a directory that contains
+# <APP_ID>.desktop, <APP_ID>.metainfo.xml and <APP_ID>.svg.
+install_metadata_from() {
+    local dir="$1"
+    [[ -f "${dir}/${APP_ID}.desktop" ]] || die "Missing ${APP_ID}.desktop in ${dir}"
+    install -m 0644 "${dir}/${APP_ID}.desktop" "${APP_DIR}/"
+    [[ -f "${dir}/${APP_ID}.metainfo.xml" ]] && install -m 0644 "${dir}/${APP_ID}.metainfo.xml" "${METAINFO_DIR}/"
+    [[ -f "${dir}/${APP_ID}.svg" ]] && install -m 0644 "${dir}/${APP_ID}.svg" "${ICON_DIR}/"
+    return 0
+}
+
+# Moves a panel applet entry added under the 0.1.x application ID to the current one.
+migrate_panel_entry() {
+    local config_root="${XDG_CONFIG_HOME:-${HOME}/.config}/cosmic"
+    local backup_root="${XDG_STATE_HOME:-${HOME}/.local/state}/cosmic-ext-translator/panel-backup"
+    local list rel
+    [[ -d "${config_root}" ]] || return 0
+    shopt -s nullglob
+    for list in "${config_root}"/com.system76.CosmicPanel.*/v*/plugins_*; do
+        if grep -qF "\"${LEGACY_APP_ID}\"" "${list}"; then
+            rel="${list#"${config_root}"/}"
+            mkdir -p "${backup_root}/$(dirname "${rel}")"
+            cp -p "${list}" "${backup_root}/${rel}"
+            sed -i "s/\"${LEGACY_APP_ID//./\\.}\"/\"${APP_ID}\"/g" "${list}"
+            echo -e "${BLUE}[*] Updated panel applet entry in ${list}${NC}"
+        fi
+    done
+    shopt -u nullglob
+}
 
 echo -e "${BLUE}${BOLD}=== COSMIC Screen Translator Installer ===${NC}\n"
 
@@ -49,111 +126,68 @@ if [[ ":${PATH}:" != *":${TARGET_DIR}:"* ]]; then
     echo -e "    Add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your ~/.bashrc or ~/.zshrc."
 fi
 
-INSTALLED=0
+TMP_DIR=""
+cleanup() {
+    [[ -n "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+    return 0
+}
+trap cleanup EXIT
 
-# Clean old destination binaries to avoid ETXTBSY if running
-rm -f "${TARGET_DIR}/cosmic-applet-translator" "${TARGET_DIR}/cosmic-translator-overlay"
+if [[ -n "${SCRIPT_DIR}" && -z "${REQUESTED_TAG}" &&
+    -f "${SCRIPT_DIR}/cosmic-applet-translator" && -f "${SCRIPT_DIR}/cosmic-translator-overlay" ]]; then
+    echo -e "${BLUE}[*] Installing from the extracted release archive.${NC}"
+    BIN_DIR="${SCRIPT_DIR}"
+    META_DIR="${SCRIPT_DIR}"
 
-# Option A: Prebuilt binaries in current package/tarball directory
-if [[ -f "${REPO_ROOT}/cosmic-applet-translator" && -f "${REPO_ROOT}/cosmic-translator-overlay" ]]; then
-    echo -e "${BLUE}[*] Found binaries in release package.${NC}"
-    install -m 0755 "${REPO_ROOT}/cosmic-applet-translator" "${TARGET_DIR}/"
-    install -m 0755 "${REPO_ROOT}/cosmic-translator-overlay" "${TARGET_DIR}/"
-    INSTALLED=1
-
-# Option B: Local compiled release binaries in repo
-elif [[ -f "${REPO_ROOT}/target/release/cosmic-applet-translator" && -f "${REPO_ROOT}/target/release/cosmic-translator-overlay" ]]; then
-    echo -e "${BLUE}[*] Found locally compiled release binaries.${NC}"
-    install -m 0755 "${REPO_ROOT}/target/release/cosmic-applet-translator" "${TARGET_DIR}/"
-    install -m 0755 "${REPO_ROOT}/target/release/cosmic-translator-overlay" "${TARGET_DIR}/"
-    INSTALLED=1
-
-# Option C: Download latest prebuilt release archive from GitHub Releases
-else
-    echo -e "${BLUE}[*] Downloading prebuilt release archive from GitHub Releases...${NC}"
+elif [[ -n "${SCRIPT_DIR}" && -z "${REQUESTED_TAG}" &&
+    -f "${SCRIPT_DIR}/target/release/cosmic-applet-translator" &&
+    -f "${SCRIPT_DIR}/target/release/cosmic-translator-overlay" &&
+    -f "${SCRIPT_DIR}/crates/cosmic-applet-translator/target/xdgen/app.desktop" ]]; then
+    echo -e "${BLUE}[*] Installing locally compiled release binaries.${NC}"
+    BIN_DIR="${SCRIPT_DIR}/target/release"
     TMP_DIR=$(mktemp -d)
+    META_DIR="${TMP_DIR}"
+    cp "${SCRIPT_DIR}/crates/cosmic-applet-translator/target/xdgen/app.desktop" "${META_DIR}/${APP_ID}.desktop"
+    cp "${SCRIPT_DIR}/crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml" "${META_DIR}/${APP_ID}.metainfo.xml"
+    cp "${SCRIPT_DIR}/crates/cosmic-applet-translator/resources/icon.svg" "${META_DIR}/${APP_ID}.svg"
 
-    # Attempt to resolve latest release tarball URL dynamically
-    API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
-    DOWNLOAD_URL=""
-    if command -v curl &>/dev/null; then
-        DOWNLOAD_URL=$(curl -fsSL "${API_URL}" 2>/dev/null | grep "browser_download_url.*x86_64.*\.tar\.gz" | head -n 1 | cut -d '"' -f 4 || true)
+else
+    TAG="${REQUESTED_TAG}"
+    if [[ -z "${TAG}" ]]; then
+        TAG=$(latest_tag) || die "Cannot determine the latest release of ${GITHUB_REPO}."
     fi
-    if [[ -z "${DOWNLOAD_URL}" ]]; then
-        DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/${DEFAULT_ARCHIVE_NAME}"
-    fi
+    ARCHIVE="cosmic-ext-translator-${TAG}-${TARGET_TRIPLE}.tar.gz"
+    BASE_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}"
+    echo -e "${BLUE}[*] Downloading ${ARCHIVE}...${NC}"
 
-    TMP_ARCHIVE="${TMP_DIR}/release.tar.gz"
+    TMP_DIR=$(mktemp -d)
+    fetch "${BASE_URL}/${ARCHIVE}" "${TMP_DIR}/${ARCHIVE}" || die "Failed to download ${BASE_URL}/${ARCHIVE}"
+    fetch "${BASE_URL}/SHA256SUMS" "${TMP_DIR}/SHA256SUMS" ||
+        die "Release ${TAG} has no SHA256SUMS; refusing to install an unverified archive."
 
-    if command -v curl &>/dev/null; then
-        curl -fsSL "${DOWNLOAD_URL}" -o "${TMP_ARCHIVE}" || {
-            echo -e "${RED}[x] Failed to download prebuilt archive.${NC}"
-            rm -rf "${TMP_DIR}"
-            exit 1
-        }
-    elif command -v wget &>/dev/null; then
-        wget -qO "${TMP_ARCHIVE}" "${DOWNLOAD_URL}" || {
-            echo -e "${RED}[x] Failed to download prebuilt archive.${NC}"
-            rm -rf "${TMP_DIR}"
-            exit 1
-        }
-    else
-        echo -e "${RED}[x] Neither curl nor wget found.${NC}"
-        rm -rf "${TMP_DIR}"
-        exit 1
-    fi
+    command -v sha256sum &>/dev/null || die "sha256sum not found; cannot verify the download."
+    (cd "${TMP_DIR}" && grep -F " ${ARCHIVE}" SHA256SUMS | sha256sum -c --status -) ||
+        die "Checksum verification failed for ${ARCHIVE}."
+    echo -e "${GREEN}[*] Checksum verified.${NC}"
 
-    tar -xzf "${TMP_ARCHIVE}" -C "${TMP_DIR}"
-    # Find extracted directory
-    EXTRACTED_DIR=$(find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -type d | head -n 1)
-    if [[ -z "${EXTRACTED_DIR}" || ! -f "${EXTRACTED_DIR}/cosmic-applet-translator" ]]; then
-        EXTRACTED_DIR="${TMP_DIR}"
-    fi
-
-    install -m 0755 "${EXTRACTED_DIR}/cosmic-applet-translator" "${TARGET_DIR}/"
-    install -m 0755 "${EXTRACTED_DIR}/cosmic-translator-overlay" "${TARGET_DIR}/"
-
-    # Also install desktop files from archive if available
-    if [[ -f "${EXTRACTED_DIR}/com.system76.CosmicExtTranslator.desktop" ]]; then
-        install -m 0644 "${EXTRACTED_DIR}/com.system76.CosmicExtTranslator.desktop" "${APP_DIR}/"
-    fi
-    if [[ -f "${EXTRACTED_DIR}/com.system76.CosmicExtTranslator.metainfo.xml" ]]; then
-        install -m 0644 "${EXTRACTED_DIR}/com.system76.CosmicExtTranslator.metainfo.xml" "${METAINFO_DIR}/"
-    fi
-    if [[ -f "${EXTRACTED_DIR}/com.system76.CosmicExtTranslator.svg" ]]; then
-        install -m 0644 "${EXTRACTED_DIR}/com.system76.CosmicExtTranslator.svg" "${ICON_DIR}/"
-    fi
-
-    rm -rf "${TMP_DIR}"
-    INSTALLED=1
+    tar -xzf "${TMP_DIR}/${ARCHIVE}" -C "${TMP_DIR}"
+    BIN_DIR="${TMP_DIR}/${ARCHIVE%.tar.gz}"
+    [[ -f "${BIN_DIR}/cosmic-applet-translator" ]] || die "Unexpected archive layout in ${ARCHIVE}."
+    META_DIR="${BIN_DIR}"
 fi
 
-# Install desktop entry, metainfo, and icon if local
-DESKTOP_SRC="${REPO_ROOT}/crates/cosmic-applet-translator/target/xdgen/app.desktop"
-METAINFO_SRC="${REPO_ROOT}/crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml"
-ICON_SRC="${REPO_ROOT}/crates/cosmic-applet-translator/resources/icon.svg"
+# Remove first to avoid ETXTBSY when the applet is running.
+rm -f "${TARGET_DIR}/cosmic-applet-translator" "${TARGET_DIR}/cosmic-translator-overlay"
+install -m 0755 "${BIN_DIR}/cosmic-applet-translator" "${TARGET_DIR}/"
+install -m 0755 "${BIN_DIR}/cosmic-translator-overlay" "${TARGET_DIR}/"
+install_metadata_from "${META_DIR}"
 
-if [[ -f "${DESKTOP_SRC}" ]]; then
-    install -m 0644 "${DESKTOP_SRC}" "${APP_DIR}/com.system76.CosmicExtTranslator.desktop"
-elif [[ ! -f "${APP_DIR}/com.system76.CosmicExtTranslator.desktop" ]]; then
-    if command -v curl &>/dev/null; then
-        curl -fsSL "${RAW_BASE_URL}/crates/cosmic-applet-translator/target/xdgen/app.desktop" -o "${APP_DIR}/com.system76.CosmicExtTranslator.desktop" || true
-    fi
-fi
+# 0.1.x used a different application ID; drop its files and keep the panel entry.
+rm -f "${APP_DIR}/${LEGACY_APP_ID}.desktop" \
+    "${METAINFO_DIR}/${LEGACY_APP_ID}.metainfo.xml" \
+    "${ICON_DIR}/${LEGACY_APP_ID}.svg"
+migrate_panel_entry
 
-if [[ -f "${METAINFO_SRC}" ]]; then
-    install -m 0644 "${METAINFO_SRC}" "${METAINFO_DIR}/com.system76.CosmicExtTranslator.metainfo.xml"
-fi
-
-if [[ -f "${ICON_SRC}" ]]; then
-    install -m 0644 "${ICON_SRC}" "${ICON_DIR}/com.system76.CosmicExtTranslator.svg"
-elif [[ ! -f "${ICON_DIR}/com.system76.CosmicExtTranslator.svg" ]]; then
-    if command -v curl &>/dev/null; then
-        curl -fsSL "${RAW_BASE_URL}/crates/cosmic-applet-translator/resources/icon.svg" -o "${ICON_DIR}/com.system76.CosmicExtTranslator.svg" || true
-    fi
-fi
-
-# Refresh desktop and icon database caches
 if command -v update-desktop-database &>/dev/null; then
     update-desktop-database "${APP_DIR}" 2>/dev/null || true
 fi
@@ -161,20 +195,18 @@ if command -v gtk-update-icon-cache &>/dev/null; then
     gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
 fi
 
-# Restart panel to register applet
-if [[ "${INSTALLED}" -eq 1 ]]; then
-    echo -e "\n${BLUE}[*] Restarting cosmic-panel to register applet...${NC}"
-    killall cosmic-panel 2>/dev/null || true
-    echo -e "${GREEN}${BOLD}✓ Success!${NC} COSMIC Screen Translator is installed."
-    echo -e "  - Binaries: ${TARGET_DIR}/cosmic-applet-translator, ${TARGET_DIR}/cosmic-translator-overlay"
-    echo -e "  - Add to panel: Settings -> Desktop -> Panel -> Configure panel applets -> Add applet -> Screen Translator"
-    echo -e "  - To uninstall anytime, run: ./uninstall.sh\n"
-fi
+echo -e "\n${BLUE}[*] Restarting cosmic-panel to register the applet...${NC}"
+killall cosmic-panel 2>/dev/null || true
+echo -e "${GREEN}${BOLD}Installed.${NC}"
+echo -e "  - Binaries: ${TARGET_DIR}/cosmic-applet-translator, ${TARGET_DIR}/cosmic-translator-overlay"
+echo -e "  - Add to panel: Settings -> Desktop -> Panel -> Configure panel applets -> Add applet -> Screen Translator"
+echo -e "  - Uninstall: run uninstall.sh from the repository or release archive\n"
 
-# Japanese/Chinese/Korean OCR uses Tesseract; Latin text works without it.
-if ! command -v tesseract &>/dev/null || ! tesseract --list-langs 2>&1 | grep -qx "jpn"; then
-    echo -e "${YELLOW}[!] Optional:${NC} Japanese text recognition needs Tesseract with Japanese data."
+# Japanese and Chinese models are downloaded on first use; Tesseract is a fallback and
+# the only engine for Korean.
+if ! command -v tesseract &>/dev/null; then
+    echo -e "${YELLOW}[!] Optional:${NC} Japanese and Chinese OCR models (about 21 MB) are downloaded on first use."
+    echo -e "    Tesseract is used as a fallback and is required for Korean:"
     echo -e "    Debian/Ubuntu/Pop!_OS: sudo apt install tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert"
-    echo -e "    Arch:                  sudo pacman -S tesseract tesseract-data-jpn tesseract-data-jpn_vert"
-    echo -e "    Fedora:                sudo dnf install tesseract tesseract-langpack-jpn tesseract-langpack-jpn_vert\n"
+    echo -e "    Arch:                  sudo pacman -S tesseract tesseract-data-jpn tesseract-data-jpn_vert\n"
 fi

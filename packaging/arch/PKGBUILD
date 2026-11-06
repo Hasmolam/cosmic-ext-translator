@@ -1,32 +1,47 @@
 # Maintainer: Hasan Hüseyin Yolcu <hasanhuseyinyolcu25@gmail.com>
 pkgname=cosmic-ext-translator-git
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Real-time Wayland screen and game subtitle translator for COSMIC Desktop"
 arch=('x86_64')
 url="https://github.com/Hasmolam/cosmic-ext-translator"
 license=('GPL-3.0-or-later')
-depends=('libpipewire' 'libxkbcommon' 'wayland' 'hicolor-icon-theme')
+depends=('gcc-libs' 'glibc' 'libpipewire' 'libxkbcommon' 'wayland' 'hicolor-icon-theme')
 makedepends=('cargo' 'just' 'git' 'clang' 'pkgconf')
-optdepends=('tesseract: OCR for Japanese, Chinese and Korean source text'
-            'tesseract-data-jpn: Japanese horizontal text'
-            'tesseract-data-jpn_vert: Japanese vertical text'
-            'tesseract-data-chi_sim: Simplified Chinese text'
-            'tesseract-data-kor: Korean text')
+optdepends=('tesseract: OCR fallback for Japanese and Chinese, required for Korean'
+            'tesseract-data-jpn: Japanese horizontal text (Tesseract)'
+            'tesseract-data-jpn_vert: Japanese vertical text (Tesseract)'
+            'tesseract-data-chi_sim: Simplified Chinese text (Tesseract)'
+            'tesseract-data-kor: Korean text (Tesseract)')
 provides=('cosmic-ext-translator')
 conflicts=('cosmic-ext-translator')
+options=('!lto')
 source=("git+https://github.com/Hasmolam/cosmic-ext-translator.git")
 sha256sums=('SKIP')
 
 pkgver() {
     cd "${srcdir}/${pkgname%-git}"
-    git describe --long --tags --always 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' ||
+    git describe --long --tags --match 'v*' 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' ||
     printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+    cd "${srcdir}/${pkgname%-git}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
 build() {
     cd "${srcdir}/${pkgname%-git}"
-    just build-release
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    just build-release --frozen
+}
+
+check() {
+    cd "${srcdir}/${pkgname%-git}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen --workspace
 }
 
 package() {

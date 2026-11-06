@@ -14,21 +14,28 @@ NC='\033[0m'
 
 echo -e "${BLUE}${BOLD}=== COSMIC Screen Translator Uninstaller ===${NC}\n"
 
-# Remove from ~/.local
-rm -f "${HOME}/.local/bin/cosmic-applet-translator"
-rm -f "${HOME}/.local/bin/cosmic-translator-overlay"
-rm -f "${HOME}/.local/share/applications/com.system76.CosmicExtTranslator.desktop"
-rm -f "${HOME}/.local/share/metainfo/com.system76.CosmicExtTranslator.metainfo.xml"
-rm -f "${HOME}/.local/share/icons/hicolor/scalable/apps/com.system76.CosmicExtTranslator.svg"
+# Current and 0.1.x application IDs.
+APP_IDS=("io.github.hasmolam.CosmicExtTranslator" "com.system76.CosmicExtTranslator")
+
+remove_from() {
+    local prefix="$1" id
+    rm -f "${prefix}/bin/cosmic-applet-translator" "${prefix}/bin/cosmic-translator-overlay"
+    for id in "${APP_IDS[@]}"; do
+        rm -f "${prefix}/share/applications/${id}.desktop" \
+            "${prefix}/share/metainfo/${id}.metainfo.xml" \
+            "${prefix}/share/icons/hicolor/scalable/apps/${id}.svg"
+    done
+}
+
+remove_from "${HOME}/.local"
 
 # Remove from /usr if run with sudo
 if [[ $EUID -eq 0 ]]; then
-    rm -f "/usr/bin/cosmic-applet-translator"
-    rm -f "/usr/bin/cosmic-translator-overlay"
-    rm -f "/usr/share/applications/com.system76.CosmicExtTranslator.desktop"
-    rm -f "/usr/share/metainfo/com.system76.CosmicExtTranslator.metainfo.xml"
-    rm -f "/usr/share/icons/hicolor/scalable/apps/com.system76.CosmicExtTranslator.svg"
+    remove_from "/usr"
 fi
+
+# Settings (~/.config/cosmic/<id>) and OCR models (~/.local/share/cosmic-ext-translator)
+# are kept. Delete them manually for a full removal.
 
 if command -v update-desktop-database &>/dev/null; then
     update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
@@ -36,4 +43,4 @@ fi
 
 killall cosmic-panel 2>/dev/null || true
 
-echo -e "${GREEN}${BOLD}✓ Success!${NC} COSMIC Screen Translator has been removed.\n"
+echo -e "${GREEN}${BOLD}Removed.${NC} Settings and downloaded OCR models were kept.\n"

@@ -2,7 +2,12 @@ rootdir := ''
 prefix := '/usr'
 destdir := rootdir + prefix
 bindir := destdir + '/bin'
-appid := 'com.system76.CosmicExtTranslator'
+appid := 'io.github.hasmolam.CosmicExtTranslator'
+legacy_appid := 'com.system76.CosmicExtTranslator'
+# Single source of truth for the release version: [workspace.package] in Cargo.toml.
+version := `sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml`
+target_triple := 'x86_64-unknown-linux-gnu'
+dist_name := 'cosmic-ext-translator-v' + version + '-' + target_triple
 desktop_dst := destdir + '/share/applications/' + appid + '.desktop'
 metainfo_dst := destdir + '/share/metainfo/' + appid + '.metainfo.xml'
 icon_dst := destdir + '/share/icons/hicolor/scalable/apps/' + appid + '.svg'
@@ -29,9 +34,13 @@ lint:
 build *args:
     cargo build --workspace {{args}}
 
-# Build release binaries
+# Build release binaries with the committed Cargo.lock
 build-release *args:
-    cargo build --release --workspace {{args}}
+    cargo build --release --locked --workspace {{args}}
+
+# Print the release version read from Cargo.toml
+version:
+    @echo {{version}}
 
 # Build Debian/Ubuntu package (.deb)
 deb: build-release
@@ -47,8 +56,8 @@ deb: build-release
     install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.desktop target/deb-pkg/usr/share/applications/{{appid}}.desktop
     install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml target/deb-pkg/usr/share/metainfo/{{appid}}.metainfo.xml
     install -Dm0644 crates/cosmic-applet-translator/resources/icon.svg target/deb-pkg/usr/share/icons/hicolor/scalable/apps/{{appid}}.svg
-    printf "Package: cosmic-ext-translator\nVersion: 0.1.0\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Hasmolam <hasanhuseyinyolcu25@gmail.com>\nDepends: libc6, libpipewire-0.3-0, libxkbcommon0\nRecommends: tesseract-ocr, tesseract-ocr-jpn, tesseract-ocr-jpn-vert\nDescription: Real-time Wayland screen and game subtitle translator for COSMIC Desktop\n Translates on-screen text in games and visual novels on the COSMIC desktop.\n It reads a screen region you choose, runs OCR locally, and shows the\n translation as a subtitle line on top of the game.\n" > target/deb-pkg/DEBIAN/control
-    dpkg-deb --build --root-owner-group target/deb-pkg target/cosmic-ext-translator_0.1.0_amd64.deb
+    printf "Package: cosmic-ext-translator\nVersion: {{version}}\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Hasmolam <hasanhuseyinyolcu25@gmail.com>\nDepends: libc6, libpipewire-0.3-0, libxkbcommon0\nSuggests: tesseract-ocr, tesseract-ocr-jpn, tesseract-ocr-jpn-vert, tesseract-ocr-kor\nDescription: Real-time Wayland screen and game subtitle translator for COSMIC Desktop\n Translates on-screen text in games and visual novels on the COSMIC desktop.\n It reads a screen region you choose, runs OCR locally, and shows the\n translation as a subtitle line on top of the game.\n" > target/deb-pkg/DEBIAN/control
+    dpkg-deb --build --root-owner-group target/deb-pkg target/cosmic-ext-translator_{{version}}_amd64.deb
 
 # Install both binaries and desktop integration files
 install:
@@ -65,6 +74,7 @@ uninstall:
     rm -f {{desktop_dst}}
     rm -f {{metainfo_dst}}
     rm -f {{icon_dst}}
+    rm -f {{destdir}}/share/applications/{{legacy_appid}}.desktop {{destdir}}/share/metainfo/{{legacy_appid}}.metainfo.xml {{destdir}}/share/icons/hicolor/scalable/apps/{{legacy_appid}}.svg
 
 # Install for current user only to ~/.local (no root required)
 install-user:
@@ -73,6 +83,8 @@ install-user:
     install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.desktop {{home}}/.local/share/applications/{{appid}}.desktop
     install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml {{home}}/.local/share/metainfo/{{appid}}.metainfo.xml
     install -Dm0644 crates/cosmic-applet-translator/resources/icon.svg {{home}}/.local/share/icons/hicolor/scalable/apps/{{appid}}.svg
+    rm -f {{home}}/.local/share/applications/{{legacy_appid}}.desktop {{home}}/.local/share/metainfo/{{legacy_appid}}.metainfo.xml {{home}}/.local/share/icons/hicolor/scalable/apps/{{legacy_appid}}.svg
+    bash packaging/migrate-panel-entry.sh {{legacy_appid}} {{appid}}
     update-desktop-database {{home}}/.local/share/applications 2>/dev/null || true
     killall cosmic-panel 2>/dev/null || true
 
@@ -83,6 +95,7 @@ uninstall-user:
     rm -f {{home}}/.local/share/applications/{{appid}}.desktop
     rm -f {{home}}/.local/share/metainfo/{{appid}}.metainfo.xml
     rm -f {{home}}/.local/share/icons/hicolor/scalable/apps/{{appid}}.svg
+    rm -f {{home}}/.local/share/applications/{{legacy_appid}}.desktop {{home}}/.local/share/metainfo/{{legacy_appid}}.metainfo.xml {{home}}/.local/share/icons/hicolor/scalable/apps/{{legacy_appid}}.svg
     update-desktop-database {{home}}/.local/share/applications 2>/dev/null || true
     killall cosmic-panel 2>/dev/null || true
 
@@ -100,9 +113,11 @@ test-e2e:
 run-applet:
     cargo run -p cosmic-applet-translator
 
-# Stage the PaddleOCR model release assets in dist/models-v1 from a directory with the
-# upstream file names, verifying checksums. Upload with:
-#   gh release create models-v1 dist/models-v1/* --title "OCR models v1"
+# Upload with:
+#   gh release create models-v1 dist/models-v1/* --title "OCR models v1" --latest=false
+# --latest=false keeps releases/latest pointing at the application release used by install.sh.
+#
+# Stage PaddleOCR model release assets in dist/models-v1 (input: upstream file names)
 stage-models src:
     rm -rf dist/models-v1
     mkdir -p dist/models-v1
@@ -111,3 +126,28 @@ stage-models src:
     cp '{{src}}/ppocrv5_dict.txt' dist/models-v1/ppocrv5-dict.txt
     cp packaging/models/NOTICE.md packaging/models/SHA256SUMS dist/models-v1/
     cd dist/models-v1 && sha256sum -c SHA256SUMS
+
+# Build the binary tarball (layout expected by install.sh) in dist/
+tarball: build-release
+    rm -rf dist/{{dist_name}}
+    mkdir -p dist/{{dist_name}}
+    install -m0755 target/release/cosmic-applet-translator target/release/cosmic-translator-overlay dist/{{dist_name}}/
+    strip dist/{{dist_name}}/cosmic-applet-translator dist/{{dist_name}}/cosmic-translator-overlay
+    install -m0644 crates/cosmic-applet-translator/target/xdgen/app.desktop dist/{{dist_name}}/{{appid}}.desktop
+    install -m0644 crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml dist/{{dist_name}}/{{appid}}.metainfo.xml
+    install -m0644 crates/cosmic-applet-translator/resources/icon.svg dist/{{dist_name}}/{{appid}}.svg
+    install -m0755 install.sh uninstall.sh dist/{{dist_name}}/
+    install -m0644 LICENSE README.md CHANGELOG.md dist/{{dist_name}}/
+    tar -C dist -czf dist/{{dist_name}}.tar.gz {{dist_name}}
+    rm -rf dist/{{dist_name}}
+
+# Build all release assets in dist/: tarball, .deb and SHA256SUMS
+dist: tarball deb
+    cp target/cosmic-ext-translator_{{version}}_amd64.deb dist/
+    cd dist && sha256sum {{dist_name}}.tar.gz cosmic-ext-translator_{{version}}_amd64.deb > SHA256SUMS
+    cat dist/SHA256SUMS
+
+# Validate the desktop entry and AppStream metadata
+validate-metadata: build-release
+    desktop-file-validate crates/cosmic-applet-translator/target/xdgen/app.desktop
+    appstreamcli validate --no-net crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml

@@ -2,9 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [master, main]
   pull_request:
-    branches: [ master, main ]
+    branches: [master, main]
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,39 +15,50 @@ env:
 
 jobs:
   check-and-test:
-    name: Check, Lint & Test
+    name: Format, lint, test
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            clang \
-            libclang-dev \
-            libpipewire-0.3-dev \
-            libspa-0.2-dev \
-            libwayland-dev \
-            libxkbcommon-dev \
-            libdbus-1-dev
+            build-essential pkg-config clang libclang-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libwayland-dev \
+            libxkbcommon-dev libdbus-1-dev \
+            desktop-file-utils appstream
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@v2
 
-      - name: Cargo check
-        run: cargo check --workspace --all-targets
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
 
-      - name: Cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
-      - name: Cargo test
-        run: cargo test --workspace
+      - name: cargo test
+        run: cargo test --locked --workspace
+
+      - name: Validate desktop entry and AppStream metadata
+        run: |
+          desktop-file-validate crates/cosmic-applet-translator/target/xdgen/app.desktop
+          appstreamcli validate --no-net crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml
+
+      - name: shellcheck
+        run: shellcheck install.sh uninstall.sh packaging/migrate-panel-entry.sh
+
+  audit:
+    name: Dependency advisories
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        run: cargo audit
