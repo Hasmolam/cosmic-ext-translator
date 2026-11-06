@@ -35,6 +35,9 @@ the section of the released version.
 
 ### Fixed
 
+- Subtitle position, vertical offset and positioning mode changes now apply to the running
+  overlay. They were sent as a second layer-surface creation, which the toolkit ignores, so
+  they only took effect after the overlay restarted.
 - Interrupted or corrupt model downloads no longer leave OCR permanently broken.
 - Desktop entry and AppStream metadata now pass `desktop-file-validate` and
   `appstreamcli validate`.

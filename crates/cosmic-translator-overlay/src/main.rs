@@ -1,6 +1,7 @@
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings;
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
-    destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity, Layer,
+    destroy_layer_surface, get_layer_surface, set_anchor, set_input_zone,
+    set_keyboard_interactivity, set_margin, set_size, Anchor, KeyboardInteractivity, Layer,
 };
 use cosmic::iced::window::Id;
 use cosmic::iced::{Length, Task};
@@ -58,6 +59,27 @@ fn hud_ipc_subscription() -> cosmic::iced::Subscription<Message> {
             },
         )
     })
+}
+
+impl OverlayApp {
+    /// Applies the current HUD layer settings to the existing HUD surface.
+    ///
+    /// `get_layer_surface` with the id of an existing surface is ignored by the platform
+    /// layer ("already exists"), so position, size and input changes have to be sent as
+    /// individual layer-shell requests.
+    fn reconfigure_hud(&self) -> Task<cosmic::Action<Message>> {
+        let settings = self.hud.layer_settings();
+        let id = self.hud_id;
+        let (width, height) = settings.size.unwrap_or((None, None));
+        let margin = settings.margin;
+        Task::batch([
+            set_anchor(id, settings.anchor),
+            set_margin(id, margin.top, margin.right, margin.bottom, margin.left),
+            set_size(id, width, height),
+            set_keyboard_interactivity(id, settings.keyboard_interactivity),
+            set_input_zone(id, settings.input_zone),
+        ])
+    }
 }
 
 impl cosmic::Application for OverlayApp {
@@ -258,9 +280,7 @@ impl cosmic::Application for OverlayApp {
                 self.hud.duration_ms = duration_ms;
                 self.hud.position = position;
                 self.hud.offset_y = offset_y;
-                let mut settings = self.hud.layer_settings();
-                settings.id = self.hud_id;
-                get_layer_surface(settings)
+                self.reconfigure_hud()
             }
 
             Message::Hud(HudMessage::SetVisible { visible }) => {
@@ -277,9 +297,7 @@ impl cosmic::Application for OverlayApp {
                 );
                 self.hud.position = position;
                 self.hud.offset_y = offset_y;
-                let mut settings = self.hud.layer_settings();
-                settings.id = self.hud_id;
-                get_layer_surface(settings)
+                self.reconfigure_hud()
             }
 
             Message::Hud(HudMessage::SetEditMode { edit_mode }) => {
@@ -288,9 +306,7 @@ impl cosmic::Application for OverlayApp {
                 if edit_mode && self.hud.current_text.is_empty() {
                     self.hud.current_text = cosmic_translator_overlay::fl!("positioning-active");
                 }
-                let mut settings = self.hud.layer_settings();
-                settings.id = self.hud_id;
-                get_layer_surface(settings)
+                self.reconfigure_hud()
             }
 
             Message::HudUi(HudUiMessage::LockPosition) => {
@@ -300,24 +316,18 @@ impl cosmic::Application for OverlayApp {
                     self.hud.offset_y
                 );
                 self.hud.edit_mode = false;
-                let mut settings = self.hud.layer_settings();
-                settings.id = self.hud_id;
-                get_layer_surface(settings)
+                self.reconfigure_hud()
             }
 
             Message::HudUi(HudUiMessage::SetPresetPos(pos)) => {
                 self.hud.position = pos;
-                let mut settings = self.hud.layer_settings();
-                settings.id = self.hud_id;
-                get_layer_surface(settings)
+                self.reconfigure_hud()
             }
 
             Message::HudUi(HudUiMessage::NudgeOffset(delta)) => {
                 let new_offset = (self.hud.offset_y as i32 + delta).clamp(0, 400) as u32;
                 self.hud.offset_y = new_offset;
-                let mut settings = self.hud.layer_settings();
-                settings.id = self.hud_id;
-                get_layer_surface(settings)
+                self.reconfigure_hud()
             }
 
             Message::Hud(HudMessage::Quit) => {
