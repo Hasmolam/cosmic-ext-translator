@@ -27,6 +27,7 @@ the section of the released version.
 
 ### Fixed
 
+- Log files contained terminal colour codes in span fields.
 - HUD and settings window processes started by the applet stayed as zombies after
   they exited until the applet itself was restarted.
 - Region selector left trails of earlier rectangles while dragging. The software

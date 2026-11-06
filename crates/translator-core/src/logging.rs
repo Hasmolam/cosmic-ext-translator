@@ -8,14 +8,19 @@
 //! adds OCR and translation text to the file.
 
 use std::fs::{self, File, OpenOptions};
-use std::io;
+use std::io::{self, IsTerminal};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use tracing::Subscriber;
+use tracing_subscriber::field::RecordFields;
+use tracing_subscriber::fmt::format::{DefaultFields, Writer};
+use tracing_subscriber::fmt::{FormatFields, MakeWriter};
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, EnvFilter, Layer};
 
 const APP_DIR: &str = "cosmic-ext-translator";
 /// Size at which the log is moved to `<component>.log.1` on the next start.
@@ -37,7 +42,6 @@ pub fn log_dir() -> Option<PathBuf> {
 /// continues on stderr only.
 pub fn init(component: &str) -> Option<PathBuf> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let stderr_layer = fmt::layer().with_writer(io::stderr);
 
     let file = log_dir().and_then(|dir| match open_log_file(&dir, component) {
         Ok(opened) => Some(opened),
@@ -46,25 +50,51 @@ pub fn init(component: &str) -> Option<PathBuf> {
             None
         }
     });
+    let (path, file) = file.unzip();
 
-    match file {
-        Some((path, file)) => {
-            let file_layer = fmt::layer().with_ansi(false).with_writer(Mutex::new(file));
-            let _ = tracing_subscriber::registry()
-                .with(filter)
-                .with(stderr_layer)
-                .with(file_layer)
-                .try_init();
-            Some(path)
-        }
-        None => {
-            let _ = tracing_subscriber::registry()
-                .with(filter)
-                .with(stderr_layer)
-                .try_init();
-            None
-        }
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(stderr_layer(io::stderr, io::stderr().is_terminal()))
+        .with(file.map(|file| file_layer(Mutex::new(file))))
+        .try_init();
+    path
+}
+
+/// Field formatter of the file layer.
+///
+/// tracing-subscriber stores the formatted fields of each span once per formatter
+/// type. With the same type on both layers, the file reuses the fields formatted for a
+/// colour terminal and gets ANSI escapes. A separate type gives the file its own copy.
+#[derive(Debug, Default)]
+struct PlainFields(DefaultFields);
+
+impl<'writer> FormatFields<'writer> for PlainFields {
+    fn format_fields<R: RecordFields>(
+        &self,
+        writer: Writer<'writer>,
+        fields: R,
+    ) -> std::fmt::Result {
+        self.0.format_fields(writer, fields)
     }
+}
+
+fn stderr_layer<S, W>(writer: W, ansi: bool) -> impl Layer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    W: for<'w> MakeWriter<'w> + Send + Sync + 'static,
+{
+    fmt::layer().with_ansi(ansi).with_writer(writer)
+}
+
+fn file_layer<S, W>(writer: W) -> impl Layer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    W: for<'w> MakeWriter<'w> + Send + Sync + 'static,
+{
+    fmt::layer()
+        .with_ansi(false)
+        .fmt_fields(PlainFields::default())
+        .with_writer(writer)
 }
 
 /// Opens `<dir>/<component>.log` for appending, creating `dir` with mode 0700 and the
@@ -128,5 +158,48 @@ mod tests {
             big.len() as u64
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Collects everything written to it, for checking layer output.
+    #[derive(Clone, Default)]
+    struct Buffer(std::sync::Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for Buffer {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Buffer {
+        type Writer = Self;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    #[test]
+    fn file_gets_no_ansi_escapes_from_colour_stderr() {
+        let stderr = Buffer::default();
+        let file = Buffer::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(stderr_layer(stderr.clone(), true))
+            .with(file_layer(file.clone()));
+
+        tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!("task", task_name = "portal proxy");
+            let _entered = span.enter();
+            tracing::warn!(attempt = 2, "proxy failed");
+        });
+
+        let stderr = String::from_utf8(stderr.0.lock().unwrap().clone()).unwrap();
+        let file = String::from_utf8(file.0.lock().unwrap().clone()).unwrap();
+        assert!(stderr.contains('\x1b'), "stderr is coloured: {stderr:?}");
+        assert!(file.contains("task_name=\"portal proxy\""), "{file:?}");
+        assert!(file.contains("proxy failed"), "{file:?}");
+        assert!(!file.contains('\x1b'), "file has escapes: {file:?}");
     }
 }
