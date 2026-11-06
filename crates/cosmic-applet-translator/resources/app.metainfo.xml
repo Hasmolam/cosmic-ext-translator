@@ -53,6 +53,10 @@
   </keywords>
   <screenshots>
     <screenshot type="default">
+      <caption>Japanese dialogue translated in the subtitle overlay</caption>
+      <image>https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/docs/assets/hud_japanese.png</image>
+    </screenshot>
+    <screenshot>
       <caption>Settings window, capture area</caption>
       <image>https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/docs/assets/settings_capture.png</image>
     </screenshot>
@@ -61,7 +65,7 @@
       <image>https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/docs/assets/applet_popup.png</image>
     </screenshot>
     <screenshot>
-      <caption>Translation engine settings</caption>
+      <caption>Engine settings with Japanese OCR options</caption>
       <image>https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/docs/assets/settings_engine.png</image>
     </screenshot>
   </screenshots>

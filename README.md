@@ -3,9 +3,15 @@
 Translates on-screen text in games and visual novels on the COSMIC desktop. It reads a screen region you choose, runs OCR locally, and shows the translation as a subtitle line on top of the game. The subtitle overlay does not take mouse or keyboard input, so the game keeps focus.
 
 <p align="center">
-  <img src="docs/assets/settings_capture.png" width="63%" alt="Settings window, Capture tab" />
+  <img src="docs/assets/hud_japanese.png" width="100%" alt="Japanese dialogue in a visual novel scene with the English translation shown by the subtitle overlay" />
+</p>
+
+Japanese dialogue read with PaddleOCR, translated with Google Translate, and shown by the subtitle overlay. The scene is a test image made for this screenshot.
+
+<p align="center">
+  <img src="docs/assets/settings_capture.png" width="56%" alt="Settings window, Capture tab" />
   &nbsp;&nbsp;
-  <img src="docs/assets/applet_popup.png" width="29%" alt="Panel applet popup" />
+  <img src="docs/assets/applet_popup.png" width="26%" alt="Panel applet popup" />
 </p>
 
 ## Contents
@@ -156,10 +162,14 @@ The settings window has five tabs. Open it from the applet, or run `cosmic-apple
 | Tab | What it controls |
 | :--- | :--- |
 | Capture | Region, ignore region, settle time, binarization, background blur filter. Includes a live preview of what the OCR sees. |
-| Engine | Translation engine, credentials, source and target language (defaults: auto → Turkish). |
+| Engine | Translation engine, credentials, source and target language (defaults: auto → Turkish). For Japanese, Chinese and Korean also the OCR engine and text direction. |
 | Display | Subtitle position, vertical offset, font size, opacity, display duration. |
 | Glossary | Fixed translations for character names and game terms. |
 | History | The last 500 translations. Searchable, with copy to clipboard. |
+
+<p align="center">
+  <img src="docs/assets/settings_engine.png" width="70%" alt="Engine tab with Japanese source language, OCR engine and text direction settings" />
+</p>
 
 Settings are stored with `cosmic-config` under `~/.config/cosmic/io.github.hasmolam.CosmicExtTranslator/`.
 
