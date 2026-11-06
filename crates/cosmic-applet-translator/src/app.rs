@@ -54,6 +54,10 @@ pub struct AppModel {
     config_handler: Option<cosmic_config::Config>,
     settings_state: SettingsState,
     capture_active: bool,
+    /// Portal and PipeWire setup is in progress (the portal dialog may be open).
+    capture_starting: bool,
+    /// Why the last capture start failed; shown until the next attempt.
+    capture_error: Option<String>,
     hud_visible: bool,
     ocr_backend: Option<Arc<dyn OcrBackend>>,
     ocr_status: OcrStatus,
@@ -238,12 +242,35 @@ impl AppModel {
         self.last_proc_preview = Some(images.preprocessed);
     }
 
-    fn view_standalone_dashboard(&self) -> Element<'_, Message> {
-        let status_text = if self.capture_active {
+    fn capture_status_text(&self) -> String {
+        if self.capture_starting {
+            fl!("starting")
+        } else if self.capture_active {
             fl!("active")
         } else {
             fl!("paused")
-        };
+        }
+    }
+
+    /// Failure reason of the last capture start, with a pointer to the log files.
+    fn capture_error_view(&self) -> Option<Element<'_, Message>> {
+        let error = self.capture_error.as_deref()?;
+        let mut column = widget::column![
+            widget::text(fl!("capture-failed")).size(14),
+            widget::text(error)
+                .size(12)
+                .wrapping(cosmic::iced::widget::text::Wrapping::Word),
+        ]
+        .spacing(2);
+        if let Some(dir) = translator_core::logging::log_dir() {
+            let dir = dir.display().to_string();
+            column = column.push(widget::text(fl!("see-logs", path = dir)).size(12));
+        }
+        Some(column.into())
+    }
+
+    fn view_standalone_dashboard(&self) -> Element<'_, Message> {
+        let status_text = self.capture_status_text();
 
         let current_preset = RoiPreset::from_str_name(&self.config.preset);
         let preset_label = match current_preset {
@@ -367,15 +394,25 @@ impl AppModel {
             .view(&self.config, &self.backlog)
             .map(Message::Settings);
 
-        let top_section = widget::column![
-            header,
-            widget::divider::horizontal::default(),
-            quick_actions,
-            widget::divider::horizontal::default(),
-            inspection_card,
-            widget::divider::horizontal::default(),
-        ]
-        .spacing(10);
+        let mut top_section = widget::column![header].spacing(10);
+        if let Some(error) = self.capture_error_view() {
+            top_section = top_section.push(
+                widget::container(error)
+                    .padding(10)
+                    .width(Length::Fill)
+                    .class(cosmic::theme::Container::Card),
+            );
+        }
+        let top_section = top_section.push(
+            widget::column![
+                widget::divider::horizontal::default(),
+                quick_actions,
+                widget::divider::horizontal::default(),
+                inspection_card,
+                widget::divider::horizontal::default(),
+            ]
+            .spacing(10),
+        );
 
         let layout = widget::column![top_section, settings_content,]
             .spacing(10)
@@ -412,7 +449,11 @@ pub enum Message {
         generation: u64,
         result: Result<Arc<dyn OcrBackend>, String>,
     },
-    CaptureFailed(String),
+    CaptureFailed {
+        error: String,
+        /// The user closed the portal dialog; not shown as an error.
+        cancelled: bool,
+    },
     ShortcutActivated(ShortcutAction),
     OneShotTranslate,
     OneShotCompleted(Option<(String, String)>),
@@ -445,12 +486,18 @@ impl Clone for Message {
             }
             Self::ClearIgnoreRoi => Self::ClearIgnoreRoi,
             Self::PresetSelected(p) => Self::PresetSelected(*p),
-            Self::CaptureStarted(_) => Self::CaptureFailed("Cannot clone active session".into()),
+            Self::CaptureStarted(_) => Self::CaptureFailed {
+                error: "Cannot clone active session".into(),
+                cancelled: false,
+            },
             Self::OcrBackendLoaded { generation, result } => Self::OcrBackendLoaded {
                 generation: *generation,
                 result: result.clone(),
             },
-            Self::CaptureFailed(s) => Self::CaptureFailed(s.clone()),
+            Self::CaptureFailed { error, cancelled } => Self::CaptureFailed {
+                error: error.clone(),
+                cancelled: *cancelled,
+            },
             Self::ShortcutActivated(a) => Self::ShortcutActivated(a.clone()),
             Self::OneShotTranslate => Self::OneShotTranslate,
             Self::OneShotCompleted(s) => Self::OneShotCompleted(s.clone()),
@@ -570,6 +617,8 @@ impl cosmic::Application for AppModel {
             config_handler,
             settings_state: SettingsState::new(),
             capture_active: false,
+            capture_starting: false,
+            capture_error: None,
             hud_visible: true,
             ocr_backend: None,
             ocr_status: OcrStatus::Idle,
@@ -1220,6 +1269,8 @@ impl cosmic::Application for AppModel {
 
             Message::ToggleCapture(true) => {
                 self.capture_active = true;
+                self.capture_starting = true;
+                self.capture_error = None;
 
                 let hud = self.hud.clone();
                 let style = style_message(&self.config);
@@ -1237,8 +1288,10 @@ impl cosmic::Application for AppModel {
                             {
                                 Ok(s) => s,
                                 Err(err) => {
-                                    error!("Failed to start capture session: {err}");
-                                    return Message::CaptureFailed(err.to_string());
+                                    return Message::CaptureFailed {
+                                        error: err.to_string(),
+                                        cancelled: err.is_cancelled(),
+                                    };
                                 }
                             };
                         Message::CaptureStarted(session)
@@ -1248,6 +1301,7 @@ impl cosmic::Application for AppModel {
             }
 
             Message::CaptureStarted(session) => {
+                self.capture_starting = false;
                 info!("Capture session active, loading OCR backend");
                 if session.stream_info.restore_token != self.config.restore_token {
                     self.config.restore_token = session.stream_info.restore_token.clone();
@@ -1286,9 +1340,15 @@ impl cosmic::Application for AppModel {
                 return self.hud.send_task(HudMessage::SetHudStatus { status });
             }
 
-            Message::CaptureFailed(err) => {
-                error!("Capture start failed: {err}");
+            Message::CaptureFailed { error, cancelled } => {
                 self.capture_active = false;
+                self.capture_starting = false;
+                if cancelled {
+                    info!("Screen sharing dialog was cancelled");
+                } else {
+                    error!("Capture start failed: {error}");
+                    self.capture_error = Some(error);
+                }
                 if self.config.restore_token.is_some() {
                     warn!(
                         "Resetting invalid restore token after capture failure to prevent lockouts"
@@ -1300,6 +1360,7 @@ impl cosmic::Application for AppModel {
 
             Message::ToggleCapture(false) => {
                 self.capture_active = false;
+                self.capture_starting = false;
                 if let Some(orch) = self.orchestrator.take() {
                     orch.stop();
                 }
@@ -1339,11 +1400,7 @@ impl cosmic::Application for AppModel {
 
     fn view_window(&self, id: Id) -> Element<'_, Self::Message> {
         if Some(id) == self.popup {
-            let status_text = if self.capture_active {
-                fl!("active")
-            } else {
-                fl!("paused")
-            };
+            let status_text = self.capture_status_text();
 
             let current_preset = RoiPreset::from_str_name(&self.config.preset);
             let preset_label = match current_preset {
@@ -1421,6 +1478,10 @@ impl cosmic::Application for AppModel {
                     content_list.add(widget::settings::item_row(vec![detail.into()]))
                 }
                 OcrStatus::Idle | OcrStatus::Ready => content_list,
+            };
+            let content_list = match self.capture_error_view() {
+                Some(error) => content_list.add(widget::settings::item_row(vec![error])),
+                None => content_list,
             };
 
             let content_list = content_list

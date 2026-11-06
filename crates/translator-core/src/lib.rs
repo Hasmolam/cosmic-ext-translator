@@ -2,6 +2,7 @@ pub mod capture;
 pub mod error;
 pub mod ipc;
 pub mod language;
+pub mod logging;
 pub mod ocr;
 pub mod orchestrator;
 pub mod pipeline;

@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition};
 
 use crate::config::Config;
-use crate::services::process::overlay_binary_path;
+use crate::services::process::{overlay_binary_path, spawn_detached};
 
 /// Time given to a freshly spawned HUD to bind its socket.
 const HUD_STARTUP_DELAY: Duration = Duration::from_millis(200);
@@ -49,9 +49,8 @@ impl HudService {
         if self.client.is_running().await {
             return;
         }
-        if let Err(err) = std::process::Command::new(overlay_binary_path())
-            .arg("--hud")
-            .spawn()
+        if let Err(err) =
+            spawn_detached(std::process::Command::new(overlay_binary_path()).arg("--hud"))
         {
             warn!("Failed to start HUD overlay: {err}");
             return;

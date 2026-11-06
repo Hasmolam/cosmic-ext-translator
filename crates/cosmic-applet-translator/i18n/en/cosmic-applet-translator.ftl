@@ -135,3 +135,6 @@ text-direction = Text direction
 text-direction-auto = Automatic
 text-direction-horizontal = Horizontal
 text-direction-vertical = Vertical (top to bottom, right to left)
+starting = Starting…
+capture-failed = Screen capture could not be started
+see-logs = Details: { $path }

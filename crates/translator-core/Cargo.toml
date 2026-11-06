@@ -12,6 +12,7 @@ tokio = { workspace = true }
 image = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 ocrs = "0.13.1"
 rten = "0.26"
@@ -25,4 +26,3 @@ regex = "1.11"
 futures-util = "0.3"
 
 [dev-dependencies]
-tracing-subscriber = { workspace = true }

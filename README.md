@@ -216,13 +216,18 @@ Downloads are written to a temporary file and only moved into place after the mo
 | Lines are translated before they finish | Increase the settle time. Set an ignore region over animated parts. |
 | Nothing is translated after a while | The engine may be rate-limited. Wait for the countdown or switch to Ollama. |
 | Popup shows "Text recognition unavailable" | Read the reason below it. For Japanese/Chinese check network access for the PaddleOCR download or install Tesseract and its language data; for Korean install Tesseract; otherwise check network access for the model download. |
+| Status shows "Screen capture could not be started" | The reason is shown below the status. If the screen share dialog worked before, restart the portal with `systemctl --user restart xdg-desktop-portal` and try again. |
 | Build fails with `xkbcommon` or `libpipewire-0.3` not found | Install the `-dev` packages listed under [Requirements](#requirements). |
 
-For logs, run from a terminal:
+Logs are written to `~/.local/state/cosmic-ext-translator/` (`$XDG_STATE_HOME` if set), one file per process: `applet.log` (panel), `settings.log` (settings window), `hud.log` and `selector.log` (overlay). A file larger than 5 MB is moved to `<name>.log.1` on the next start.
+
+The default level does not record recognised text. For more detail, start the settings window from a terminal:
 
 ```sh
 RUST_LOG=debug cosmic-applet-translator
 ```
+
+At `debug` level the log files contain the recognised and translated text.
 
 ## Development
 

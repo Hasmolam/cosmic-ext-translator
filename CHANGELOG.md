@@ -7,8 +7,17 @@ the section of the released version.
 
 ## [Unreleased]
 
+### Added
+
+- Log files in `~/.local/state/cosmic-ext-translator/`, one per process. Processes
+  started from the panel or app launcher had no readable log before.
+- The status shows "Starting…" while the screen share dialog is open, and the reason
+  when capture cannot be started. Cancelling the dialog is not reported as an error.
+
 ### Fixed
 
+- HUD and settings window processes started by the applet stayed as zombies after
+  they exited until the applet itself was restarted.
 - Region selector left trails of earlier rectangles while dragging. The software
   renderer did not repaint the outer half of the selection border; the redrawn area
   now includes a margin around it.

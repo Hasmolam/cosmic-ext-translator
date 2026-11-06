@@ -30,6 +30,19 @@ pub enum CaptureError {
     ThreadDied(String),
 }
 
+impl CaptureError {
+    /// The user closed the screen-sharing dialog without choosing a source.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        matches!(
+            self,
+            Self::Portal(ashpd::Error::Response(
+                ashpd::desktop::ResponseError::Cancelled
+            ))
+        )
+    }
+}
+
 pub type Result<T> = std::result::Result<T, CaptureError>;
 
 /// Failure to construct an OCR backend for the configured source language.
@@ -87,4 +100,18 @@ pub enum OcrInitError {
 
     #[error("OCR initialisation task failed: {0}")]
     Task(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_portal_dialog_is_detected() {
+        let cancelled = CaptureError::Portal(ashpd::Error::Response(
+            ashpd::desktop::ResponseError::Cancelled,
+        ));
+        assert!(cancelled.is_cancelled());
+        assert!(!CaptureError::NoStreamsAvailable.is_cancelled());
+    }
 }

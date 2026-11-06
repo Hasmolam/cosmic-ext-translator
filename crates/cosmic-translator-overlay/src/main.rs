@@ -406,7 +406,14 @@ fn save_hud_position(position: HudPosition, offset_y: u32) -> Task<cosmic::Actio
 }
 
 fn main() -> cosmic::iced::Result {
-    let _ = tracing_subscriber::fmt::try_init();
+    let component = if env::args().any(|arg| arg == "--selector") {
+        "selector"
+    } else {
+        "hud"
+    };
+    if let Some(path) = translator_core::logging::init(component) {
+        tracing::info!("Logging to {}", path.display());
+    }
     let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
     cosmic_translator_overlay::i18n::init(&requested_languages);
     let args: Vec<String> = env::args().collect();

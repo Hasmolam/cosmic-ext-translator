@@ -1117,7 +1117,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "tracing-subscriber",
  "translator-core",
  "xdgen",
 ]
@@ -1269,7 +1268,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "tracing-subscriber",
  "translator-core",
 ]
 

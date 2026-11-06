@@ -135,3 +135,6 @@ text-direction = Yazı yönü
 text-direction-auto = Otomatik
 text-direction-horizontal = Yatay
 text-direction-vertical = Dikey (yukarıdan aşağı, sağdan sola)
+starting = Başlatılıyor…
+capture-failed = Ekran yakalama başlatılamadı
+see-logs = Ayrıntılar: { $path }
