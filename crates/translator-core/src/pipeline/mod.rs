@@ -11,7 +11,9 @@ use tracing::{debug, error, info};
 
 use crate::capture::pipewire_thread::CapturedFrame;
 use crate::ocr::{OcrBackend, TextOrientation};
-pub use debouncer::{DebounceState, FrameDebouncer, SettledFrame, TextDiffAction, TextGate};
+pub use debouncer::{
+    DebounceState, FrameDebouncer, FrameImage, SettledFrame, TextDiffAction, TextGate,
+};
 use preprocess::{preprocess_for_ocr, PreprocessConfig};
 
 #[derive(Debug, Clone)]
@@ -45,7 +47,7 @@ impl Drop for PipelineHandle {
 
 pub fn spawn_recognition_pipeline(
     mut frame_receiver: watch::Receiver<Option<CapturedFrame>>,
-    mut debouncer: FrameDebouncer,
+    mut debouncer: FrameDebouncer<CapturedFrame>,
     preprocess_config: PreprocessConfig,
     ocr_backend: Arc<dyn OcrBackend>,
 ) -> (PipelineHandle, mpsc::Receiver<RecognizedEvent>) {

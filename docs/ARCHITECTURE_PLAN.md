@@ -217,10 +217,19 @@ incremental build after touching `app.rs`, test time, and binary sizes.
 - Rename integration tests by component (`debouncer.rs`, `ocr_layout.rs`,
   `translation_cache.rs`, `hud_ipc.rs`, ...). Split `adversarial_m3.rs` by component.
 
-**A1. Fix dependency direction inside `translator-core`.**
-- Debouncer takes `(&RgbaImage, Instant)`.
-- `Roi` moves to a `types` module; `ocr` stops importing `capture`.
-- Layout code uses its own rectangle type.
+**A1. Fix dependency direction inside `translator-core`.** Done.
+- `FrameDebouncer<F: FrameImage>` is generic over the frame type; `RgbaImage` and
+  `CapturedFrame` implement `FrameImage`. `process_frame_at` takes an explicit
+  `Instant`. The debouncer no longer imports `capture`.
+- `Roi`, `RoiPreset` and `CaptureRegion` moved to `region.rs` (serde only). Pixel
+  operations (`crop_to_rgba`, `mask_region`) stay in `capture/crop.rs`. `ocr` no longer
+  imports `capture`.
+- `capture` now imports `pipeline::debouncer::FrameImage`. After extraction this
+  becomes a dependency of `translator-capture` on `screen-text-settle`, which only pulls
+  in `image`.
+- A dedicated rectangle type for the layout code is deferred to A5, where it is part of
+  the `cjk-ocr-layout` public API. While `Roi` is in a dependency-free module it adds
+  churn without removing a dependency.
 
 **A2. Applet services.**
 - Add `services::hud::HudClient` and route all 15 call sites through it.
@@ -238,6 +247,7 @@ incremental build after touching `app.rs`, test time, and binary sizes.
 - `translator-core` keeps the orchestrator and pipeline.
 
 **A5. Library crates.**
+- Give `cjk-ocr-layout` its own rectangle type with `From` conversions to and from `Roi`.
 - Extract `screen-text-settle` and `cjk-ocr-layout`, write docs and examples, decide the
   license, add publish dry-run and semver checks to CI, publish 0.1.0.
 

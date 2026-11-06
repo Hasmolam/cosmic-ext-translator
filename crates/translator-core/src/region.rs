@@ -1,0 +1,301 @@
+//! Screen regions: rectangles in capture coordinates and the presets that produce them.
+
+use serde::{Deserialize, Serialize};
+
+/// Defines a rectangular Region of Interest on the captured screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Roi {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Roi {
+    #[must_use]
+    pub const fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.width == 0 || self.height == 0
+    }
+
+    /// Clamps this ROI within the given frame dimensions.
+    /// Returns `None` if the ROI is completely outside the frame or has zero area.
+    #[must_use]
+    pub fn clamp(&self, frame_width: u32, frame_height: u32) -> Option<Self> {
+        if self.x >= frame_width || self.y >= frame_height {
+            return None;
+        }
+
+        let clamped_width = self.width.min(frame_width - self.x);
+        let clamped_height = self.height.min(frame_height - self.y);
+
+        if clamped_width == 0 || clamped_height == 0 {
+            None
+        } else {
+            Some(Self {
+                x: self.x,
+                y: self.y,
+                width: clamped_width,
+                height: clamped_height,
+            })
+        }
+    }
+
+    /// Scales the ROI coordinates from Wayland logical surface dimensions to
+    /// PipeWire physical buffer dimensions, ensuring pixel-perfect alignment
+    /// across HiDPI and fractional scaling displays (%125, %150, %200).
+    #[must_use]
+    pub fn scale_to_frame(
+        &self,
+        surface_w: u32,
+        surface_h: u32,
+        frame_w: u32,
+        frame_h: u32,
+    ) -> Self {
+        if surface_w == 0 || surface_h == 0 || frame_w == 0 || frame_h == 0 {
+            return *self;
+        }
+        let scale_x = frame_w as f64 / surface_w as f64;
+        let scale_y = frame_h as f64 / surface_h as f64;
+
+        Self {
+            x: ((self.x as f64) * scale_x).round() as u32,
+            y: ((self.y as f64) * scale_y).round() as u32,
+            width: ((self.width as f64) * scale_x).round() as u32,
+            height: ((self.height as f64) * scale_y).round() as u32,
+        }
+    }
+}
+
+/// Standard game genre and screen region presets for dialogue capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RoiPreset {
+    /// Standard RPG Maker / Retro JRPG dialogue box (Bottom 25% of height, 5% horizontal margins)
+    #[default]
+    Bottom25,
+    /// Visual Novel / Adventure game dialogue box (Bottom 33% of height, 4% horizontal margins)
+    Bottom33,
+    /// Full screen / entire window capture
+    FullScreen,
+    /// Custom manually-drawn ROI box
+    Custom,
+}
+
+impl RoiPreset {
+    pub const ALL: [Self; 4] = [
+        Self::Bottom25,
+        Self::Bottom33,
+        Self::FullScreen,
+        Self::Custom,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Bottom25 => "rpg_bottom_25",
+            Self::Bottom33 => "vn_bottom_33",
+            Self::FullScreen => "fullscreen",
+            Self::Custom => "custom",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Bottom25 => "RPG Maker / JRPG (Bottom 25%)",
+            Self::Bottom33 => "Visual Novel (Bottom 33%)",
+            Self::FullScreen => "Full Screen",
+            Self::Custom => "Custom Area",
+        }
+    }
+
+    pub fn from_str_name(name: &str) -> Self {
+        match name {
+            "rpg_bottom_25" | "bottom25" => Self::Bottom25,
+            "vn_bottom_33" | "bottom33" => Self::Bottom33,
+            "fullscreen" => Self::FullScreen,
+            _ => Self::Custom,
+        }
+    }
+
+    /// Computes the pixel ROI dynamically scaled for the given frame dimensions.
+    /// Eliminates resolution mismatches (e.g. 1080p -> 1440p -> 4K).
+    pub fn compute_for_frame(
+        &self,
+        frame_w: u32,
+        frame_h: u32,
+        custom: Option<Roi>,
+    ) -> Option<Roi> {
+        if frame_w == 0 || frame_h == 0 {
+            return None;
+        }
+
+        match self {
+            Self::Bottom25 => {
+                let h = ((frame_h as f32) * 0.25).round() as u32;
+                let y = frame_h.saturating_sub(h);
+                let margin_x = ((frame_w as f32) * 0.05).round() as u32;
+                let w = frame_w.saturating_sub(margin_x * 2);
+                Roi::new(margin_x, y, w, h).clamp(frame_w, frame_h)
+            }
+            Self::Bottom33 => {
+                let h = ((frame_h as f32) * 0.33).round() as u32;
+                let y = frame_h.saturating_sub(h);
+                let margin_x = ((frame_w as f32) * 0.04).round() as u32;
+                let w = frame_w.saturating_sub(margin_x * 2);
+                Roi::new(margin_x, y, w, h).clamp(frame_w, frame_h)
+            }
+            Self::FullScreen => Some(Roi::new(0, 0, frame_w, frame_h)),
+            Self::Custom => custom.and_then(|r| r.clamp(frame_w, frame_h)),
+        }
+    }
+}
+
+/// Represents the active capture configuration: a preset, an optional custom ROI, and an optional ignore ROI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CaptureRegion {
+    pub preset: RoiPreset,
+    pub custom: Option<Roi>,
+    pub ignore_roi: Option<Roi>,
+}
+
+impl CaptureRegion {
+    #[must_use]
+    pub const fn new(preset: RoiPreset, custom: Option<Roi>, ignore_roi: Option<Roi>) -> Self {
+        Self {
+            preset,
+            custom,
+            ignore_roi,
+        }
+    }
+
+    #[must_use]
+    pub const fn without_ignore(preset: RoiPreset, custom: Option<Roi>) -> Self {
+        Self {
+            preset,
+            custom,
+            ignore_roi: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_ignore_roi(mut self, ignore_roi: Option<Roi>) -> Self {
+        self.ignore_roi = ignore_roi;
+        self
+    }
+
+    pub fn compute(&self, width: u32, height: u32) -> Option<Roi> {
+        self.preset.compute_for_frame(width, height, self.custom)
+    }
+}
+
+impl From<Option<Roi>> for CaptureRegion {
+    fn from(opt: Option<Roi>) -> Self {
+        Self {
+            preset: if opt.is_some() {
+                RoiPreset::Custom
+            } else {
+                RoiPreset::FullScreen
+            },
+            custom: opt,
+            ignore_roi: None,
+        }
+    }
+}
+
+impl From<Roi> for CaptureRegion {
+    fn from(r: Roi) -> Self {
+        Self {
+            preset: RoiPreset::Custom,
+            custom: Some(r),
+            ignore_roi: None,
+        }
+    }
+}
+
+impl From<RoiPreset> for CaptureRegion {
+    fn from(preset: RoiPreset) -> Self {
+        Self {
+            preset,
+            custom: None,
+            ignore_roi: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_roi_clamp() {
+        let roi = Roi::new(10, 10, 50, 50);
+        let clamped = roi.clamp(100, 100).unwrap();
+        assert_eq!(clamped, Roi::new(10, 10, 50, 50));
+
+        let overflowing = Roi::new(80, 80, 50, 50);
+        let clamped_over = overflowing.clamp(100, 100).unwrap();
+        assert_eq!(clamped_over, Roi::new(80, 80, 20, 20));
+
+        let completely_out = Roi::new(120, 120, 50, 50);
+        assert!(completely_out.clamp(100, 100).is_none());
+    }
+
+    #[test]
+    fn test_roi_scale_to_frame_hidpi() {
+        let logical_roi = Roi::new(100, 200, 300, 150);
+        // Logical surface 1280x720, Physical frame 1920x1080 (1.5x fractional scale)
+        let scaled = logical_roi.scale_to_frame(1280, 720, 1920, 1080);
+        assert_eq!(scaled.x, 150);
+        assert_eq!(scaled.y, 300);
+        assert_eq!(scaled.width, 450);
+        assert_eq!(scaled.height, 225);
+
+        // 2.0x scale (e.g. 4K 3840x2160 on 1920x1080 surface)
+        let scaled_4k = logical_roi.scale_to_frame(1920, 1080, 3840, 2160);
+        assert_eq!(scaled_4k.x, 200);
+        assert_eq!(scaled_4k.y, 400);
+        assert_eq!(scaled_4k.width, 600);
+        assert_eq!(scaled_4k.height, 300);
+    }
+
+    #[test]
+    fn test_roi_preset_dynamic_scaling() {
+        // 1080p (1920x1080) Bottom 25%
+        let roi_1080p = RoiPreset::Bottom25
+            .compute_for_frame(1920, 1080, None)
+            .unwrap();
+        assert_eq!(roi_1080p.height, 270); // 1080 * 0.25
+        assert_eq!(roi_1080p.y, 810); // 1080 - 270
+        assert_eq!(roi_1080p.x, 96); // 1920 * 0.05
+        assert_eq!(roi_1080p.width, 1728); // 1920 - (96 * 2)
+
+        // 720p (1280x720) Bottom 25%
+        let roi_720p = RoiPreset::Bottom25
+            .compute_for_frame(1280, 720, None)
+            .unwrap();
+        assert_eq!(roi_720p.height, 180);
+        assert_eq!(roi_720p.y, 540);
+
+        // Visual Novel Bottom 33%
+        let roi_vn = RoiPreset::Bottom33
+            .compute_for_frame(1920, 1080, None)
+            .unwrap();
+        assert_eq!(roi_vn.height, 356); // 1080 * 0.33 rounded
+        assert_eq!(roi_vn.y, 724);
+
+        // Fullscreen
+        let roi_fs = RoiPreset::FullScreen
+            .compute_for_frame(1920, 1080, None)
+            .unwrap();
+        assert_eq!(roi_fs, Roi::new(0, 0, 1920, 1080));
+    }
+}

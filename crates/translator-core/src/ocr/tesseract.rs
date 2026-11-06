@@ -16,7 +16,7 @@ use super::layout::{DetectedTextBox, OrientationMode, TextOrientation};
 use super::{
     assemble_result, is_cjk_text, join_cjk_or_latin_tokens, BoxFuture, OcrBackend, OcrResult,
 };
-use crate::capture::roi::Roi;
+use crate::region::Roi;
 
 /// Page segmentation mode: a single uniform block of horizontal text (dialogue boxes).
 const PSM_HORIZONTAL: &str = "6";

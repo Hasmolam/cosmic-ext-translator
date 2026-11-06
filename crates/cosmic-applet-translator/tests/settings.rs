@@ -1,7 +1,7 @@
 use cosmic_applet_translator::config::Config;
 use cosmic_applet_translator::history::{DialogueBacklog, DEFAULT_MAX_HISTORY_ENTRIES};
 use cosmic_applet_translator::settings_dialog::{SettingsState, SettingsTab};
-use translator_core::capture::roi::{Roi, RoiPreset};
+use translator_core::region::{Roi, RoiPreset};
 
 #[test]
 fn test_stress_insertion_rapid_1500_entries_exact_500_fifo_bounds() {

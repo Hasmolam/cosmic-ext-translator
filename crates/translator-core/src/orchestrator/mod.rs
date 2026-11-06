@@ -86,7 +86,7 @@ impl OrchestratorHandle {
 /// and HUD dispatch together.
 pub fn spawn_orchestrator(
     frame_rx: watch::Receiver<Option<CapturedFrame>>,
-    debouncer: FrameDebouncer,
+    debouncer: FrameDebouncer<CapturedFrame>,
     ocr_backend: Arc<dyn OcrBackend>,
     translation_backend: Arc<dyn TranslationBackend>,
     config: OrchestratorConfig,

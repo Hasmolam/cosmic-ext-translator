@@ -7,8 +7,9 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tracing::{debug, info, warn};
 
-use super::roi::{CaptureRegion, Roi, RoiPreset};
 use crate::error::{CaptureError, Result};
+use crate::pipeline::debouncer::FrameImage;
+use crate::region::{CaptureRegion, Roi, RoiPreset};
 
 #[derive(Clone, Debug)]
 pub struct CapturedFrame {
@@ -16,6 +17,12 @@ pub struct CapturedFrame {
     pub timestamp: Instant,
     pub original_width: u32,
     pub original_height: u32,
+}
+
+impl FrameImage for CapturedFrame {
+    fn image(&self) -> &RgbaImage {
+        &self.image
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

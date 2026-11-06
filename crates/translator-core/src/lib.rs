@@ -5,16 +5,17 @@ pub mod language;
 pub mod ocr;
 pub mod orchestrator;
 pub mod pipeline;
+pub mod region;
 pub mod shortcuts;
 pub mod translation;
 
 pub use capture::pipewire_thread::{CapturedFrame, PipewireCaptureHandle, PipewireCommand};
-pub use capture::roi::{CaptureRegion, Roi, RoiPreset};
 pub use capture::screencast::{ScreencastManager, ScreencastStreamInfo};
 pub use capture::CaptureSession;
+pub use region::{CaptureRegion, Roi, RoiPreset};
 
 pub use pipeline::debouncer::{
-    DebounceState, FrameDebouncer, SettledFrame, TextDiffAction, TextGate,
+    DebounceState, FrameDebouncer, FrameImage, SettledFrame, TextDiffAction, TextGate,
 };
 pub use pipeline::phash::{dhash_256, dhash_64, hamming_distance_256, hamming_distance_64};
 pub use pipeline::preprocess::{

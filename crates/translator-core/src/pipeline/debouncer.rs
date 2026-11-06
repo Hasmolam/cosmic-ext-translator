@@ -1,8 +1,20 @@
+use image::RgbaImage;
 use std::time::{Duration, Instant};
 use tracing::{debug, trace};
 
-use crate::capture::pipewire_thread::CapturedFrame;
 use crate::pipeline::phash::{dhash_256, hamming_distance_256};
+
+/// A frame the debouncer can hash. Implemented for plain images and for capture
+/// types that carry extra metadata alongside the pixels.
+pub trait FrameImage {
+    fn image(&self) -> &RgbaImage;
+}
+
+impl FrameImage for RgbaImage {
+    fn image(&self) -> &RgbaImage {
+        self
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DebounceState {
@@ -15,13 +27,13 @@ pub enum DebounceState {
 }
 
 #[derive(Debug, Clone)]
-pub struct SettledFrame {
-    pub frame: CapturedFrame,
+pub struct SettledFrame<F> {
+    pub frame: F,
     pub hash: u64,
     pub settled_at: Instant,
 }
 
-pub struct FrameDebouncer {
+pub struct FrameDebouncer<F> {
     /// Hamming distance threshold to treat a frame as changed.
     pub hash_threshold: u32,
     /// Time without hash changes required to declare text settled.
@@ -33,16 +45,16 @@ pub struct FrameDebouncer {
     last_hash: Option<[u64; 4]>,
     last_change_time: Instant,
     animation_start_time: Option<Instant>,
-    latest_frame: Option<CapturedFrame>,
+    latest_frame: Option<F>,
 }
 
-impl Default for FrameDebouncer {
+impl<F: FrameImage> Default for FrameDebouncer<F> {
     fn default() -> Self {
         Self::new(3, Duration::from_millis(180), Duration::from_millis(1500))
     }
 }
 
-impl FrameDebouncer {
+impl<F: FrameImage> FrameDebouncer<F> {
     #[must_use]
     pub fn new(
         hash_threshold: u32,
@@ -66,13 +78,18 @@ impl FrameDebouncer {
         self.state
     }
 
-    /// Ingests a new captured frame from PipeWire.
+    /// Ingests a new captured frame, timestamped with the current time.
     ///
     /// Returns `Some(SettledFrame)` only when the text stream has completed typing
     /// and remained visually stable for `settle_duration`.
-    pub fn process_frame(&mut self, frame: CapturedFrame) -> Option<SettledFrame> {
-        let current_hash = dhash_256(&frame.image);
-        let now = Instant::now();
+    pub fn process_frame(&mut self, frame: F) -> Option<SettledFrame<F>> {
+        self.process_frame_at(frame, Instant::now())
+    }
+
+    /// Same as [`Self::process_frame`] with an explicit timestamp, for callers that
+    /// replay recorded frames or drive the debouncer from a simulated clock.
+    pub fn process_frame_at(&mut self, frame: F, now: Instant) -> Option<SettledFrame<F>> {
+        let current_hash = dhash_256(frame.image());
 
         match self.state {
             DebounceState::Idle => {
@@ -161,7 +178,7 @@ impl FrameDebouncer {
     /// Forces a settled state if the animation is pending.
     /// This resolves zero-damage / 0-FPS game engine freezes where the text has stopped
     /// animating but the game engine produces no further damaged frames to trigger the watch channel.
-    pub fn force_settle(&mut self) -> Option<SettledFrame> {
+    pub fn force_settle(&mut self) -> Option<SettledFrame<F>> {
         if self.state == DebounceState::Animating {
             let final_frame = self.latest_frame.take()?;
             let hash = self.last_hash.unwrap_or_default();
@@ -342,7 +359,7 @@ mod tests {
     use super::*;
     use image::{Rgba, RgbaImage};
 
-    fn make_frame_with_blocks(num_blocks: u32) -> CapturedFrame {
+    fn make_frame_with_blocks(num_blocks: u32) -> RgbaImage {
         let mut img = RgbaImage::from_pixel(100, 50, Rgba([0, 0, 0, 255]));
         for i in 0..num_blocks {
             let start_x = (i * 12).min(90);
@@ -352,12 +369,7 @@ mod tests {
                 }
             }
         }
-        CapturedFrame {
-            image: img,
-            timestamp: Instant::now(),
-            original_width: 100,
-            original_height: 50,
-        }
+        img
     }
 
     #[test]

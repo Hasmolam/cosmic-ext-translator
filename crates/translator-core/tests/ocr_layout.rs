@@ -1,9 +1,9 @@
 use image::{DynamicImage, RgbaImage};
-use translator_core::capture::roi::Roi;
 use translator_core::ocr::{
     detect_dominant_orientation, is_cjk_text, join_cjk_or_latin_tokens, sort_cjk_reading_order,
     DetectedTextBox, MockOcrBackend, OcrBackend, TextOrientation,
 };
+use translator_core::region::Roi;
 
 #[test]
 fn test_adversarial_layout_vertical_tategaki_6_columns_staggered_jitter() {

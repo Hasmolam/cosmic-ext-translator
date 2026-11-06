@@ -55,7 +55,7 @@ fn test_typewriter_stream_single_settle() {
     );
 
     let full_text = "The ancient dragon awakened in the fiery depths.";
-    let mut settled_frames: Vec<SettledFrame> = Vec::new();
+    let mut settled_frames: Vec<SettledFrame<CapturedFrame>> = Vec::new();
 
     // 1. Initial idle background
     let baseline = render_dialogue_frame("", 600, 80);

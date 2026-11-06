@@ -450,7 +450,7 @@ impl OcrBackend for OcrsBackend {
         image: &'a DynamicImage,
         orientation: Option<TextOrientation>,
     ) -> BoxFuture<'a, Result<OcrResult>> {
-        use crate::capture::roi::Roi;
+        use crate::region::Roi;
 
         let rgb = image.to_rgb8();
         let (width, height) = rgb.dimensions();
@@ -504,7 +504,7 @@ impl OcrBackend for OcrsBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capture::roi::Roi;
+    use crate::region::Roi;
     use image::RgbaImage;
 
     #[tokio::test]

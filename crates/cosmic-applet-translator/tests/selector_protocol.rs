@@ -1,4 +1,4 @@
-use translator_core::capture::roi::Roi;
+use translator_core::region::Roi;
 
 #[test]
 fn test_overlay_stdout_communication_protocol() {

@@ -4,7 +4,7 @@
 
 Multi-crate workspace under GPL-3.0-or-later:
 
-- `crates/translator-core`: Core library (no GUI). Handles Screencast portal (`ashpd`), dedicated PipeWire loop (`pipewire`), ROI crop (`roi.rs`), dHash/typewriter debouncing (`debouncer.rs`), image pre-processing (`preprocess.rs`), pure-Rust OCR (`ocrs` + `rten`), translation engines (Google, Ollama), fuzzy LRU cache (`strsim`), IPC socket server/client, and orchestrator loop.
+- `crates/translator-core`: Core library (no GUI). Handles Screencast portal (`ashpd`), dedicated PipeWire loop (`pipewire`), screen regions (`region.rs`), ROI crop (`capture/crop.rs`), dHash/typewriter debouncing (`debouncer.rs`), image pre-processing (`preprocess.rs`), pure-Rust OCR (`ocrs` + `rten`), translation engines (Google, Ollama), fuzzy LRU cache (`strsim`), IPC socket server/client, and orchestrator loop.
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary (`cosmic-translator-overlay`).
   - `--selector`: Interactive screen region picker (`Layer::Overlay`, `KeyboardInteractivity::Exclusive`). Emits `ROI_SELECTED:{"x":...,"y":...,"width":...,"height":...}` to stdout on release and exits 0.
   - `--hud`: Click-through subtitle overlay (`Layer::Overlay`, `input_zone: Some(vec![])`). Listens on Unix domain socket for `HudMessage` payloads.

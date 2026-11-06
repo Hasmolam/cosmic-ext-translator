@@ -4,8 +4,8 @@ use crate::history::DialogueBacklog;
 use cosmic::iced::Alignment;
 use cosmic::widget::{self, button, column, container, row, text};
 use cosmic::Element;
-use translator_core::capture::roi::RoiPreset;
 use translator_core::ocr::{paddle, OcrEngineChoice, OrientationMode};
+use translator_core::region::RoiPreset;
 use translator_core::SourceLanguage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

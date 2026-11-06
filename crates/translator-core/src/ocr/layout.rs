@@ -1,4 +1,4 @@
-use crate::capture::roi::Roi;
+use crate::region::Roi;
 use serde::{Deserialize, Serialize};
 
 /// Represents text layout orientation (horizontal or vertical CJK).

@@ -47,7 +47,7 @@ Multi-crate workspace under GPL-3.0-or-later:
 | 5 | E2E Integration & Final Quality Pass | Feature 16: Complete headless verification (`cargo check`, `cargo clippy -- -D warnings`, `cargo test --workspace`), 100% pass of E2E test suite (Tiers 1-4), adversarial test hardening (Tier 5), zero unwrap/expect in production code. | M1, M2, M3, M4 | PLANNED |
 
 ## Interface Contracts
-### `crates/translator-core/src/capture/roi.rs`
+### `crates/translator-core/src/region.rs`
 ```rust
 pub struct CaptureRegion {
     pub preset: RoiPreset,
@@ -139,7 +139,7 @@ pub struct RateLimitManager {
 
 ## Code Layout
 - `crates/translator-core`:
-  - `src/capture/roi.rs`, `src/capture/pipewire_thread.rs`, `src/capture/screencast.rs`
+  - `src/region.rs`, `src/capture/crop.rs`, `src/capture/pipewire_thread.rs`, `src/capture/screencast.rs`
   - `src/pipeline/debouncer.rs`, `src/pipeline/preprocess.rs`, `src/pipeline/mod.rs`
   - `src/ocr/layout.rs`, `src/ocr/furigana.rs`, `src/ocr/mod.rs`
   - `src/translation/context.rs`, `src/translation/speaker.rs`, `src/translation/rate_limit.rs`, `src/translation/mod.rs`

@@ -10,7 +10,6 @@ use cosmic::widget::{self, button, row};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use translator_core::capture::pipewire_thread::CapturedFrame;
-use translator_core::capture::roi::{CaptureRegion, RoiPreset};
 use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition, HudStatus};
 use translator_core::ocr::{create_ocr_backend, OcrBackend, OcrEngineChoice, OrientationMode};
 use translator_core::orchestrator::{
@@ -18,6 +17,7 @@ use translator_core::orchestrator::{
 };
 use translator_core::pipeline::debouncer::FrameDebouncer;
 use translator_core::pipeline::preprocess::PreprocessConfig;
+use translator_core::region::{CaptureRegion, RoiPreset};
 use translator_core::shortcuts::{GlobalShortcutsManager, ShortcutAction};
 use translator_core::translation::{
     DeepLTranslationBackend, GoogleTranslateBackend, OllamaTranslationBackend,

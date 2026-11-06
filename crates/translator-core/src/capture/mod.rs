@@ -1,10 +1,10 @@
+mod crop;
 pub mod pipewire_thread;
-pub mod roi;
 pub mod screencast;
 
 use crate::error::Result;
+use crate::region::{CaptureRegion, Roi};
 use pipewire_thread::{spawn_pipewire_capture_thread, CapturedFrame, PipewireCaptureHandle};
-use roi::{CaptureRegion, Roi};
 use screencast::{ScreencastManager, ScreencastStreamInfo};
 
 pub struct CaptureSession {
