@@ -1,6 +1,5 @@
 target/
 **/*.rs.bk
-Cargo.lock
 .env
 *.log
 *.png
@@ -8,3 +7,5 @@ Cargo.lock
 !crates/*/tests/fixtures/**/*.png
 .agents/
 /dist/
+.claude/
+.opencode/
