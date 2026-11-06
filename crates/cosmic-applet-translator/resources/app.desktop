@@ -2,12 +2,12 @@
 Name=Screen Translator
 Comment=Real-time Screen and Game Translator for COSMIC
 Type=Application
-Icon=com.system76.CosmicExtTranslator
-Exec=cosmic-applet-translator --applet %F
+Icon=io.github.hasmolam.CosmicExtTranslator
+Exec=cosmic-applet-translator --applet
 Terminal=false
 StartupNotify=true
-Categories=COSMIC
-Keywords=COSMIC;translator;game;ocr;
+Categories=Utility;X-COSMIC;
+Keywords=translate;translator;screen;game;cosmic;ocr;
 NoDisplay=false
 X-CosmicApplet=true
 X-CosmicHoverPopup=Auto

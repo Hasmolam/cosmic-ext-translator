@@ -1,25 +1,84 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.system76.CosmicExtTranslator</id>
+  <id>io.github.hasmolam.CosmicExtTranslator</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>Screen Translator</name>
   <summary>Real-time Screen and Game Translator for COSMIC</summary>
-  <launchable type="desktop-id">com.system76.CosmicExtTranslator.desktop</launchable>
+  <description>
+    <p>
+      Translates on-screen text in games and visual novels on the COSMIC desktop. It reads
+      a screen region you choose, runs OCR locally, and shows the translation as a subtitle
+      line on top of the game. The subtitle overlay does not take mouse or keyboard input,
+      so the game keeps focus.
+    </p>
+    <ul>
+      <li>Screen capture through the XDG ScreenCast portal and PipeWire</li>
+      <li>Waits for typewriter-style dialogue to finish before running OCR</li>
+      <li>Local OCR for Latin text; Japanese and Chinese through PaddleOCR or Tesseract,
+        including vertical text</li>
+      <li>Google Translate, DeepL, OpenAI-compatible APIs or a local Ollama model</li>
+      <li>Per-game glossary and dialogue history</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.hasmolam.CosmicExtTranslator.desktop</launchable>
+  <url type="homepage">https://github.com/Hasmolam/cosmic-ext-translator</url>
+  <url type="bugtracker">https://github.com/Hasmolam/cosmic-ext-translator/issues</url>
+  <url type="vcs-browser">https://github.com/Hasmolam/cosmic-ext-translator</url>
+  <developer id="io.github.hasmolam">
+    <name>Hasan Hüseyin Yolcu</name>
+  </developer>
   <provides>
     <id>com.system76.CosmicApplet</id>
-    <binaries>
-      <binary>cosmic-applet-translator</binary>
-    </binaries>
+    <binary>cosmic-applet-translator</binary>
+    <binary>cosmic-translator-overlay</binary>
   </provides>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
   <categories>
-    <category>COSMIC</category>
+    <category>Utility</category>
   </categories>
   <keywords>
-    <keyword>COSMIC</keyword>
+    <keyword>translate</keyword>
     <keyword>translator</keyword>
+    <keyword>screen</keyword>
     <keyword>game</keyword>
+    <keyword>cosmic</keyword>
     <keyword>ocr</keyword>
   </keywords>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Settings window, capture area</caption>
+      <image>https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/docs/assets/settings_capture.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Panel applet popup</caption>
+      <image>https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/docs/assets/applet_popup.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Translation engine settings</caption>
+      <image>https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/docs/assets/settings_engine.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.2.0" date="2026-11-06">
+      <description>
+        <p>Japanese and Chinese text recognition.</p>
+        <ul>
+          <li>PaddleOCR PP-OCRv5 backend, downloaded on first use and checksum-verified</li>
+          <li>Tesseract backend with vertical text support</li>
+          <li>Source language, text direction and OCR engine settings</li>
+          <li>Application ID changed to io.github.hasmolam.CosmicExtTranslator; settings are
+            migrated automatically</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-11-03"/>
+  </releases>
   <content_rating type="oars-1.1" />
 </component>
