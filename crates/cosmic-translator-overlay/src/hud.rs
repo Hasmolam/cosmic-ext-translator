@@ -1,3 +1,4 @@
+use cosmic::cosmic_config::{self, ConfigSet};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
     IcedMargin, SctkLayerSurfaceSettings,
 };
@@ -8,14 +9,36 @@ use cosmic::iced::window::Id;
 use cosmic::iced::{Alignment, Background, Border, Color, Length, Padding};
 use cosmic::widget;
 use cosmic::Element;
-use translator_core::ipc::{HudPosition, HudStatus};
+use translator_core::ipc::{HudPosition, HudStatus, APPLET_CONFIG_ID, APPLET_CONFIG_VERSION};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HudUiMessage {
     LockPosition,
     SetPresetPos(HudPosition),
-    NudgeOffset(i32),
+    Nudge(NudgeDirection),
 }
+
+/// On-screen direction of a calibration step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NudgeDirection {
+    Up,
+    Down,
+}
+
+/// Writes a calibrated position to the applet's settings in one transaction, so the
+/// applet sees position and offset change together. Blocking file I/O.
+pub fn save_position(position: HudPosition, offset_y: u32) -> Result<(), cosmic_config::Error> {
+    let config = cosmic_config::Config::new(APPLET_CONFIG_ID, APPLET_CONFIG_VERSION)?;
+    let tx = config.transaction();
+    tx.set("hud_position", position.as_config_str())?;
+    tx.set("hud_offset_y", offset_y)?;
+    tx.commit()
+}
+
+/// Distance moved by one calibration step, in logical pixels.
+pub const NUDGE_STEP: u32 = 20;
+/// Upper bound for the edge offset.
+pub const MAX_OFFSET_Y: u32 = 400;
 
 #[derive(Debug, Clone)]
 pub struct SubtitleHudState {
@@ -65,6 +88,26 @@ pub fn status_label(status: &HudStatus) -> String {
 }
 
 impl SubtitleHudState {
+    /// Moves the HUD one step up or down on screen.
+    ///
+    /// `offset_y` is the margin from the anchored edge, so its sign depends on the
+    /// anchor: at the bottom edge moving up grows the margin, at the top edge it shrinks
+    /// it. A centered HUD has no anchored vertical edge and does not move.
+    pub fn nudge(&mut self, direction: NudgeDirection) {
+        let grow = match (self.position, direction) {
+            (HudPosition::Bottom, NudgeDirection::Up)
+            | (HudPosition::Top, NudgeDirection::Down) => true,
+            (HudPosition::Bottom, NudgeDirection::Down)
+            | (HudPosition::Top, NudgeDirection::Up) => false,
+            (HudPosition::Center, _) => return,
+        };
+        self.offset_y = if grow {
+            self.offset_y.saturating_add(NUDGE_STEP).min(MAX_OFFSET_Y)
+        } else {
+            self.offset_y.saturating_sub(NUDGE_STEP)
+        };
+    }
+
     /// Shows or clears the status badge. Does not touch the subtitle text.
     pub fn apply_status(&mut self, status: Option<&HudStatus>) {
         self.status_badge = status.map(status_label);
@@ -163,14 +206,18 @@ impl SubtitleHudState {
                 .on_press(map_ui(HudUiMessage::SetPresetPos(HudPosition::Center)));
             let btm_btn = widget::button::standard(crate::fl!("pos-bottom"))
                 .on_press(map_ui(HudUiMessage::SetPresetPos(HudPosition::Bottom)));
-            let dec_btn = widget::button::standard(crate::fl!("nudge-up"))
-                .on_press(map_ui(HudUiMessage::NudgeOffset(-20)));
-            let inc_btn = widget::button::standard(crate::fl!("nudge-down"))
-                .on_press(map_ui(HudUiMessage::NudgeOffset(20)));
-
-            let controls = widget::row![top_btn, center_btn, btm_btn, dec_btn, inc_btn, lock_btn]
+            let mut controls = widget::row![top_btn, center_btn, btm_btn]
                 .spacing(8)
                 .align_y(Alignment::Center);
+            // A centered HUD has no edge offset to adjust.
+            if self.position != HudPosition::Center {
+                let up_btn = widget::button::standard(crate::fl!("nudge-up"))
+                    .on_press(map_ui(HudUiMessage::Nudge(NudgeDirection::Up)));
+                let down_btn = widget::button::standard(crate::fl!("nudge-down"))
+                    .on_press(map_ui(HudUiMessage::Nudge(NudgeDirection::Down)));
+                controls = controls.push(up_btn).push(down_btn);
+            }
+            let controls = controls.push(lock_btn);
 
             let edit_pill = widget::container(
                 widget::column![edit_title, label, controls]
@@ -259,5 +306,55 @@ impl SubtitleHudState {
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
             .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hud(position: HudPosition, offset_y: u32) -> SubtitleHudState {
+        SubtitleHudState {
+            position,
+            offset_y,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn nudge_up_moves_bottom_hud_away_from_bottom_edge() {
+        let mut state = hud(HudPosition::Bottom, 40);
+        state.nudge(NudgeDirection::Up);
+        assert_eq!(state.offset_y, 60);
+        state.nudge(NudgeDirection::Down);
+        state.nudge(NudgeDirection::Down);
+        assert_eq!(state.offset_y, 20);
+    }
+
+    #[test]
+    fn nudge_up_moves_top_hud_towards_top_edge() {
+        let mut state = hud(HudPosition::Top, 40);
+        state.nudge(NudgeDirection::Up);
+        assert_eq!(state.offset_y, 20);
+        state.nudge(NudgeDirection::Down);
+        assert_eq!(state.offset_y, 40);
+    }
+
+    #[test]
+    fn nudge_is_clamped() {
+        let mut state = hud(HudPosition::Top, 10);
+        state.nudge(NudgeDirection::Up);
+        assert_eq!(state.offset_y, 0);
+        let mut state = hud(HudPosition::Bottom, MAX_OFFSET_Y - 5);
+        state.nudge(NudgeDirection::Up);
+        assert_eq!(state.offset_y, MAX_OFFSET_Y);
+    }
+
+    #[test]
+    fn centered_hud_ignores_nudge() {
+        let mut state = hud(HudPosition::Center, 40);
+        state.nudge(NudgeDirection::Up);
+        state.nudge(NudgeDirection::Down);
+        assert_eq!(state.offset_y, 40);
     }
 }

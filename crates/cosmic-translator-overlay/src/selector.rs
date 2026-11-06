@@ -3,6 +3,16 @@ use cosmic::iced::widget::canvas::{self, Action, Event, Geometry, Path, Stroke};
 use cosmic::iced::{Color, Point, Rectangle, Size};
 use translator_core::Roi;
 
+const SELECTION_STROKE_WIDTH: f32 = 2.0;
+
+/// Margin around the selection that is always part of the redrawn area.
+///
+/// The tiny-skia renderer only clears and repaints the rectangles where primitives
+/// changed, and it measures a stroke by its path, not by its painted width. Without
+/// this margin the outer half of the border and the anti-aliased edge pixels of earlier
+/// frames are never cleared and stay on screen as trails while dragging.
+const DAMAGE_GUARD: f32 = SELECTION_STROKE_WIDTH + 2.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectorMessage {
     Selected {
@@ -170,6 +180,13 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
             let w = (curr.x - start.x).abs();
             let h = (curr.y - start.y).abs();
 
+            // Invisible, but it widens the damage region; see `DAMAGE_GUARD`.
+            frame.fill_rectangle(
+                Point::new(x - DAMAGE_GUARD, y - DAMAGE_GUARD),
+                Size::new(w + 2.0 * DAMAGE_GUARD, h + 2.0 * DAMAGE_GUARD),
+                Color::TRANSPARENT,
+            );
+
             frame.fill_rectangle(
                 Point::new(x, y),
                 Size::new(w, h),
@@ -179,7 +196,7 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
             frame.stroke(
                 &Path::rectangle(Point::new(x, y), Size::new(w, h)),
                 Stroke::default()
-                    .with_width(2.0)
+                    .with_width(SELECTION_STROKE_WIDTH)
                     .with_color(Color::from_rgb(0.28, 0.58, 0.94)),
             );
         }

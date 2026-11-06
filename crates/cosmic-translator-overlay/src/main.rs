@@ -13,7 +13,7 @@ use std::env;
 use std::io::Write;
 use std::time::Duration;
 use translator_core::ipc::{
-    default_socket_path, selector, HudIpcServer, HudMessage, SelectorOutput,
+    default_socket_path, selector, HudIpcServer, HudMessage, HudPosition, SelectorOutput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -321,7 +321,13 @@ impl cosmic::Application for OverlayApp {
                     self.hud.offset_y
                 );
                 self.hud.edit_mode = false;
-                self.reconfigure_hud()
+                if self.hud.current_text == cosmic_translator_overlay::fl!("positioning-active") {
+                    self.hud.current_text.clear();
+                }
+                Task::batch([
+                    self.reconfigure_hud(),
+                    save_hud_position(self.hud.position, self.hud.offset_y),
+                ])
             }
 
             Message::HudUi(HudUiMessage::SetPresetPos(pos)) => {
@@ -329,9 +335,8 @@ impl cosmic::Application for OverlayApp {
                 self.reconfigure_hud()
             }
 
-            Message::HudUi(HudUiMessage::NudgeOffset(delta)) => {
-                let new_offset = (self.hud.offset_y as i32 + delta).clamp(0, 400) as u32;
-                self.hud.offset_y = new_offset;
+            Message::HudUi(HudUiMessage::Nudge(direction)) => {
+                self.hud.nudge(direction);
                 self.reconfigure_hud()
             }
 
@@ -378,6 +383,26 @@ impl cosmic::Application for OverlayApp {
             widget::text("").into()
         }
     }
+}
+
+/// Stores the calibrated position in the applet's settings. The applet watches its
+/// config, so it adopts the value and resends it on later style updates instead of
+/// restoring the old one.
+fn save_hud_position(position: HudPosition, offset_y: u32) -> Task<cosmic::Action<Message>> {
+    Task::perform(
+        async move {
+            let result = tokio::task::spawn_blocking(move || {
+                cosmic_translator_overlay::hud::save_position(position, offset_y)
+            })
+            .await;
+            match result {
+                Ok(Ok(())) => tracing::info!("Saved HUD position {position:?}, offset {offset_y}"),
+                Ok(Err(err)) => tracing::warn!("Failed to save HUD position: {err}"),
+                Err(err) => tracing::warn!("HUD position save task failed: {err}"),
+            }
+        },
+        |()| cosmic::Action::None,
+    )
 }
 
 fn main() -> cosmic::iced::Result {

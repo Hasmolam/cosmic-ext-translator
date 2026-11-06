@@ -7,6 +7,20 @@ the section of the released version.
 
 ## [Unreleased]
 
+### Fixed
+
+- Region selector left trails of earlier rectangles while dragging. The software
+  renderer did not repaint the outer half of the selection border; the redrawn area
+  now includes a margin around it.
+- HUD calibration: "Up" and "Down" moved the HUD in the opposite direction when it was
+  anchored to the bottom edge, and did nothing when it was centered. The buttons now
+  follow the anchor and are hidden for the centered position.
+- HUD calibration was lost on the next style update. Locking the position now stores
+  position and offset in the applet settings.
+- The live inspection preview in the settings window was only filled when capture
+  started, usually before the first frame arrived. It now follows the capture stream at
+  up to 4 updates per second.
+
 ### Removed
 
 - `translator_core::dictionary` (`JapaneseDictionary`, `MorphemeCard`) and

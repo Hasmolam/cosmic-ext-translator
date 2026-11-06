@@ -83,11 +83,7 @@ impl HudService {
 
 #[must_use]
 pub fn position_from_str(pos: &str) -> HudPosition {
-    match pos {
-        "top" => HudPosition::Top,
-        "center" => HudPosition::Center,
-        _ => HudPosition::Bottom,
-    }
+    HudPosition::from_config_str(pos)
 }
 
 /// `UpdateStyle` message for the HUD settings in `config`.

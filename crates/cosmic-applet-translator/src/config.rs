@@ -7,7 +7,7 @@ use tracing::{info, warn};
 use translator_core::Roi;
 
 /// Application ID: desktop entry, AppStream component and `cosmic-config` namespace.
-pub const APP_ID: &str = "io.github.hasmolam.CosmicExtTranslator";
+pub const APP_ID: &str = translator_core::ipc::APPLET_CONFIG_ID;
 
 /// Application ID used up to 0.1.x. Settings stored under it are migrated once.
 pub const LEGACY_APP_ID: &str = "com.system76.CosmicExtTranslator";
@@ -144,6 +144,11 @@ pub fn migrate_config_dir(base: &Path, from: &str, to: &str, version: u64) -> io
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hud_writes_to_this_config_version() {
+        assert_eq!(Config::VERSION, translator_core::ipc::APPLET_CONFIG_VERSION);
+    }
 
     fn temp_base(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

@@ -59,6 +59,8 @@ pub struct AppModel {
     ocr_status: OcrStatus,
     /// Incremented for every backend (re)build so results of superseded builds are dropped.
     ocr_generation: u64,
+    /// Incremented for every capture session; identifies the preview subscription.
+    capture_generation: u64,
     orchestrator: Option<OrchestratorHandle>,
     capture_session: Option<CaptureSession>,
     preview_mode: PreviewMode,
@@ -221,35 +223,19 @@ impl AppModel {
     }
 
     fn update_previews(&mut self, frame: &CapturedFrame) {
-        let w = frame.image.width();
-        let h = frame.image.height();
-        if w == 0 || h == 0 {
-            return;
-        }
-
-        let raw_bytes = frame.image.clone().into_raw();
-        self.last_raw_preview = Some(cosmic::iced::core::image::Handle::from_rgba(
-            w, h, raw_bytes,
-        ));
-
-        let preprocess_cfg = PreprocessConfig {
+        let config = PreprocessConfig {
             binarize: self.config.binarize,
             blur_subtraction: self.config.blur_subtraction,
             ..Default::default()
         };
-        let gray = translator_core::pipeline::preprocess::preprocess_for_ocr(
-            &frame.image,
-            &preprocess_cfg,
-        );
-        let mut gray_rgba = image::RgbaImage::new(gray.width(), gray.height());
-        for (x, y, p) in gray.enumerate_pixels() {
-            gray_rgba.put_pixel(x, y, image::Rgba([p[0], p[0], p[0], 255]));
+        if let Some(images) = crate::preview::build(&frame.image, &config) {
+            self.set_previews(images);
         }
-        self.last_proc_preview = Some(cosmic::iced::core::image::Handle::from_rgba(
-            gray.width(),
-            gray.height(),
-            gray_rgba.into_raw(),
-        ));
+    }
+
+    fn set_previews(&mut self, images: crate::preview::PreviewImages) {
+        self.last_raw_preview = Some(images.raw);
+        self.last_proc_preview = Some(images.preprocessed);
     }
 
     fn view_standalone_dashboard(&self) -> Element<'_, Message> {
@@ -434,6 +420,7 @@ pub enum Message {
     CloseApp,
     HudCleared,
     OrchestratorEventReceived(OrchestratorEvent),
+    PreviewUpdated(crate::preview::PreviewImages),
     ClearHistory,
     CopyHistoryEntry(String),
 }
@@ -471,6 +458,7 @@ impl Clone for Message {
             Self::CloseApp => Self::CloseApp,
             Self::HudCleared => Self::HudCleared,
             Self::OrchestratorEventReceived(e) => Self::OrchestratorEventReceived(e.clone()),
+            Self::PreviewUpdated(p) => Self::PreviewUpdated(p.clone()),
             Self::ClearHistory => Self::ClearHistory,
             Self::CopyHistoryEntry(s) => Self::CopyHistoryEntry(s.clone()),
         }
@@ -586,6 +574,7 @@ impl cosmic::Application for AppModel {
             ocr_backend: None,
             ocr_status: OcrStatus::Idle,
             ocr_generation: 0,
+            capture_generation: 0,
             orchestrator: None,
             capture_session: None,
             preview_mode: PreviewMode::default(),
@@ -601,7 +590,21 @@ impl cosmic::Application for AppModel {
     }
 
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
+        // Only the standalone dashboard shows previews; the panel applet skips the work.
+        let preview = match &self.capture_session {
+            Some(session) if self.is_standalone() => crate::preview::subscription(
+                crate::preview::PreviewSource {
+                    session_id: self.capture_generation,
+                    binarize: self.config.binarize,
+                    blur_subtraction: self.config.blur_subtraction,
+                    frames: session.frame_receiver.clone(),
+                },
+                Message::PreviewUpdated,
+            ),
+            _ => cosmic::iced::Subscription::none(),
+        };
         cosmic::iced::Subscription::batch([
+            preview,
             global_shortcuts_subscription(),
             orchestrator_events_subscription(),
             self.core.watch_config::<Config>(Self::APP_ID).map(|u| {
@@ -1068,6 +1071,10 @@ impl cosmic::Application for AppModel {
                 self.backlog.clear();
             }
 
+            Message::PreviewUpdated(images) => {
+                self.set_previews(images);
+            }
+
             Message::CopyHistoryEntry(text) => {
                 return cosmic::iced::clipboard::write(text);
             }
@@ -1251,6 +1258,7 @@ impl cosmic::Application for AppModel {
                     self.update_previews(frame);
                 }
 
+                self.capture_generation = self.capture_generation.wrapping_add(1);
                 self.capture_session = Some(session);
                 return self.rebuild_ocr_backend();
             }

@@ -21,6 +21,12 @@ pub fn default_socket_path() -> PathBuf {
     }
 }
 
+/// `cosmic-config` namespace of the applet settings. The HUD writes its calibrated
+/// position there so the applet and later sessions pick it up.
+pub const APPLET_CONFIG_ID: &str = "io.github.hasmolam.CosmicExtTranslator";
+/// Must match `#[version]` on the applet's `Config`.
+pub const APPLET_CONFIG_VERSION: u64 = 1;
+
 /// Subtitle HUD vertical screen position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -29,6 +35,28 @@ pub enum HudPosition {
     #[default]
     Bottom,
     Center,
+}
+
+impl HudPosition {
+    /// Value stored in the applet's `hud_position` setting.
+    #[must_use]
+    pub const fn as_config_str(self) -> &'static str {
+        match self {
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+            Self::Center => "center",
+        }
+    }
+
+    /// Parses the applet's `hud_position` setting; unknown values mean `Bottom`.
+    #[must_use]
+    pub fn from_config_str(value: &str) -> Self {
+        match value {
+            "top" => Self::Top,
+            "center" => Self::Center,
+            _ => Self::Bottom,
+        }
+    }
 }
 
 /// Pipeline condition shown as a badge above the subtitle.

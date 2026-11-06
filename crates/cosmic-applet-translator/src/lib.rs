@@ -2,6 +2,7 @@ pub mod app;
 pub mod config;
 pub mod history;
 pub mod i18n;
+pub mod preview;
 pub mod services;
 pub mod settings_dialog;
 
