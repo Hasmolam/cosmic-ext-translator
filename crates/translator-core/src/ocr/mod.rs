@@ -6,8 +6,12 @@ use image::DynamicImage;
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams, TextItem};
 use rten::Model;
 
+use crate::error::OcrInitError;
+use crate::language::{normalize_source_code, script_for_code};
+
 pub mod layout;
 pub mod furigana;
+pub mod models;
 
 pub use layout::{
     detect_dominant_orientation, sort_cjk_reading_order, DetectedTextBox, TextOrientation,
@@ -185,16 +189,17 @@ impl std::fmt::Debug for OcrsBackend {
 }
 
 impl OcrsBackend {
+    /// Upstream ocrs publishes ONNX models; the former `.rten` URLs return HTTP 403.
     pub const DETECTION_URL: &'static str =
-        "https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.rten";
+        "https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.onnx";
     pub const RECOGNITION_URL: &'static str =
-        "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten";
+        "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.onnx";
+
+    const SYSTEM_MODELS_DIR: &'static str = "/usr/share/cosmic-ext-translator/models";
 
     pub fn default_models_dir() -> std::path::PathBuf {
-        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-translator/models");
-        if system_dir.join("text-detection.rten").exists()
-            && system_dir.join("text-recognition.rten").exists()
-        {
+        let system_dir = std::path::PathBuf::from(Self::SYSTEM_MODELS_DIR);
+        if Self::system_model_paths(&system_dir).is_some() {
             return system_dir;
         }
 
@@ -207,13 +212,16 @@ impl OcrsBackend {
         }
     }
 
-    pub fn from_models(detection_model: Model, recognition_model: Model) -> Result<Self> {
+    pub fn from_models(
+        detection_model: Model,
+        recognition_model: Model,
+    ) -> std::result::Result<Self, OcrInitError> {
         let engine = OcrEngine::new(OcrEngineParams {
             detection_model: Some(detection_model),
             recognition_model: Some(recognition_model),
             ..Default::default()
         })
-        .map_err(|e| anyhow::anyhow!("OcrEngine creation error: {e}"))?;
+        .map_err(|e| OcrInitError::Engine(e.to_string()))?;
 
         Ok(Self {
             engine: Arc::new(engine),
@@ -235,80 +243,48 @@ impl OcrsBackend {
             .unwrap_or(false)
     }
 
-    /// Loads the OCR models from the default models directory, downloading them if missing.
-    pub async fn load_default_or_download() -> Result<Self> {
-        let system_dir = std::path::PathBuf::from("/usr/share/cosmic-ext-translator/models");
-        let sys_det = system_dir.join("text-detection.rten");
-        let sys_rec = system_dir.join("text-recognition.rten");
+    pub const DETECTION: models::ModelSource = models::ModelSource {
+        file_name: "text-detection.onnx",
+        url: Self::DETECTION_URL,
+        legacy_names: &["text-detection.rten"],
+    };
+    pub const RECOGNITION: models::ModelSource = models::ModelSource {
+        file_name: "text-recognition.onnx",
+        url: Self::RECOGNITION_URL,
+        legacy_names: &["text-recognition.rten"],
+    };
 
-        if sys_det.exists() && sys_rec.exists() {
+    /// Detection and recognition model paths in `dir`, if both are present in any
+    /// accepted format.
+    pub fn system_model_paths(
+        dir: &std::path::Path,
+    ) -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+        Some((
+            models::find_existing(dir, &Self::DETECTION)?,
+            models::find_existing(dir, &Self::RECOGNITION)?,
+        ))
+    }
+
+    /// Loads the OCR models from the system directory if present, otherwise from the user
+    /// models directory, downloading missing or corrupt files.
+    pub async fn load_default_or_download() -> std::result::Result<Self, OcrInitError> {
+        let system_dir = std::path::PathBuf::from(Self::SYSTEM_MODELS_DIR);
+        if let Some((sys_det, sys_rec)) = Self::system_model_paths(&system_dir) {
             tracing::info!("Loading OCR models from system directory: {:?}", system_dir);
-            let det_model = Model::load_file(&sys_det)?;
-            let rec_model = Model::load_file(&sys_rec)?;
+            let det_model = models::load_readonly(&sys_det).await?;
+            let rec_model = models::load_readonly(&sys_rec).await?;
             return Self::from_models(det_model, rec_model);
         }
 
         let models_dir = Self::default_models_dir();
-        tokio::fs::create_dir_all(&models_dir).await?;
+        let legacy_dir = std::env::var("HOME").ok().map(|home| {
+            std::path::PathBuf::from(home).join(".local/share/cosmic-ext-lingua/models")
+        });
 
-        let det_path = models_dir.join("text-detection.rten");
-        let rec_path = models_dir.join("text-recognition.rten");
-
-        if !det_path.exists() || !rec_path.exists() {
-            if let Ok(home) = std::env::var("HOME") {
-                let legacy_dir =
-                    std::path::PathBuf::from(home).join(".local/share/cosmic-ext-lingua/models");
-                let leg_det = legacy_dir.join("text-detection.rten");
-                let leg_rec = legacy_dir.join("text-recognition.rten");
-                if leg_det.exists() && leg_rec.exists() {
-                    let _ = tokio::fs::copy(&leg_det, &det_path).await;
-                    let _ = tokio::fs::copy(&leg_rec, &rec_path).await;
-                }
-            }
-        }
-
-        let det_valid = det_path
-            .metadata()
-            .map(|m| m.len() >= 100_000)
-            .unwrap_or(false);
-        if !det_valid {
-            tracing::info!("Downloading OCR detection model...");
-            let resp = reqwest::get(Self::DETECTION_URL)
-                .await?
-                .error_for_status()?
-                .bytes()
-                .await?;
-            if resp.len() < 100_000 {
-                anyhow::bail!(
-                    "Downloaded detection model is corrupt or invalid (size: {} bytes)",
-                    resp.len()
-                );
-            }
-            tokio::fs::write(&det_path, resp).await?;
-        }
-
-        let rec_valid = rec_path
-            .metadata()
-            .map(|m| m.len() >= 100_000)
-            .unwrap_or(false);
-        if !rec_valid {
-            tracing::info!("Downloading OCR recognition model...");
-            let resp = reqwest::get(Self::RECOGNITION_URL)
-                .await?
-                .error_for_status()?
-                .bytes()
-                .await?;
-            if resp.len() < 100_000 {
-                anyhow::bail!(
-                    "Downloaded recognition model is corrupt or invalid (size: {} bytes)",
-                    resp.len()
-                );
-            }
-            tokio::fs::write(&rec_path, resp).await?;
-        }
-
-        let det_model = Model::load_file(&det_path)?;
-        let rec_model = Model::load_file(&rec_path)?;
+        let det_model =
+            models::ensure_model(&models_dir, Self::DETECTION, legacy_dir.as_deref()).await?;
+        let rec_model =
+            models::ensure_model(&models_dir, Self::RECOGNITION, legacy_dir.as_deref()).await?;
 
         Self::from_models(det_model, rec_model)
     }
@@ -327,6 +303,7 @@ impl TesseractBackend {
         }
     }
 
+    /// Returns true if a `tesseract` binary can be executed.
     pub fn is_available() -> bool {
         std::process::Command::new("tesseract")
             .arg("--version")
@@ -334,6 +311,35 @@ impl TesseractBackend {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+
+    /// Lists installed Tesseract language packs, or `None` if Tesseract cannot be run.
+    pub async fn installed_languages() -> Option<Vec<String>> {
+        let output = tokio::process::Command::new("tesseract")
+            .arg("--list-langs")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .await
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        // Older releases print the list to stderr, newer ones to stdout.
+        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+        text.push('\n');
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
+        Some(parse_tesseract_lang_list(&text))
+    }
+}
+
+/// Parses `tesseract --list-langs` output, skipping the header line.
+#[must_use]
+pub fn parse_tesseract_lang_list(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("List of available languages"))
+        .map(str::to_string)
+        .collect()
 }
 
 impl OcrBackend for TesseractBackend {
@@ -373,29 +379,31 @@ impl OcrBackend for TesseractBackend {
     }
 }
 
-/// Automatically selects and instantiates the optimal OCR engine for a given source language.
-pub async fn create_ocr_backend_for_lang(src_lang: &str) -> Result<Arc<dyn OcrBackend>> {
-    let lower = src_lang.to_lowercase();
-    let is_cjk = matches!(lower.as_str(), "ja" | "jpn" | "zh" | "chi" | "ko" | "kor");
+/// Selects and constructs the OCR engine for a source language code.
+///
+/// Latin-script languages (and `auto`) use the bundled `ocrs` models. Scripts the `ocrs`
+/// model cannot read require Tesseract with the matching language pack; if it is missing
+/// an error is returned instead of silently using a backend that produces garbage.
+pub async fn create_ocr_backend_for_lang(
+    src_lang: &str,
+) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
+    let script = script_for_code(src_lang);
 
-    if is_cjk && TesseractBackend::is_available() {
-        let tesseract_lang = match lower.as_str() {
-            "ja" | "jpn" => "jpn",
-            "zh" | "chi" => "chi_sim",
-            "ko" | "kor" => "kor",
-            other => other,
+    if let Some(pack) = script.tesseract_pack() {
+        let language = script.name();
+        let Some(installed) = TesseractBackend::installed_languages().await else {
+            return Err(OcrInitError::TesseractMissing { language, pack });
         };
-        tracing::info!("Using Tesseract OCR backend for CJK language: {tesseract_lang}");
-        return Ok(Arc::new(TesseractBackend::new(tesseract_lang)));
+        if !installed.iter().any(|l| l == pack) {
+            return Err(OcrInitError::TesseractLanguageMissing { language, pack });
+        }
+        tracing::info!("Using Tesseract OCR backend for {language} ({pack})");
+        return Ok(Arc::new(TesseractBackend::new(pack)));
     }
 
-    match OcrsBackend::load_default_or_download().await {
-        Ok(backend) => Ok(Arc::new(backend.with_lang(lower))),
-        Err(err) => {
-            tracing::warn!("Failed to load OcrsBackend, falling back to MockOcrBackend: {err}");
-            Ok(Arc::new(MockOcrBackend::new("Capture Active")))
-        }
-    }
+    let backend = OcrsBackend::load_default_or_download().await?;
+    tracing::info!("Using ocrs OCR backend for source language '{src_lang}'");
+    Ok(Arc::new(backend.with_lang(normalize_source_code(src_lang))))
 }
 
 impl OcrBackend for OcrsBackend {
@@ -551,14 +559,17 @@ mod tests {
         assert!(!is_cjk_text("Level Up!"));
     }
 
+    #[test]
+    fn test_parse_tesseract_lang_list() {
+        let out = "List of available languages in \"/usr/share/tesseract-ocr/5/tessdata/\" (3):\neng\njpn\nosd\n";
+        assert_eq!(parse_tesseract_lang_list(out), vec!["eng", "jpn", "osd"]);
+        assert!(parse_tesseract_lang_list("").is_empty());
+    }
+
     #[tokio::test]
     async fn test_ocrs_backend_load() {
         let models_dir = OcrsBackend::default_models_dir();
-        let det_path = models_dir.join("text-detection.rten");
-        let rec_path = models_dir.join("text-recognition.rten");
-        let det_size = det_path.metadata().map(|m| m.len()).unwrap_or(0);
-        let rec_size = rec_path.metadata().map(|m| m.len()).unwrap_or(0);
-        if det_size < 100_000 || rec_size < 100_000 {
+        if OcrsBackend::system_model_paths(&models_dir).is_none() {
             // Skip when models have not been pre-downloaded to ensure CI offline resilience
             return;
         }

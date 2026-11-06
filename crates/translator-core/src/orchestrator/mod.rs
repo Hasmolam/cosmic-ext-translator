@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::capture::pipewire_thread::CapturedFrame;
-use crate::ipc::{HudIpcClient, HudMessage};
+use crate::ipc::{HudIpcClient, HudMessage, HudStatus};
 use crate::ocr::OcrBackend;
 use crate::pipeline::debouncer::{FrameDebouncer, TextDiffAction, TextGate};
 use crate::pipeline::preprocess::PreprocessConfig;
@@ -111,6 +111,7 @@ pub fn spawn_orchestrator(
             context.set_glossary_term(term.clone(), repl.clone());
         }
         let mut rate_limit_manager = RateLimitManager::default();
+        let mut status_shown = false;
 
         let hud_client = if config.forward_to_hud {
             Some(HudIpcClient::default_client())
@@ -149,6 +150,7 @@ pub fn spawn_orchestrator(
                             cache: &mut cache,
                             context: &mut context,
                             rate_limit_manager: &mut rate_limit_manager,
+                            status_shown: &mut status_shown,
                             translation_backend: &translation_backend,
                             config: &config,
                             hud_client: hud_client.as_ref(),
@@ -185,6 +187,7 @@ pub fn spawn_orchestrator(
                                 cache: &mut cache,
                                 context: &mut context,
                                 rate_limit_manager: &mut rate_limit_manager,
+                                status_shown: &mut status_shown,
                                 translation_backend: &translation_backend,
                                 config: &config,
                                 hud_client: hud_client.as_ref(),
@@ -211,6 +214,8 @@ struct OrchestratorSessionState<'a> {
     cache: &'a mut FuzzyLruCache,
     context: &'a mut TranslationContext,
     rate_limit_manager: &'a mut RateLimitManager,
+    /// True while a status badge set by this session is visible on the HUD.
+    status_shown: &'a mut bool,
     translation_backend: &'a Arc<dyn TranslationBackend>,
     config: &'a OrchestratorConfig,
     hud_client: Option<&'a HudIpcClient>,
@@ -224,16 +229,14 @@ async fn dispatch_translation(
     // If rate-limited, notify HUD and throttle request dispatch
     if let Some(remaining) = state.rate_limit_manager.remaining_pause() {
         let secs = remaining.as_secs().max(1);
-        let status_text = format!("⏳ Hız Sınırı Aşıldı (HTTP 429): {secs}s sonra devam edilecek...");
-        warn!("Orchestrator rate-limited: {status_text}");
-        if let Some(client) = state.hud_client {
-            let _ = client
-                .send(&HudMessage::SetStatus {
-                    active: true,
-                    text: status_text,
-                })
-                .await;
-        }
+        warn!("Orchestrator rate-limited, retrying in {secs}s");
+        set_hud_status(
+            state,
+            Some(HudStatus::RateLimited {
+                retry_after_secs: secs,
+            }),
+        )
+        .await;
         return;
     }
 
@@ -263,33 +266,24 @@ async fn dispatch_translation(
                 let tr_clean = tr.trim().to_string();
                 state.cache.insert(text_to_translate, &tr_clean);
                 state.rate_limit_manager.record_success();
+                if *state.status_shown {
+                    set_hud_status(state, None).await;
+                }
                 (tr_clean, false)
             }
             Err(err) => {
                 let err_msg = format!("Translation failure: {err}");
                 error!("{err_msg}");
                 let is_429 = err.to_string().contains("429");
-                if is_429 {
+                let status = if is_429 {
                     let pause = state.rate_limit_manager.record_rate_limit();
-                    let secs = pause.as_secs().max(1);
-                    let status_text = format!("⏳ Hız Sınırı Aşıldı (HTTP 429): {secs}s sonra devam edilecek...");
-                    if let Some(client) = state.hud_client {
-                        let _ = client
-                            .send(&HudMessage::SetStatus {
-                                active: true,
-                                text: status_text,
-                            })
-                            .await;
+                    HudStatus::RateLimited {
+                        retry_after_secs: pause.as_secs().max(1),
                     }
-                } else if let Some(client) = state.hud_client {
-                    let _ = client
-                        .send(&HudMessage::ShowSubtitle {
-                            text: "⚠️ Çeviri Hatası (Bağlantı/Servis)".to_string(),
-                            original: Some(text),
-                            duration_ms: 3500,
-                        })
-                        .await;
-                }
+                } else {
+                    HudStatus::TranslationFailed
+                };
+                set_hud_status(state, Some(status)).await;
                 let _ = state.event_tx.send(OrchestratorEvent::Error(err_msg)).await;
                 return;
             }
@@ -331,6 +325,16 @@ async fn dispatch_translation(
         };
         if let Err(err) = client.send(&msg).await {
             debug!("HUD client send notice (HUD may not be listening): {err}");
+        }
+    }
+}
+
+/// Sends a status badge update to the HUD and records whether one is visible.
+async fn set_hud_status(state: &mut OrchestratorSessionState<'_>, status: Option<HudStatus>) {
+    *state.status_shown = status.is_some();
+    if let Some(client) = state.hud_client {
+        if let Err(err) = client.send(&HudMessage::SetHudStatus { status }).await {
+            debug!("HUD status send failed (HUD may not be listening): {err}");
         }
     }
 }

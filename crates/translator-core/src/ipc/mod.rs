@@ -27,6 +27,20 @@ pub enum HudPosition {
     Center,
 }
 
+/// Pipeline condition shown as a badge above the subtitle.
+///
+/// `translator-core` has no localisation; the overlay maps each variant to a Fluent string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HudStatus {
+    /// Translation engine returned HTTP 429; requests resume after `retry_after_secs`.
+    RateLimited { retry_after_secs: u64 },
+    /// Translation request failed for a reason other than rate limiting.
+    TranslationFailed,
+    /// No OCR backend could be created for the configured source language.
+    OcrUnavailable { reason: String },
+}
+
 /// Message payload communicated between the translation engine and the HUD overlay.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "payload")]
@@ -38,9 +52,14 @@ pub enum HudMessage {
         duration_ms: u64,
     },
     ClearSubtitle,
+    /// Free-form status badge. Kept for compatibility; new code sends `SetHudStatus`.
     SetStatus {
         active: bool,
         text: String,
+    },
+    /// Typed status badge, localised by the overlay. `None` clears the badge.
+    SetHudStatus {
+        status: Option<HudStatus>,
     },
     UpdateStyle {
         font_size: u16,
@@ -223,6 +242,25 @@ mod tests {
         assert_eq!(received, msg);
 
         let _ = std::fs::remove_file(sock_path);
+    }
+
+    #[test]
+    fn test_hud_status_wire_format() {
+        let msg = HudMessage::SetHudStatus {
+            status: Some(HudStatus::RateLimited {
+                retry_after_secs: 30,
+            }),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"SetHudStatus","payload":{"status":{"kind":"rate_limited","retry_after_secs":30}}}"#
+        );
+        assert_eq!(serde_json::from_str::<HudMessage>(&json).unwrap(), msg);
+
+        let clear = HudMessage::SetHudStatus { status: None };
+        let json = serde_json::to_string(&clear).unwrap();
+        assert_eq!(serde_json::from_str::<HudMessage>(&json).unwrap(), clear);
     }
 
     #[tokio::test]

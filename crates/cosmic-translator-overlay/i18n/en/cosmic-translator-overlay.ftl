@@ -7,3 +7,6 @@ pos-center = Center
 pos-bottom = Bottom
 nudge-up = Up (-20px)
 nudge-down = Down (+20px)
+status-rate-limited = Rate limited (HTTP 429), retrying in { $secs } s
+status-translation-failed = Translation failed (connection or service error)
+status-ocr-unavailable = OCR unavailable: { $reason }

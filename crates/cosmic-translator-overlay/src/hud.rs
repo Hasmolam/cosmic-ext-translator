@@ -8,7 +8,7 @@ use cosmic::iced::window::Id;
 use cosmic::iced::{Alignment, Background, Border, Color, Length, Padding};
 use cosmic::widget;
 use cosmic::Element;
-use translator_core::ipc::HudPosition;
+use translator_core::ipc::{HudPosition, HudStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HudUiMessage {
@@ -48,7 +48,28 @@ impl Default for SubtitleHudState {
     }
 }
 
+/// Localised badge text for a pipeline status.
+#[must_use]
+pub fn status_label(status: &HudStatus) -> String {
+    match status {
+        HudStatus::RateLimited { retry_after_secs } => {
+            let secs: u64 = *retry_after_secs;
+            crate::fl!("status-rate-limited", secs = secs)
+        }
+        HudStatus::TranslationFailed => crate::fl!("status-translation-failed"),
+        HudStatus::OcrUnavailable { reason } => {
+            let reason: String = reason.clone();
+            crate::fl!("status-ocr-unavailable", reason = reason)
+        }
+    }
+}
+
 impl SubtitleHudState {
+    /// Shows or clears the status badge. Does not touch the subtitle text.
+    pub fn apply_status(&mut self, status: Option<&HudStatus>) {
+        self.status_badge = status.map(status_label);
+    }
+
     #[must_use]
     pub fn layer_settings(&self) -> SctkLayerSurfaceSettings {
         let anchor = match self.position {

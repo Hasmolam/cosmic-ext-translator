@@ -11,7 +11,7 @@ use cosmic::widget::{self, button, row};
 use tracing::{debug, error, info, warn};
 use translator_core::capture::pipewire_thread::CapturedFrame;
 use translator_core::capture::roi::{CaptureRegion, RoiPreset};
-use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition};
+use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition, HudStatus};
 use translator_core::ocr::{create_ocr_backend_for_lang, OcrBackend};
 use translator_core::orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
@@ -23,13 +23,25 @@ use translator_core::translation::{
     DeepLTranslationBackend, GoogleTranslateBackend, OllamaTranslationBackend,
     OpenAiTranslationBackend, TranslationBackend,
 };
-use translator_core::{CaptureSession, Roi};
+use translator_core::{normalize_source_code, CaptureSession, Roi};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PreviewMode {
     #[default]
     RawCropped,
     Preprocessed,
+}
+
+/// Availability of the OCR backend for the current capture session.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum OcrStatus {
+    /// No capture session; no backend needed.
+    #[default]
+    Idle,
+    Loading,
+    Ready,
+    /// Backend construction failed; carries a user-facing reason.
+    Unavailable(String),
 }
 
 #[derive(Default)]
@@ -42,6 +54,9 @@ pub struct AppModel {
     capture_active: bool,
     hud_visible: bool,
     ocr_backend: Option<Arc<dyn OcrBackend>>,
+    ocr_status: OcrStatus,
+    /// Incremented for every backend (re)build so results of superseded builds are dropped.
+    ocr_generation: u64,
     orchestrator: Option<OrchestratorHandle>,
     capture_session: Option<CaptureSession>,
     preview_mode: PreviewMode,
@@ -57,6 +72,38 @@ impl AppModel {
         if let Some(ref handler) = self.config_handler {
             let _ = self.config.write_entry(handler);
         }
+    }
+
+    /// Builds a new OCR backend for the configured source language.
+    ///
+    /// The running orchestrator is stopped first so frames are not read with a backend
+    /// for the wrong script while the new one loads.
+    fn rebuild_ocr_backend(&mut self) -> Task<cosmic::Action<Message>> {
+        if let Some(old) = self.orchestrator.take() {
+            old.stop();
+        }
+        self.ocr_backend = None;
+        self.ocr_status = OcrStatus::Loading;
+        self.ocr_generation = self.ocr_generation.wrapping_add(1);
+        let generation = self.ocr_generation;
+        let src_lang = self.config.source_lang.clone();
+
+        Task::perform(
+            async move {
+                let result = create_ocr_backend_for_lang(&src_lang)
+                    .await
+                    .map_err(|err| err.to_string());
+                Message::OcrBackendLoaded { generation, result }
+            },
+            cosmic::Action::from,
+        )
+    }
+
+    /// Invalidates any in-flight backend build and drops the current backend.
+    fn reset_ocr_backend(&mut self) {
+        self.ocr_generation = self.ocr_generation.wrapping_add(1);
+        self.ocr_backend = None;
+        self.ocr_status = OcrStatus::Idle;
     }
 
     fn restart_orchestrator_if_active(&mut self) {
@@ -88,7 +135,7 @@ impl AppModel {
         };
 
         let orchestrator_config = OrchestratorConfig {
-            src_lang: self.config.source_lang.clone(),
+            src_lang: normalize_source_code(&self.config.source_lang),
             target_lang: self.config.target_lang.clone(),
             glossary: self.config.glossary.clone(),
             hud_duration_ms: self.config.hud_duration_ms,
@@ -326,7 +373,11 @@ pub enum Message {
     IgnoreRoiSelectionCancelled,
     ClearIgnoreRoi,
     PresetSelected(RoiPreset),
-    CaptureStarted(CaptureSession, Arc<dyn OcrBackend>),
+    CaptureStarted(CaptureSession),
+    OcrBackendLoaded {
+        generation: u64,
+        result: Result<Arc<dyn OcrBackend>, String>,
+    },
     CaptureFailed(String),
     ShortcutActivated(ShortcutAction),
     OneShotTranslate,
@@ -372,7 +423,11 @@ impl Clone for Message {
             Self::IgnoreRoiSelectionCancelled => Self::IgnoreRoiSelectionCancelled,
             Self::ClearIgnoreRoi => Self::ClearIgnoreRoi,
             Self::PresetSelected(p) => Self::PresetSelected(*p),
-            Self::CaptureStarted(_, _) => Self::CaptureFailed("Cannot clone active session".into()),
+            Self::CaptureStarted(_) => Self::CaptureFailed("Cannot clone active session".into()),
+            Self::OcrBackendLoaded { generation, result } => Self::OcrBackendLoaded {
+                generation: *generation,
+                result: result.clone(),
+            },
             Self::CaptureFailed(s) => Self::CaptureFailed(s.clone()),
             Self::ShortcutActivated(a) => Self::ShortcutActivated(a.clone()),
             Self::OneShotTranslate => Self::OneShotTranslate,
@@ -519,6 +574,8 @@ impl cosmic::Application for AppModel {
             capture_active: false,
             hud_visible: true,
             ocr_backend: None,
+            ocr_status: OcrStatus::Idle,
+            ocr_generation: 0,
             orchestrator: None,
             capture_session: None,
             preview_mode: PreviewMode::default(),
@@ -613,25 +670,37 @@ impl cosmic::Application for AppModel {
             }
 
             Message::ConfigChanged(new_config) => {
+                let source_changed = normalize_source_code(&self.config.source_lang)
+                    != normalize_source_code(&new_config.source_lang);
                 self.config = *new_config;
                 if let Some(ref session) = self.capture_session {
                     let preset = RoiPreset::from_str_name(&self.config.preset);
                     let region = CaptureRegion::new(preset, self.config.custom_roi, self.config.ignore_roi);
                     session.update_region(region);
                 }
-                self.restart_orchestrator_if_active();
+                let ocr_task = if source_changed && self.capture_session.is_some() {
+                    info!(
+                        "Source language changed to '{}', rebuilding OCR backend",
+                        self.config.source_lang
+                    );
+                    self.rebuild_ocr_backend()
+                } else {
+                    self.restart_orchestrator_if_active();
+                    Task::none()
+                };
 
                 let font_size = self.config.font_size;
                 let opacity = self.config.hud_opacity;
                 let duration_ms = self.config.hud_duration_ms;
                 let position = self.config.hud_position.clone();
                 let offset_y = self.config.hud_offset_y;
-                return Task::perform(
+                let hud_task = Task::perform(
                     async move {
                         ensure_hud_running_and_styled(font_size, opacity, duration_ms, &position, offset_y).await;
                     },
                     |_| cosmic::Action::None,
                 );
+                return Task::batch([ocr_task, hud_task]);
             }
 
             Message::CloseApp => {
@@ -813,9 +882,13 @@ impl cosmic::Application for AppModel {
                         self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::SourceLangChanged(lang) => {
+                        let changed = normalize_source_code(&self.config.source_lang)
+                            != normalize_source_code(&lang);
                         self.config.source_lang = lang;
                         self.save_config();
-                        self.restart_orchestrator_if_active();
+                        if changed && self.capture_session.is_some() {
+                            return self.rebuild_ocr_backend();
+                        }
                     }
                     SettingsMessage::TestOllamaConnection => {
                         self.settings_state.is_testing_ollama = true;
@@ -1257,7 +1330,7 @@ impl cosmic::Application for AppModel {
                 };
 
                 let engine = self.config.engine.clone();
-                let src_lang = self.config.source_lang.clone();
+                let src_lang = normalize_source_code(&self.config.source_lang);
                 let target_lang = self.config.target_lang.clone();
                 let binarize = self.config.binarize;
                 let blur_subtraction = self.config.blur_subtraction;
@@ -1344,7 +1417,6 @@ impl cosmic::Application for AppModel {
                 let position = self.config.hud_position.clone();
                 let offset_y = self.config.hud_offset_y;
                 let restore_token = self.config.restore_token.clone();
-                let src_lang = self.config.source_lang.clone();
                 let preset = RoiPreset::from_str_name(&self.config.preset);
                 let region = CaptureRegion::new(preset, self.config.custom_roi, self.config.ignore_roi);
 
@@ -1364,21 +1436,14 @@ impl cosmic::Application for AppModel {
                                 return Message::CaptureFailed(err.to_string());
                             }
                         };
-                        let ocr = match create_ocr_backend_for_lang(&src_lang).await {
-                            Ok(backend) => backend,
-                            Err(err) => {
-                                warn!("Failed to load OCR backend: {err}");
-                                Arc::new(translator_core::ocr::MockOcrBackend::new("Capture Active"))
-                            }
-                        };
-                        Message::CaptureStarted(session, ocr)
+                        Message::CaptureStarted(session)
                     },
                     cosmic::Action::from,
                 );
             }
 
-            Message::CaptureStarted(session, ocr_backend) => {
-                info!("Capture session active, starting translation orchestrator");
+            Message::CaptureStarted(session) => {
+                info!("Capture session active, loading OCR backend");
                 if session.stream_info.restore_token != self.config.restore_token {
                     self.config.restore_token = session.stream_info.restore_token.clone();
                     self.save_config();
@@ -1389,8 +1454,38 @@ impl cosmic::Application for AppModel {
                 }
 
                 self.capture_session = Some(session);
-                self.ocr_backend = Some(ocr_backend);
-                self.restart_orchestrator_if_active();
+                return self.rebuild_ocr_backend();
+            }
+
+            Message::OcrBackendLoaded { generation, result } => {
+                if generation != self.ocr_generation {
+                    debug!("Discarding superseded OCR backend build {generation}");
+                    return Task::none();
+                }
+                let status = match result {
+                    Ok(backend) => {
+                        info!("OCR backend ready, starting translation orchestrator");
+                        self.ocr_backend = Some(backend);
+                        self.ocr_status = OcrStatus::Ready;
+                        self.restart_orchestrator_if_active();
+                        None
+                    }
+                    Err(reason) => {
+                        error!("OCR backend unavailable: {reason}");
+                        self.ocr_backend = None;
+                        self.ocr_status = OcrStatus::Unavailable(reason.clone());
+                        Some(HudStatus::OcrUnavailable { reason })
+                    }
+                };
+                return Task::perform(
+                    async move {
+                        let client = HudIpcClient::default_client();
+                        if let Err(err) = client.send(&HudMessage::SetHudStatus { status }).await {
+                            debug!("HUD status send failed: {err}");
+                        }
+                    },
+                    |_| cosmic::Action::None,
+                );
             }
 
             Message::CaptureFailed(err) => {
@@ -1411,10 +1506,14 @@ impl cosmic::Application for AppModel {
                 if let Some(mut session) = self.capture_session.take() {
                     let _ = session.stop();
                 }
+                self.reset_ocr_backend();
                 return Task::perform(
                     async move {
                         let client = HudIpcClient::default_client();
                         let _ = client.send(&HudMessage::ClearSubtitle).await;
+                        let _ = client
+                            .send(&HudMessage::SetHudStatus { status: None })
+                            .await;
                         Message::HudCleared
                     },
                     cosmic::Action::from,
@@ -1504,7 +1603,25 @@ impl cosmic::Application for AppModel {
                 .add(widget::settings::item(
                     fl!("enable-translation"),
                     widget::toggler(self.capture_active).on_toggle(Message::ToggleCapture),
-                ))
+                ));
+
+            let content_list = match &self.ocr_status {
+                OcrStatus::Loading => content_list.add(widget::settings::item(
+                    fl!("ocr-status"),
+                    widget::text(fl!("ocr-loading")),
+                )),
+                OcrStatus::Unavailable(reason) => {
+                    let detail = widget::column![
+                        widget::text(fl!("ocr-unavailable")).size(14),
+                        widget::text(reason.as_str()).size(12),
+                    ]
+                    .spacing(2);
+                    content_list.add(widget::settings::item_row(vec![detail.into()]))
+                }
+                OcrStatus::Idle | OcrStatus::Ready => content_list,
+            };
+
+            let content_list = content_list
                 .add(preset_controls)
                 .add(widget::settings::item(
                     fl!("active-region"),

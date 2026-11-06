@@ -164,11 +164,13 @@ Useful options for difficult games:
 
 ### OCR models
 
-On first start the [ocrs](https://github.com/robertknight/ocrs) detection and recognition models are downloaded to `$XDG_DATA_HOME/cosmic-ext-translator/models` (usually `~/.local/share/cosmic-ext-translator/models`). If the models are present in `/usr/share/cosmic-ext-translator/models`, that copy is used and nothing is downloaded. For offline machines, place `text-detection.rten` and `text-recognition.rten` in either directory.
+On first start the [ocrs](https://github.com/robertknight/ocrs) detection and recognition models are downloaded to `$XDG_DATA_HOME/cosmic-ext-translator/models` (usually `~/.local/share/cosmic-ext-translator/models`). If the models are present in `/usr/share/cosmic-ext-translator/models`, that copy is used and nothing is downloaded. For offline machines, place `text-detection.onnx` and `text-recognition.onnx` (or the older `text-detection.rten` / `text-recognition.rten`) in either directory.
+
+Downloads are written to a temporary file and only moved into place after the model parses. A model file that fails to load is renamed to `*.corrupt` and downloaded again. If no model can be loaded, the applet popup and the HUD show the reason instead of starting the translation loop.
 
 ## Limitations
 
-- **OCR currently recognizes only Latin script.** The ocrs models in use do not read Japanese, Chinese, or Korean. Code for vertical text ordering and furigana removal exists, but it is only useful once a CJK recognition model is supported.
+- **The bundled OCR models recognize only Latin script.** Selecting Japanese, Chinese, or Korean as the source language requires `tesseract` with the matching language data (`jpn`, `chi_sim`, `kor`); if it is missing, the applet reports which package to install. Tesseract output is not yet post-processed (vertical text, furigana removal). See [docs/JAPANESE_SUPPORT_PLAN.md](docs/JAPANESE_SUPPORT_PLAN.md).
 - Only COSMIC is tested. Other wlroots-based compositors may work for the overlay, but the applet requires the COSMIC panel.
 - Games that bypass the compositor (direct scanout through some full-screen modes) may produce black frames. Use borderless windowed mode in that case.
 - Stylized or pixel fonts reduce OCR accuracy.
@@ -181,6 +183,7 @@ On first start the [ocrs](https://github.com/robertknight/ocrs) detection and re
 | The screen share prompt appears every time | The portal rejected the saved token, for example after a monitor change. Select the screen again. |
 | Lines are translated before they finish | Increase the settle time. Set an ignore region over animated parts. |
 | Nothing is translated after a while | The engine may be rate-limited. Wait for the countdown or switch to Ollama. |
+| Popup shows "Text recognition unavailable" | Read the reason below it. For Japanese/Chinese/Korean install Tesseract and its language data; otherwise check network access for the model download. |
 | Build fails with `xkbcommon` or `libpipewire-0.3` not found | Install the `-dev` packages listed under [Requirements](#requirements). |
 
 For logs, run from a terminal:

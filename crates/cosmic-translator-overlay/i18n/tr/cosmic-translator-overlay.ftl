@@ -7,3 +7,6 @@ pos-center = Orta
 pos-bottom = Alt
 nudge-up = Yukarı (-20px)
 nudge-down = Aşağı (+20px)
+status-rate-limited = Hız sınırı aşıldı (HTTP 429), { $secs } sn sonra yeniden denenecek
+status-translation-failed = Çeviri başarısız (bağlantı veya servis hatası)
+status-ocr-unavailable = OCR kullanılamıyor: { $reason }

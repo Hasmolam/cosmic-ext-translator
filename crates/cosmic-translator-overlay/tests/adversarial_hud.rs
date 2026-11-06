@@ -3,7 +3,7 @@ use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     Anchor, KeyboardInteractivity, Layer,
 };
 use cosmic_translator_overlay::hud::SubtitleHudState;
-use translator_core::ipc::{HudIpcClient, HudIpcServer, HudMessage, HudPosition};
+use translator_core::ipc::{HudIpcClient, HudIpcServer, HudMessage, HudPosition, HudStatus};
 
 /// State machine matching the exact message handling logic in
 /// `crates/cosmic-translator-overlay/src/main.rs:177–224`.
@@ -38,6 +38,9 @@ impl HudOverlaySimulator {
                 } else {
                     self.hud.status_badge = None;
                 }
+            }
+            HudMessage::SetHudStatus { status } => {
+                self.hud.apply_status(status.as_ref());
             }
             HudMessage::UpdateStyle {
                 font_size,
@@ -677,4 +680,43 @@ async fn test_concurrent_timer_clear_preserves_status_badge() {
     hud.status_badge = None;
     assert_eq!(hud.current_text, "Subtitle 2: New scene dialogue");
     assert!(hud.status_badge.is_none());
+}
+
+#[test]
+fn typed_status_sets_and_clears_badge_without_touching_subtitle() {
+    let mut sim = HudOverlaySimulator::new();
+    sim.handle_message(HudMessage::ShowSubtitle {
+        text: "Hello".to_string(),
+        original: None,
+        duration_ms: 0,
+    });
+    let seq = sim.subtitle_seq;
+
+    sim.handle_message(HudMessage::SetHudStatus {
+        status: Some(HudStatus::RateLimited {
+            retry_after_secs: 30,
+        }),
+    });
+    let badge = sim.hud.status_badge.clone().unwrap_or_default();
+    assert!(
+        badge.contains("30"),
+        "rate-limit badge missing delay: {badge:?}"
+    );
+    assert_eq!(sim.hud.current_text, "Hello");
+    assert_eq!(sim.subtitle_seq, seq);
+
+    sim.handle_message(HudMessage::SetHudStatus {
+        status: Some(HudStatus::OcrUnavailable {
+            reason: "missing jpn".to_string(),
+        }),
+    });
+    let badge = sim.hud.status_badge.clone().unwrap_or_default();
+    assert!(
+        badge.contains("missing jpn"),
+        "OCR badge missing: {badge:?}"
+    );
+
+    sim.handle_message(HudMessage::SetHudStatus { status: None });
+    assert!(sim.hud.status_badge.is_none());
+    assert_eq!(sim.hud.current_text, "Hello");
 }

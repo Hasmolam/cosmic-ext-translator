@@ -223,6 +223,11 @@ impl cosmic::Application for OverlayApp {
                 Task::none()
             }
 
+            Message::Hud(HudMessage::SetHudStatus { status }) => {
+                self.hud.apply_status(status.as_ref());
+                Task::none()
+            }
+
             Message::Hud(HudMessage::UpdateStyle { font_size, opacity, duration_ms, position, offset_y }) => {
                 tracing::debug!(
                     "HUD style updated: font_size={}, opacity={}, duration_ms={}, position={:?}, offset_y={}",

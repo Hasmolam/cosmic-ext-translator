@@ -5,6 +5,7 @@ use cosmic::iced::Alignment;
 use cosmic::widget::{self, button, column, container, row, text};
 use cosmic::Element;
 use translator_core::capture::roi::RoiPreset;
+use translator_core::SourceLanguage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsTab {
@@ -246,9 +247,17 @@ impl SettingsState {
             ))
             .add(widget::settings::item(
                 fl!("source-language"),
-                widget::text_input("auto", &config.source_lang)
-                    .on_input(SettingsMessage::SourceLangChanged)
-                    .width(100),
+                widget::dropdown(
+                    source_language_labels(),
+                    SourceLanguage::from_code(&config.source_lang).map(SourceLanguage::index),
+                    |idx| {
+                        let lang = SourceLanguage::ALL
+                            .get(idx)
+                            .copied()
+                            .unwrap_or(SourceLanguage::Auto);
+                        SettingsMessage::SourceLangChanged(lang.code().to_string())
+                    },
+                ),
             ));
 
         match active_engine {
@@ -261,7 +270,7 @@ impl SettingsState {
             "deepl" => {
                 section = section.add(widget::settings::item(
                     fl!("deepl-api-key"),
-                    widget::text_input("DeepL API Key (:fx veya pro)", &config.deepl_api_key)
+                    widget::text_input(fl!("deepl-api-key-placeholder"), &config.deepl_api_key)
                         .on_input(SettingsMessage::DeepLApiKeyChanged)
                         .width(280),
                 ));
@@ -580,4 +589,24 @@ fn tab_button<'a>(
             .on_press(SettingsMessage::TabSelected(tab))
             .into()
     }
+}
+
+/// Localised dropdown labels, in [`SourceLanguage::ALL`] order.
+fn source_language_labels() -> Vec<String> {
+    SourceLanguage::ALL
+        .iter()
+        .map(|lang| match lang {
+            SourceLanguage::Auto => fl!("lang-auto"),
+            SourceLanguage::English => fl!("lang-en"),
+            SourceLanguage::Japanese => fl!("lang-ja"),
+            SourceLanguage::ChineseSimplified => fl!("lang-zh"),
+            SourceLanguage::Korean => fl!("lang-ko"),
+            SourceLanguage::German => fl!("lang-de"),
+            SourceLanguage::French => fl!("lang-fr"),
+            SourceLanguage::Spanish => fl!("lang-es"),
+            SourceLanguage::Italian => fl!("lang-it"),
+            SourceLanguage::Portuguese => fl!("lang-pt"),
+            SourceLanguage::Turkish => fl!("lang-tr"),
+        })
+        .collect()
 }

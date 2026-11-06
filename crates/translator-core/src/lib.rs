@@ -1,4 +1,5 @@
 pub mod error;
+pub mod language;
 pub mod capture;
 pub mod pipeline;
 pub mod ocr;
@@ -35,4 +36,5 @@ pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage, HudPo
 pub use orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
 };
-pub use error::{CaptureError, Result};
+pub use error::{CaptureError, OcrInitError, Result};
+pub use language::{normalize_source_code, script_for_code, Script, SourceLanguage};
