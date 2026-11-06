@@ -15,6 +15,8 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 ocrs = "0.13.1"
 rten = "0.26"
+rten-tensor = "0.26"
+sha2 = "0.11"
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }

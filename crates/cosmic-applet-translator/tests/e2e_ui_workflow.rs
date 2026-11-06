@@ -73,6 +73,7 @@ fn test_ui_config_persistence_and_ron_roundtrip() {
         target_lang: "tr".to_string(),
         source_lang: "ja".to_string(),
         ocr_orientation: "vertical".to_string(),
+        ocr_engine: "tesseract".to_string(),
         restore_token: Some("test-restore-token-abc".to_string()),
         preset: RoiPreset::Custom.as_str().to_string(),
         custom_roi: Some(Roi::new(120, 240, 600, 300)),

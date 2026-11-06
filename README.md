@@ -164,24 +164,28 @@ Useful options for difficult games:
 
 ### Japanese text
 
-Install Tesseract with Japanese data, then select **Japanese** as the source language in the Engine tab:
+Select **Japanese** as the source language in the Engine tab. Japanese and Simplified Chinese are read with [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) PP-OCRv5 models, which are downloaded on first use (about 21 MB). If the download fails, Tesseract is used when it is installed:
 
 ```sh
 sudo apt install tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert   # Debian, Ubuntu, Pop!_OS
 sudo pacman -S tesseract tesseract-data-jpn tesseract-data-jpn_vert         # Arch
 ```
 
-The **Text direction** setting appears for Japanese, Chinese, and Korean. *Automatic* reads horizontal text and retries with the vertical model (`jpn_vert`) when the result looks like vertical text. Set *Vertical* for visual novels that only use vertical text. Small ruby text (furigana) above or beside kanji is removed before translation.
+The **OCR engine** setting (Japanese and Chinese only) selects *Automatic* (PaddleOCR, then Tesseract), *PaddleOCR* or *Tesseract*. Korean always uses Tesseract with `tesseract-ocr-kor`.
+
+The **Text direction** setting appears for Japanese, Chinese, and Korean. PaddleOCR reads horizontal and vertical lines in the same pass. With Tesseract, *Automatic* reads horizontal text and retries with the vertical model (`jpn_vert`) when the result looks like vertical text. Set *Vertical* for visual novels that only use vertical text. Small ruby text (furigana) above or beside kanji is removed before translation.
 
 ### OCR models
 
 On first start the [ocrs](https://github.com/robertknight/ocrs) detection and recognition models are downloaded to `$XDG_DATA_HOME/cosmic-ext-translator/models` (usually `~/.local/share/cosmic-ext-translator/models`). If the models are present in `/usr/share/cosmic-ext-translator/models`, that copy is used and nothing is downloaded. For offline machines, place `text-detection.onnx` and `text-recognition.onnx` (or the older `text-detection.rten` / `text-recognition.rten`) in either directory.
 
+The PaddleOCR set lives in the `ppocrv5/` sub-directory of the same locations: `ppocrv5-mobile-det.onnx`, `ppocrv5-mobile-rec.onnx` and `ppocrv5-dict.txt`, from the [`models-v1` release](https://github.com/Hasmolam/cosmic-ext-translator/releases/tag/models-v1). Downloads are checked against the SHA-256 sums in [packaging/models/SHA256SUMS](packaging/models/SHA256SUMS).
+
 Downloads are written to a temporary file and only moved into place after the model parses. A model file that fails to load is renamed to `*.corrupt` and downloaded again. If no model can be loaded, the applet popup and the HUD show the reason instead of starting the translation loop.
 
 ## Limitations
 
-- **The bundled OCR models recognize only Latin script.** Japanese, Chinese, and Korean use `tesseract` with the matching language data; if it is missing, the applet reports which package to install. Accuracy depends on Tesseract and drops on small, outlined, or pixel fonts. See [docs/JAPANESE_SUPPORT_PLAN.md](docs/JAPANESE_SUPPORT_PLAN.md) for the planned bundled model.
+- **The bundled `ocrs` models recognize only Latin script.** Japanese and Simplified Chinese need the PaddleOCR download or Tesseract; Korean needs Tesseract. If no engine is available, the applet reports why. PaddleOCR accuracy on stylized and pixel fonts has not been measured yet; see [docs/JAPANESE_SUPPORT_PLAN.md](docs/JAPANESE_SUPPORT_PLAN.md).
 - Only COSMIC is tested. Other wlroots-based compositors may work for the overlay, but the applet requires the COSMIC panel.
 - Games that bypass the compositor (direct scanout through some full-screen modes) may produce black frames. Use borderless windowed mode in that case.
 - Stylized or pixel fonts reduce OCR accuracy.
@@ -194,7 +198,7 @@ Downloads are written to a temporary file and only moved into place after the mo
 | The screen share prompt appears every time | The portal rejected the saved token, for example after a monitor change. Select the screen again. |
 | Lines are translated before they finish | Increase the settle time. Set an ignore region over animated parts. |
 | Nothing is translated after a while | The engine may be rate-limited. Wait for the countdown or switch to Ollama. |
-| Popup shows "Text recognition unavailable" | Read the reason below it. For Japanese/Chinese/Korean install Tesseract and its language data; otherwise check network access for the model download. |
+| Popup shows "Text recognition unavailable" | Read the reason below it. For Japanese/Chinese check network access for the PaddleOCR download or install Tesseract and its language data; for Korean install Tesseract; otherwise check network access for the model download. |
 | Build fails with `xkbcommon` or `libpipewire-0.3` not found | Install the `-dev` packages listed under [Requirements](#requirements). |
 
 For logs, run from a terminal:
@@ -258,3 +262,5 @@ flowchart LR
 ## License
 
 [GPL-3.0-or-later](LICENSE)
+
+The PaddleOCR model files downloaded at runtime are licensed under Apache-2.0 by the PaddlePaddle Authors; see [packaging/models/NOTICE.md](packaging/models/NOTICE.md).

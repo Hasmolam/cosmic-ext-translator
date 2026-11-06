@@ -12,6 +12,9 @@ pub struct Config {
     /// Text direction for CJK OCR: `auto`, `horizontal` or `vertical`.
     #[serde(default = "default_ocr_orientation")]
     pub ocr_orientation: String,
+    /// OCR engine for Japanese and Chinese: `auto`, `paddle` or `tesseract`.
+    #[serde(default = "default_ocr_engine")]
+    pub ocr_engine: String,
     pub restore_token: Option<String>,
     pub preset: String,
     pub custom_roi: Option<Roi>,
@@ -41,6 +44,10 @@ fn default_ocr_orientation() -> String {
     "auto".to_string()
 }
 
+fn default_ocr_engine() -> String {
+    "auto".to_string()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -48,6 +55,7 @@ impl Default for Config {
             target_lang: "tr".to_string(),
             source_lang: "auto".to_string(),
             ocr_orientation: default_ocr_orientation(),
+            ocr_engine: default_ocr_engine(),
             restore_token: None,
             preset: "rpg_bottom_25".to_string(),
             custom_roi: None,
@@ -85,5 +93,6 @@ mod tests {
         assert_eq!(cfg.hud_opacity, 92);
         assert_eq!(cfg.ollama_endpoint, "http://localhost:11434");
         assert_eq!(cfg.ocr_orientation, "auto");
+        assert_eq!(cfg.ocr_engine, "auto");
     }
 }

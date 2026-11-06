@@ -99,3 +99,15 @@ test-e2e:
 # Run panel applet
 run-applet:
     cargo run -p cosmic-applet-translator
+
+# Stage the PaddleOCR model release assets in dist/models-v1 from a directory with the
+# upstream file names, verifying checksums. Upload with:
+#   gh release create models-v1 dist/models-v1/* --title "OCR models v1"
+stage-models src:
+    rm -rf dist/models-v1
+    mkdir -p dist/models-v1
+    cp '{{src}}/PP-OCRv5_mobile_det_infer.onnx' dist/models-v1/ppocrv5-mobile-det.onnx
+    cp '{{src}}/PP-OCRv5_mobile_rec_infer.onnx' dist/models-v1/ppocrv5-mobile-rec.onnx
+    cp '{{src}}/ppocrv5_dict.txt' dist/models-v1/ppocrv5-dict.txt
+    cp packaging/models/NOTICE.md packaging/models/SHA256SUMS dist/models-v1/
+    cd dist/models-v1 && sha256sum -c SHA256SUMS

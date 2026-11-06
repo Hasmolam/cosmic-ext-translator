@@ -5,7 +5,7 @@ use cosmic::iced::Alignment;
 use cosmic::widget::{self, button, column, container, row, text};
 use cosmic::Element;
 use translator_core::capture::roi::RoiPreset;
-use translator_core::ocr::OrientationMode;
+use translator_core::ocr::{paddle, OcrEngineChoice, OrientationMode};
 use translator_core::SourceLanguage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -48,6 +48,7 @@ pub enum SettingsMessage {
     TargetLangChanged(String),
     SourceLangChanged(String),
     OcrOrientationChanged(String),
+    OcrEngineChanged(String),
     TestOllamaConnection,
     OllamaTestResult(Result<Vec<String>, String>),
     HudPositionChanged(String),
@@ -262,8 +263,26 @@ impl SettingsState {
                 ),
             ));
 
-        let source_is_cjk = SourceLanguage::from_code(&config.source_lang)
-            .is_some_and(|lang| lang.script().is_cjk());
+        let source_script =
+            SourceLanguage::from_code(&config.source_lang).map(|lang| lang.script());
+        if source_script.is_some_and(paddle::supports_script) {
+            section = section.add(widget::settings::item(
+                fl!("ocr-engine"),
+                widget::dropdown(
+                    ocr_engine_labels(),
+                    Some(OcrEngineChoice::from_code(&config.ocr_engine).index()),
+                    |idx| {
+                        let choice = OcrEngineChoice::ALL
+                            .get(idx)
+                            .copied()
+                            .unwrap_or(OcrEngineChoice::Auto);
+                        SettingsMessage::OcrEngineChanged(choice.code().to_string())
+                    },
+                ),
+            ));
+        }
+
+        let source_is_cjk = source_script.is_some_and(|script| script.is_cjk());
         if source_is_cjk {
             section = section.add(widget::settings::item(
                 fl!("text-direction"),
@@ -610,6 +629,18 @@ fn tab_button<'a>(
             .on_press(SettingsMessage::TabSelected(tab))
             .into()
     }
+}
+
+/// Localised dropdown labels, in [`OcrEngineChoice::ALL`] order.
+fn ocr_engine_labels() -> Vec<String> {
+    OcrEngineChoice::ALL
+        .iter()
+        .map(|choice| match choice {
+            OcrEngineChoice::Auto => fl!("ocr-engine-auto"),
+            OcrEngineChoice::Paddle => fl!("ocr-engine-paddle"),
+            OcrEngineChoice::Tesseract => fl!("ocr-engine-tesseract"),
+        })
+        .collect()
 }
 
 /// Localised dropdown labels, in [`OrientationMode::ALL`] order.

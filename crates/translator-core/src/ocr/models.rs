@@ -15,6 +15,22 @@ use tracing::{info, warn};
 
 use crate::error::OcrInitError;
 
+/// Read-only model directory populated by system packages.
+pub const SYSTEM_MODELS_DIR: &str = "/usr/share/cosmic-ext-translator/models";
+
+/// Per-user model directory: `$XDG_DATA_HOME/cosmic-ext-translator/models`, falling back
+/// to `~/.local/share/...` and finally the system temporary directory.
+#[must_use]
+pub fn user_models_dir() -> PathBuf {
+    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
+        PathBuf::from(data_home).join("cosmic-ext-translator/models")
+    } else if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".local/share/cosmic-ext-translator/models")
+    } else {
+        std::env::temp_dir().join("cosmic-ext-translator/models")
+    }
+}
+
 /// Files smaller than this are rejected before attempting to parse them.
 pub const MIN_MODEL_SIZE: u64 = 100_000;
 
@@ -26,6 +42,8 @@ pub struct ModelSource {
     pub url: &'static str,
     /// Older file names still accepted if present on disk (e.g. `.rten` exports).
     pub legacy_names: &'static [&'static str],
+    /// Expected SHA-256 of the downloaded file (lowercase hex). Checked on download.
+    pub sha256: Option<&'static str>,
 }
 
 impl ModelSource {
@@ -97,7 +115,8 @@ pub async fn ensure_model(
     }
 
     info!("Downloading OCR model {}", source.url);
-    let bytes = download(source.url).await?;
+    let bytes = download(source.url, MIN_MODEL_SIZE).await?;
+    verify_sha256(&source, &bytes)?;
     let part = part_path(dir, source.file_name);
     tokio::fs::write(&part, &bytes)
         .await
@@ -116,7 +135,66 @@ fn part_path(dir: &Path, name: &str) -> PathBuf {
     }
 }
 
-async fn download(url: &'static str) -> Result<Vec<u8>, OcrInitError> {
+/// Returns the path of a non-model data file (e.g. a recognition dictionary) in `dir`,
+/// downloading it if missing. Downloads must match `source.sha256` when set; an existing
+/// file whose hash does not match is replaced.
+pub async fn ensure_file(dir: &Path, source: ModelSource) -> Result<PathBuf, OcrInitError> {
+    tokio::fs::create_dir_all(dir)
+        .await
+        .map_err(|e| OcrInitError::ModelDir {
+            path: dir.to_path_buf(),
+            source: e,
+        })?;
+
+    let path = dir.join(source.file_name);
+    if let Ok(existing) = tokio::fs::read(&path).await {
+        if verify_sha256(&source, &existing).is_ok() {
+            return Ok(path);
+        }
+        warn!("Data file {path:?} does not match its checksum, replacing it");
+        quarantine(&path).await;
+    }
+
+    info!("Downloading OCR data file {}", source.url);
+    let bytes = download(source.url, 1).await?;
+    verify_sha256(&source, &bytes)?;
+    let part = part_path(dir, source.file_name);
+    tokio::fs::write(&part, &bytes)
+        .await
+        .map_err(|e| OcrInitError::ModelWrite {
+            path: part.clone(),
+            source: e,
+        })?;
+    tokio::fs::rename(&part, &path)
+        .await
+        .map_err(|e| OcrInitError::ModelWrite {
+            path: path.clone(),
+            source: e,
+        })?;
+    Ok(path)
+}
+
+/// Checks `bytes` against `source.sha256`; sources without a checksum always pass.
+fn verify_sha256(source: &ModelSource, bytes: &[u8]) -> Result<(), OcrInitError> {
+    use sha2::{Digest, Sha256};
+    let Some(expected) = source.sha256 else {
+        return Ok(());
+    };
+    let actual: String = Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    if actual.eq_ignore_ascii_case(expected) {
+        Ok(())
+    } else {
+        Err(OcrInitError::InvalidModel {
+            url: source.url,
+            reason: format!("SHA-256 mismatch: expected {expected}, got {actual}"),
+        })
+    }
+}
+
+async fn download(url: &'static str, min_size: u64) -> Result<Vec<u8>, OcrInitError> {
     let fail = |e: reqwest::Error| OcrInitError::Download {
         url,
         reason: e.to_string(),
@@ -130,7 +208,7 @@ async fn download(url: &'static str) -> Result<Vec<u8>, OcrInitError> {
         .await
         .map_err(fail)?;
 
-    if (bytes.len() as u64) < MIN_MODEL_SIZE {
+    if (bytes.len() as u64) < min_size {
         return Err(OcrInitError::InvalidModel {
             url,
             reason: format!("response is only {} bytes", bytes.len()),
@@ -314,12 +392,50 @@ mod tests {
             file_name: "m.onnx",
             url: "https://example.invalid/m.onnx",
             legacy_names: &["m.rten"],
+            sha256: None,
         };
         assert_eq!(find_existing(&dir, &source), None);
         std::fs::write(dir.join("m.rten"), b"x").unwrap();
         assert_eq!(find_existing(&dir, &source), Some(dir.join("m.rten")));
         std::fs::write(dir.join("m.onnx"), b"x").unwrap();
         assert_eq!(find_existing(&dir, &source), Some(dir.join("m.onnx")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sha256_is_checked_when_present() {
+        let mut source = ModelSource {
+            file_name: "d.txt",
+            url: "https://example.invalid/d.txt",
+            legacy_names: &[],
+            sha256: None,
+        };
+        assert!(verify_sha256(&source, b"abc").is_ok());
+        source.sha256 = Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert!(verify_sha256(&source, b"abc").is_ok());
+        assert!(matches!(
+            verify_sha256(&source, b"abd"),
+            Err(OcrInitError::InvalidModel { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn ensure_file_keeps_matching_file_and_quarantines_mismatch() {
+        let dir = temp_dir("ensure-file");
+        let source = ModelSource {
+            file_name: "d.txt",
+            url: "https://example.invalid/d.txt",
+            legacy_names: &[],
+            sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+        };
+        std::fs::write(dir.join("d.txt"), b"abc").unwrap();
+        assert_eq!(ensure_file(&dir, source).await.unwrap(), dir.join("d.txt"));
+
+        // A mismatching file is moved aside; the download then fails (invalid host).
+        std::fs::write(dir.join("d.txt"), b"tampered").unwrap();
+        assert!(ensure_file(&dir, source).await.is_err());
+        assert!(dir.join("d.txt.corrupt").exists());
+        assert!(!dir.join("d.txt").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

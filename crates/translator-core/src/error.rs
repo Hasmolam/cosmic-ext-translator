@@ -76,6 +76,15 @@ pub enum OcrInitError {
         pack: &'static str,
     },
 
+    #[error(
+        "no OCR engine available for {language} text. PaddleOCR: {paddle}. Tesseract: {tesseract}"
+    )]
+    NoEngine {
+        language: &'static str,
+        paddle: String,
+        tesseract: String,
+    },
+
     #[error("OCR initialisation task failed: {0}")]
     Task(String),
 }

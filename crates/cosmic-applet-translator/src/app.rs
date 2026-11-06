@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 use translator_core::capture::pipewire_thread::CapturedFrame;
 use translator_core::capture::roi::{CaptureRegion, RoiPreset};
 use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition, HudStatus};
-use translator_core::ocr::{create_ocr_backend, OcrBackend, OrientationMode};
+use translator_core::ocr::{create_ocr_backend, OcrBackend, OcrEngineChoice, OrientationMode};
 use translator_core::orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
 };
@@ -88,10 +88,11 @@ impl AppModel {
         let generation = self.ocr_generation;
         let src_lang = self.config.source_lang.clone();
         let orientation = OrientationMode::from_code(&self.config.ocr_orientation);
+        let engine = OcrEngineChoice::from_code(&self.config.ocr_engine);
 
         Task::perform(
             async move {
-                let result = create_ocr_backend(&src_lang, orientation)
+                let result = create_ocr_backend(&src_lang, orientation, engine)
                     .await
                     .map_err(|err| err.to_string());
                 Message::OcrBackendLoaded { generation, result }
@@ -685,8 +686,8 @@ impl cosmic::Application for AppModel {
                 }
                 let ocr_task = if ocr_changed && self.capture_session.is_some() {
                     info!(
-                        "OCR settings changed (source '{}', orientation '{}'), rebuilding OCR backend",
-                        self.config.source_lang, self.config.ocr_orientation
+                        "OCR settings changed (source '{}', orientation '{}', engine '{}'), rebuilding OCR backend",
+                        self.config.source_lang, self.config.ocr_orientation, self.config.ocr_engine
                     );
                     self.rebuild_ocr_backend()
                 } else {
@@ -897,6 +898,14 @@ impl cosmic::Application for AppModel {
                     SettingsMessage::OcrOrientationChanged(mode) => {
                         let old = self.config.clone();
                         self.config.ocr_orientation = mode;
+                        self.save_config();
+                        if self.ocr_settings_changed(&old) && self.capture_session.is_some() {
+                            return self.rebuild_ocr_backend();
+                        }
+                    }
+                    SettingsMessage::OcrEngineChanged(engine) => {
+                        let old = self.config.clone();
+                        self.config.ocr_engine = engine;
                         self.save_config();
                         if self.ocr_settings_changed(&old) && self.capture_session.is_some() {
                             return self.rebuild_ocr_backend();
@@ -1689,6 +1698,7 @@ fn ocr_settings_differ(a: &Config, b: &Config) -> bool {
     normalize_source_code(&a.source_lang) != normalize_source_code(&b.source_lang)
         || OrientationMode::from_code(&a.ocr_orientation)
             != OrientationMode::from_code(&b.ocr_orientation)
+        || OcrEngineChoice::from_code(&a.ocr_engine) != OcrEngineChoice::from_code(&b.ocr_engine)
 }
 
 fn overlay_binary_path() -> std::path::PathBuf {
@@ -1746,6 +1756,17 @@ mod tests {
             ..japanese.clone()
         };
         assert!(ocr_settings_differ(&japanese, &vertical));
+
+        let tesseract = Config {
+            ocr_engine: "tesseract".to_string(),
+            ..japanese.clone()
+        };
+        assert!(ocr_settings_differ(&japanese, &tesseract));
+        let auto_alias = Config {
+            ocr_engine: String::new(),
+            ..japanese.clone()
+        };
+        assert!(!ocr_settings_differ(&japanese, &auto_alias));
 
         let unrelated = Config {
             font_size: 40,

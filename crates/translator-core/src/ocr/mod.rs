@@ -9,19 +9,23 @@ use rten::Model;
 use crate::error::OcrInitError;
 use crate::language::{normalize_source_code, script_for_code};
 
-pub mod layout;
+pub mod engine;
 pub mod furigana;
+pub mod layout;
 pub mod models;
 pub mod normalize;
+pub mod paddle;
 pub mod tesseract;
 
+pub use engine::OcrEngineChoice;
+pub use furigana::{filter_furigana, is_punctuation_char};
 pub use layout::{
     detect_dominant_orientation, sort_cjk_reading_order, DetectedTextBox, OrientationMode,
     TextOrientation,
 };
 pub use normalize::normalize_cjk_text;
+pub use paddle::PaddleOcrBackend;
 pub use tesseract::{parse_tesseract_lang_list, TesseractBackend};
-pub use furigana::{filter_furigana, is_punctuation_char};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -200,21 +204,14 @@ impl OcrsBackend {
     pub const RECOGNITION_URL: &'static str =
         "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.onnx";
 
-    const SYSTEM_MODELS_DIR: &'static str = "/usr/share/cosmic-ext-translator/models";
+    const SYSTEM_MODELS_DIR: &'static str = models::SYSTEM_MODELS_DIR;
 
     pub fn default_models_dir() -> std::path::PathBuf {
         let system_dir = std::path::PathBuf::from(Self::SYSTEM_MODELS_DIR);
         if Self::system_model_paths(&system_dir).is_some() {
             return system_dir;
         }
-
-        if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
-            std::path::PathBuf::from(data_home).join("cosmic-ext-translator/models")
-        } else if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(".local/share/cosmic-ext-translator/models")
-        } else {
-            std::env::temp_dir().join("cosmic-ext-translator/models")
-        }
+        models::user_models_dir()
     }
 
     pub fn from_models(
@@ -252,11 +249,13 @@ impl OcrsBackend {
         file_name: "text-detection.onnx",
         url: Self::DETECTION_URL,
         legacy_names: &["text-detection.rten"],
+        sha256: None,
     };
     pub const RECOGNITION: models::ModelSource = models::ModelSource {
         file_name: "text-recognition.onnx",
         url: Self::RECOGNITION_URL,
         legacy_names: &["text-recognition.rten"],
+        sha256: None,
     };
 
     /// Detection and recognition model paths in `dir`, if both are present in any
@@ -296,62 +295,121 @@ impl OcrsBackend {
 }
 
 /// Selects and constructs the OCR engine for a source language code with automatic
-/// text direction. See [`create_ocr_backend`].
+/// text direction and engine choice. See [`create_ocr_backend`].
 pub async fn create_ocr_backend_for_lang(
     src_lang: &str,
 ) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
-    create_ocr_backend(src_lang, OrientationMode::Auto).await
+    create_ocr_backend(src_lang, OrientationMode::Auto, OcrEngineChoice::Auto).await
 }
 
 /// Selects and constructs the OCR engine for a source language code.
 ///
-/// Latin-script languages (and `auto`) use the bundled `ocrs` models. Scripts the `ocrs`
-/// model cannot read require Tesseract with the matching language pack; if it is missing
-/// an error is returned instead of silently using a backend that produces garbage.
+/// - Latin-script languages (and `auto`) use the bundled `ocrs` models.
+/// - Japanese and Simplified Chinese use PaddleOCR (models downloaded on first use), then
+///   Tesseract if PaddleOCR cannot be loaded. `engine` can force either one.
+/// - Korean uses Tesseract.
 ///
-/// `orientation` applies to Tesseract only. `Vertical` requires the vertical language pack
-/// (e.g. `jpn_vert`); `Auto` uses it when installed and falls back to horizontal only.
+/// If no engine can read the script an error is returned instead of silently using a
+/// backend that produces garbage.
+///
+/// `orientation` forces the text direction. For Tesseract, `Vertical` requires the vertical
+/// language pack (e.g. `jpn_vert`); `Auto` uses it when installed.
 pub async fn create_ocr_backend(
     src_lang: &str,
     orientation: OrientationMode,
+    engine: OcrEngineChoice,
 ) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
     let script = script_for_code(src_lang);
 
-    if let Some(pack) = script.tesseract_pack() {
-        let language = script.name();
-        let Some(installed) = TesseractBackend::installed_languages().await else {
-            return Err(OcrInitError::TesseractMissing { language, pack });
-        };
-        let has = |p: &str| installed.iter().any(|l| l == p);
-        if !has(pack) {
-            return Err(OcrInitError::TesseractLanguageMissing { language, pack });
-        }
-
-        let mut backend = TesseractBackend::new(pack).with_mode(orientation);
-        match script.tesseract_vertical_pack() {
-            Some(vert) if has(vert) => backend = backend.with_vertical_lang(vert),
-            Some(vert) if orientation == OrientationMode::Vertical => {
-                return Err(OcrInitError::TesseractLanguageMissing {
-                    language,
-                    pack: vert,
-                });
-            }
-            Some(vert) => tracing::warn!(
-                "Tesseract '{vert}' data not installed; vertical {language} text will not be recognized"
-            ),
-            None => {}
-        }
-        tracing::info!(
-            "Using Tesseract OCR backend for {language} ({pack}, vertical: {:?}, mode: {})",
-            backend.vertical_lang,
-            orientation.code()
-        );
-        return Ok(Arc::new(backend));
+    if script.tesseract_pack().is_none() {
+        let backend = OcrsBackend::load_default_or_download().await?;
+        tracing::info!("Using ocrs OCR backend for source language '{src_lang}'");
+        return Ok(Arc::new(backend.with_lang(normalize_source_code(src_lang))));
     }
 
-    let backend = OcrsBackend::load_default_or_download().await?;
-    tracing::info!("Using ocrs OCR backend for source language '{src_lang}'");
-    Ok(Arc::new(backend.with_lang(normalize_source_code(src_lang))))
+    let paddle_supported = paddle::supports_script(script);
+    match engine {
+        OcrEngineChoice::Paddle if paddle_supported => {
+            create_paddle_backend(script, orientation).await
+        }
+        OcrEngineChoice::Auto if paddle_supported => {
+            let paddle_err = match create_paddle_backend(script, orientation).await {
+                Ok(backend) => return Ok(backend),
+                Err(err) => err,
+            };
+            tracing::warn!("PaddleOCR unavailable, trying Tesseract: {paddle_err}");
+            create_tesseract_backend(script, orientation)
+                .await
+                .map_err(|tesseract_err| OcrInitError::NoEngine {
+                    language: script.name(),
+                    paddle: paddle_err.to_string(),
+                    tesseract: tesseract_err.to_string(),
+                })
+        }
+        OcrEngineChoice::Paddle => {
+            tracing::warn!(
+                "PaddleOCR does not support {}; using Tesseract",
+                script.name()
+            );
+            create_tesseract_backend(script, orientation).await
+        }
+        OcrEngineChoice::Auto | OcrEngineChoice::Tesseract => {
+            create_tesseract_backend(script, orientation).await
+        }
+    }
+}
+
+async fn create_paddle_backend(
+    script: crate::language::Script,
+    orientation: OrientationMode,
+) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
+    let backend = PaddleOcrBackend::load_default_or_download().await?;
+    tracing::info!(
+        "Using PaddleOCR backend for {} (mode: {})",
+        script.name(),
+        orientation.code()
+    );
+    Ok(Arc::new(backend.with_mode(orientation)))
+}
+
+async fn create_tesseract_backend(
+    script: crate::language::Script,
+    orientation: OrientationMode,
+) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
+    let language = script.name();
+    let Some(pack) = script.tesseract_pack() else {
+        return Err(OcrInitError::Engine(format!(
+            "Tesseract is not used for {language} text"
+        )));
+    };
+    let Some(installed) = TesseractBackend::installed_languages().await else {
+        return Err(OcrInitError::TesseractMissing { language, pack });
+    };
+    let has = |p: &str| installed.iter().any(|l| l == p);
+    if !has(pack) {
+        return Err(OcrInitError::TesseractLanguageMissing { language, pack });
+    }
+
+    let mut backend = TesseractBackend::new(pack).with_mode(orientation);
+    match script.tesseract_vertical_pack() {
+        Some(vert) if has(vert) => backend = backend.with_vertical_lang(vert),
+        Some(vert) if orientation == OrientationMode::Vertical => {
+            return Err(OcrInitError::TesseractLanguageMissing {
+                language,
+                pack: vert,
+            });
+        }
+        Some(vert) => tracing::warn!(
+            "Tesseract '{vert}' data not installed; vertical {language} text will not be recognized"
+        ),
+        None => {}
+    }
+    tracing::info!(
+        "Using Tesseract OCR backend for {language} ({pack}, vertical: {:?}, mode: {})",
+        backend.vertical_lang,
+        orientation.code()
+    );
+    Ok(Arc::new(backend))
 }
 
 /// Shared post-processing for line boxes from any backend: furigana pruning, reading-order

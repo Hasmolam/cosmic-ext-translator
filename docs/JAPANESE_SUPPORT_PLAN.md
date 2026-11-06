@@ -215,7 +215,7 @@ Done when: with `tesseract-ocr-jpn` installed, a Ren'Py or RPG Maker test scene 
 produces one translation per dialogue line, with furigana removed, and the applet reports a
 missing language pack by name when it is not installed.
 
-### Phase 2: Bundled Japanese model on `rten` (spike first)
+### Phase 2: Bundled Japanese model on `rten` (spike first) -- implemented 2026-11-06
 
 Spike (time-boxed, 2-3 days), result recorded in this file:
 
@@ -225,7 +225,93 @@ Spike (time-boxed, 2-3 days), result recorded in this file:
    (target: < 150 ms on a 4-core laptop CPU with dev profile overrides).
 3. Compare character error rate against Tesseract on 30 captured frames (VN, JRPG, pixel font).
 
-If the spike passes:
+#### Spike result (2026-11-06): passed with PP-OCRv5, real-capture CER pending
+
+Models: official PaddleOCR weights (Apache-2.0) in the ONNX conversion published at
+`huggingface.co/snowfluke/ppu-paddle-ocr-models`. `rten` 0.26 loads the `.onnx` files
+directly; `paddle2onnx`/`rten-convert` are not needed. Operator coverage is complete for
+every model tried.
+
+Implementation: `crates/translator-core/src/ocr/paddle.rs`. DB post-processing uses axis-aligned connected components instead of
+minimum-area rectangles. Benchmark tool:
+`cargo run --release -p translator-core --example paddle_bench -- <det> <rec> <dict> <image>...`.
+
+Accuracy on rendered fixtures (Noto Sans CJK JP; `tests/fixtures/ja` plus a 1280x200 single
+line, light and dark-tinted, at 100%, 60% and 45% scale):
+
+| Detection | Recognition | horiz / dark | vert | furigana | 1280x200 set |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| PP-OCRv5 mobile (4.7 MB) | PP-OCRv5 mobile (16.5 MB) | exact | exact | exact, ruby dropped | exact |
+| PP-OCRv5 mobile | PP-OCRv6 small (21 MB) | exact | exact | exact, ruby dropped | exact |
+| PP-OCRv5 mobile | japan PP-OCRv3 (10 MB) | exact | garbled | exact | -- |
+| PP-OCRv6 tiny (1.8 MB) | any | exact | exact (v5/v6 rec) | ruby kept as `ゆうし` | -- |
+| Tesseract 5.3.4 `jpn` | | exact | exact (`jpn_vert`) | exact | exact |
+
+Latency, release build, 20 threads, inference only (first run excluded):
+
+| Input | Paddle v5 det + v5 rec | Paddle v5 det + v6 small rec | Tesseract CLI |
+| :--- | :--- | :--- | :--- |
+| 1280x200, one line | 90-100 ms | 85 ms | 160-170 ms |
+| 900x260, two lines | 120 ms | 105-110 ms | 120 ms |
+| 576x90, one line | 66 ms | 55-60 ms | -- |
+
+Model load: 40-60 ms for the pair.
+
+Findings:
+
+- `japan_PP-OCRv3` does not read rotated vertical columns; PP-OCRv5/v6 multilingual
+  recognisers do. Use PP-OCRv5 mobile det + PP-OCRv5 mobile rec as the default set
+  (21 MB total); PP-OCRv6 small rec is an equal-accuracy alternative.
+- PP-OCRv6 tiny det separates ruby into its own box, which `filter_furigana` does not
+  remove; v5 mobile det merges it below the threshold. Do not use the tiny detector.
+- Dictionary files from the conversion differ in layout (leading blank line, implicit or
+  explicit space class). `CtcLabels::from_dict` infers the layout from the model's class
+  count, and fails if no layout fits.
+- Not done: CER on 30 captured game frames. No captured frames are available in this
+  environment; this needs real captures (VN, JRPG, pixel font) before Paddle becomes the
+  default ahead of Tesseract.
+- Model hosting (decided): the converted files are published as assets of this project's
+  `models-v1` GitHub release, so installs do not depend on the third-party upload.
+
+#### Implementation (2026-11-06)
+
+- `PaddleOcrBackend::load_default_or_download` loads `ppocrv5/` from
+  `/usr/share/cosmic-ext-translator/models/` if complete, otherwise from
+  `$XDG_DATA_HOME/cosmic-ext-translator/models/ppocrv5/`, downloading from
+  `https://github.com/Hasmolam/cosmic-ext-translator/releases/download/models-v1/`.
+- `ModelSource` carries an optional SHA-256; downloads that do not match are rejected
+  before they are written. `ensure_file` handles the dictionary, which `rten` cannot
+  validate by parsing. The checksums in code are tested against
+  `packaging/models/SHA256SUMS`.
+- `just stage-models <dir>` renames the upstream files, adds `NOTICE.md` (Apache-2.0
+  attribution) and verifies the checksums into `dist/models-v1/` for upload.
+- Selection (`create_ocr_backend`): Latin -> ocrs. Japanese / Simplified Chinese ->
+  `OcrEngineChoice::Auto` tries PaddleOCR, then Tesseract, then returns
+  `OcrInitError::NoEngine` with both reasons. `Paddle` and `Tesseract` force one engine.
+  Korean -> Tesseract (PP-OCRv5 has no Korean recogniser in this set).
+- Settings: "OCR engine" dropdown in the Engine tab for Japanese and Chinese, stored as
+  `ocr_engine` (`auto`/`paddle`/`tesseract`); a change rebuilds the backend.
+- `Vertical`/`Horizontal` text direction is passed to PaddleOCR as the reported orientation
+  for reading-order sorting; detection and recognition handle both directions per box.
+
+Verification:
+
+- `cargo test --release -p translator-core --test paddle_ja -- --ignored` with the model set
+  in `$XDG_DATA_HOME`: all four fixtures exact.
+- `tesseract_ja` ignored tests still pass with `OcrEngineChoice::Tesseract`.
+- `models-v1` published 2026-11-06 with `--latest=false`, so `releases/latest` (used by
+  `install.sh`) still resolves to the application release. `paddle_ja` passes from an
+  empty `$XDG_DATA_HOME`, downloading and checksum-verifying all three files.
+- Auto fallback exercised manually: with no models and the release missing (HTTP 404) it
+  selects Tesseract; without Tesseract it returns `NoEngine` naming both causes.
+
+Not done:
+
+- CER on captured game frames (see spike findings).
+- No `opt-level = 3` override is needed beyond the existing `rten` entries; `rten-tensor`
+  is only used for tensor construction.
+
+Original plan:
 
 - New module `ocr/paddle.rs`: `PaddleOcrBackend` with DB post-processing (threshold,
   unclip, min-area box), per-line crop and resize to 48 px height, CTC greedy decoding with

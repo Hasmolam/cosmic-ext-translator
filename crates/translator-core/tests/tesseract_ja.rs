@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use translator_core::ocr::{create_ocr_backend, OrientationMode, TextOrientation};
+use translator_core::ocr::{create_ocr_backend, OcrEngineChoice, OrientationMode, TextOrientation};
 
 fn fixture(name: &str) -> image::DynamicImage {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -19,7 +19,7 @@ const BOTH_LINES: &str = "明日は学校に行きます。勇者は古の剣を
 #[tokio::test]
 #[ignore = "requires tesseract with jpn and jpn_vert language data"]
 async fn auto_mode_reads_horizontal_vertical_and_dark_text() {
-    let backend = create_ocr_backend("ja", OrientationMode::Auto)
+    let backend = create_ocr_backend("ja", OrientationMode::Auto, OcrEngineChoice::Tesseract)
         .await
         .expect("tesseract with jpn and jpn_vert must be installed");
 
@@ -46,7 +46,7 @@ async fn auto_mode_reads_horizontal_vertical_and_dark_text() {
 #[tokio::test]
 #[ignore = "requires tesseract with jpn and jpn_vert language data"]
 async fn forced_vertical_mode_reads_vertical_text() {
-    let backend = create_ocr_backend("ja", OrientationMode::Vertical)
+    let backend = create_ocr_backend("ja", OrientationMode::Vertical, OcrEngineChoice::Tesseract)
         .await
         .expect("tesseract with jpn and jpn_vert must be installed");
     let result = backend
