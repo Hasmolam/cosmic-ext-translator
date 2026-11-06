@@ -33,17 +33,19 @@ Translates on-screen text in games and visual novels on the COSMIC desktop. It r
       libdbus-1-dev just
   ```
 
-- Network access on first start, to download the OCR models (about 12 MB, see [OCR models](#ocr-models)).
+- Network access on first start, to download the OCR models (about 12 MB for Latin text, another 21 MB for Japanese or Chinese; see [OCR models](#ocr-models)).
 
 ## Installation
 
 ### Method 1: Single-Line Quick Install
 
-Downloads the prebuilt release binary, installs desktop entry and icons, and reloads the panel (no root required):
+Downloads the latest release archive, verifies it against the release's `SHA256SUMS`, installs the binaries, desktop entry and icon to `~/.local`, and reloads the panel (no root required):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/master/install.sh | bash
 ```
+
+To install a specific release, append `-s -- --version v0.2.0`. To read the script before running it, download it first and run `bash install.sh`.
 
 To uninstall:
 ```bash
@@ -52,11 +54,14 @@ curl -fsSL https://raw.githubusercontent.com/Hasmolam/cosmic-ext-translator/mast
 
 ### Method 2: Pop!_OS / Ubuntu (.deb Package)
 
-Download the `.deb` package from the [latest release](https://github.com/Hasmolam/cosmic-ext-translator/releases/latest) and install it:
+Download the `.deb` package and `SHA256SUMS` from the [latest release](https://github.com/Hasmolam/cosmic-ext-translator/releases/latest), verify and install it:
 
 ```bash
-sudo apt install ./cosmic-ext-translator_0.1.0_amd64.deb
+sha256sum -c --ignore-missing SHA256SUMS
+sudo apt install ./cosmic-ext-translator_*_amd64.deb
 ```
+
+Release assets are built by GitHub Actions. Their build provenance can be checked with `gh attestation verify <file> --repo Hasmolam/cosmic-ext-translator`.
 
 Or double-click the `.deb` file in your file manager to install via the COSMIC App Center.
 
@@ -68,7 +73,7 @@ sudo apt remove cosmic-ext-translator
 ### Method 3: Arch Linux (PKGBUILD)
 
 ```bash
-git clone https://github.com/hasmolam/cosmic-ext-translator.git
+git clone https://github.com/Hasmolam/cosmic-ext-translator.git
 cd cosmic-ext-translator/packaging/arch
 makepkg -si
 ```
@@ -76,7 +81,7 @@ makepkg -si
 ### Method 4: Build from Source
 
 ```bash
-git clone https://github.com/hasmolam/cosmic-ext-translator.git
+git clone https://github.com/Hasmolam/cosmic-ext-translator.git
 cd cosmic-ext-translator
 just build-release
 
@@ -93,6 +98,8 @@ sudo $(which just) install
 
 In COSMIC Desktop settings:
 **Settings → Desktop → Panel → (Select Panel) → Configure panel applets → Add Applet → "Screen Translator"**
+
+**Upgrading from 0.1.x:** the application ID changed to `io.github.hasmolam.CosmicExtTranslator`. Settings are migrated on first start, and `install.sh` / `just install-user` update the panel entry. After upgrading the `.deb` or Arch package, add the applet to the panel again.
 
 To uninstall a source install:
 ```bash
@@ -154,7 +161,7 @@ The settings window has five tabs. Open it from the applet, or run `cosmic-apple
 | Glossary | Fixed translations for character names and game terms. |
 | History | The last 500 translations. Searchable, with copy to clipboard. |
 
-Settings are stored with `cosmic-config` under `~/.config/cosmic/com.system76.CosmicExtTranslator/`.
+Settings are stored with `cosmic-config` under `~/.config/cosmic/io.github.hasmolam.CosmicExtTranslator/`.
 
 Useful options for difficult games:
 
@@ -229,6 +236,16 @@ just test-capture                                      # capture test (needs Way
 ```
 
 Debug builds compile `ocrs`, `rten`, and `rten-vecmath` with `opt-level = 3`. Without this, OCR is too slow to use. Keep that section in `Cargo.toml`.
+
+### Releasing
+
+The version lives in `[workspace.package]` of `Cargo.toml`; `just version` prints it and the `.deb`, tarball and AppStream metadata use the same value.
+
+1. Bump `version` in `Cargo.toml`, add a `<release>` entry to `crates/cosmic-applet-translator/resources/app.metainfo.xml`, and move the `[Unreleased]` notes in `CHANGELOG.md` to a new version section.
+2. Commit, then tag and push: `git tag v0.2.0 && git push origin master v0.2.0`.
+3. The `Release` workflow checks that the tag matches `Cargo.toml`, runs the tests, builds the tarball and `.deb` with `just dist`, attests them, and publishes the release with the `CHANGELOG.md` section as notes.
+
+`just dist` builds the same assets locally in `dist/`.
 
 ### Workspace layout
 

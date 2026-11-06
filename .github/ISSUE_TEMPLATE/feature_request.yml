@@ -1,0 +1,19 @@
+name: Feature request
+description: Propose a change or a new feature.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do and why the current behaviour does not cover it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+  - type: input
+    id: game
+    attributes:
+      label: Game or application, if relevant

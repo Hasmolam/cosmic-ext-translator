@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as described in the README.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit hash you installed.
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      options:
+        - install.sh
+        - .deb package
+        - Arch PKGBUILD
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and COSMIC version
+      placeholder: Pop!_OS 24.04, cosmic-epoch 1.0
+    validations:
+      required: true
+  - type: input
+    id: source-language
+    attributes:
+      label: Source language, OCR engine and translation engine
+      placeholder: Japanese, PaddleOCR, Google
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Run `RUST_LOG=debug cosmic-applet-translator` from a terminal and paste the relevant part.
+      render: text
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot of the capture region
+      description: For OCR problems, attach the region the applet captured (Capture tab preview). Remove anything private.
