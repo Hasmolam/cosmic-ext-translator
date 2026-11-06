@@ -1,11 +1,9 @@
+use image::{DynamicImage, RgbaImage};
 use translator_core::capture::roi::Roi;
 use translator_core::ocr::{
-    detect_dominant_orientation, sort_cjk_reading_order, DetectedTextBox, TextOrientation,
+    detect_dominant_orientation, is_cjk_text, join_cjk_or_latin_tokens, sort_cjk_reading_order,
+    DetectedTextBox, MockOcrBackend, OcrBackend, TextOrientation,
 };
-
-// ============================================================================
-// 1. Complex Vertical Tategaki Stress Tests (5+ Columns)
-// ============================================================================
 
 #[test]
 fn test_adversarial_layout_vertical_tategaki_6_columns_staggered_jitter() {
@@ -101,10 +99,6 @@ fn test_adversarial_layout_vertical_tategaki_6_columns_staggered_jitter() {
     assert_eq!(sorted, resorted, "Sorting must be idempotent");
 }
 
-// ============================================================================
-// 2. Boundary Overlaps (49% vs 50% vs 51%)
-// ============================================================================
-
 #[test]
 fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
     let base = DetectedTextBox::new(Roi::new(100, 10, 100, 20), "Base", 0.9);
@@ -193,10 +187,6 @@ fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
     );
 }
 
-// ============================================================================
-// 3. Mixed Orientations Stress Tests & Line Absorption Flaw
-// ============================================================================
-
 #[test]
 fn test_adversarial_layout_mixed_orientations_voting() {
     let title = DetectedTextBox::new(Roi::new(50, 10, 400, 20), "Title", 0.95);
@@ -249,10 +239,6 @@ fn test_adversarial_layout_mixed_orientation_line_absorption_anomaly() {
     );
 }
 
-// ============================================================================
-// 4. Critical Bug Demonstrations: Arithmetic Overflow & Non-Idempotence
-// ============================================================================
-
 #[test]
 fn test_adversarial_layout_integer_overflow_panic_near_u32_max() {
     // Verified fix:
@@ -288,10 +274,6 @@ fn test_adversarial_layout_vertical_sorting_non_idempotence_flaw() {
 
     assert_eq!(names1, names2, "Sorting must be strictly idempotent");
 }
-
-// ============================================================================
-// 5. Degenerate Boundaries and Edge Cases
-// ============================================================================
 
 #[test]
 fn test_adversarial_layout_empty_and_single_box_invariants() {
@@ -341,10 +323,6 @@ fn test_adversarial_layout_identical_and_fully_overlapping_boxes() {
     let sorted_v = sort_cjk_reading_order(vec![b1, b2], TextOrientation::Vertical);
     assert_eq!(sorted_v.len(), 2);
 }
-
-// ============================================================================
-// 6. Adversarial Re-verification: Extreme Boundary Coordinates & Fuzzing Harness
-// ============================================================================
 
 #[test]
 fn test_adversarial_layout_extreme_boundary_coordinates_no_panic() {
@@ -501,4 +479,183 @@ fn test_adversarial_layout_randomized_fuzzing_1000_permutations_idempotence() {
             );
         }
     }
+}
+
+#[test]
+fn test_aspect_ratio_boundary_and_zero_dimensions() {
+    // Zero width should produce aspect ratio 1.0 without dividing by zero
+    let zero_w = DetectedTextBox::new(Roi::new(10, 10, 0, 50), "zero_w", 0.9);
+    assert_eq!(zero_w.aspect_ratio(), 1.0);
+
+    // Exact threshold boundary tests:
+    // H=14, W=10 -> H/W = 1.4 (not strictly > 1.4, treated as neutral)
+    let b14 = DetectedTextBox::new(Roi::new(0, 0, 10, 14), "1.4", 0.9);
+    assert!((b14.aspect_ratio() - 1.4).abs() < 1e-5);
+
+    // H=15, W=10 -> H/W = 1.5 > 1.4 (strictly vertical candidate)
+    let b15 = DetectedTextBox::new(Roi::new(0, 0, 10, 15), "1.5", 0.9);
+    assert_eq!(
+        detect_dominant_orientation(&[b15]),
+        TextOrientation::Vertical
+    );
+
+    // H=8, W=10 -> H/W = 0.8 (not strictly < 0.8, treated as neutral)
+    let b08 = DetectedTextBox::new(Roi::new(0, 0, 10, 8), "0.8", 0.9);
+    assert!((b08.aspect_ratio() - 0.8).abs() < 1e-5);
+
+    // H=7, W=10 -> H/W = 0.7 < 0.8 (strictly horizontal candidate)
+    let b07 = DetectedTextBox::new(Roi::new(0, 0, 10, 7), "0.7", 0.9);
+    assert_eq!(
+        detect_dominant_orientation(&[b07]),
+        TextOrientation::Horizontal
+    );
+}
+
+#[test]
+fn test_complex_multi_column_vertical_reading_order() {
+    // 3 columns of vertical Japanese text read right-to-left:
+    // Column 1 (Right): X=200..230, Y=10, Y=50, Y=90
+    // Column 2 (Center): X=120..150, Y=10, Y=50
+    // Column 3 (Left): X=40..70, Y=10, Y=50, Y=90, Y=130
+    let c1_1 = DetectedTextBox::new(Roi::new(200, 10, 30, 35), "C1_Top", 0.95);
+    let c1_2 = DetectedTextBox::new(Roi::new(200, 50, 30, 35), "C1_Mid", 0.95);
+    let c1_3 = DetectedTextBox::new(Roi::new(200, 90, 30, 35), "C1_Bot", 0.95);
+
+    let c2_1 = DetectedTextBox::new(Roi::new(120, 10, 30, 35), "C2_Top", 0.95);
+    let c2_2 = DetectedTextBox::new(Roi::new(120, 50, 30, 35), "C2_Bot", 0.95);
+
+    let c3_1 = DetectedTextBox::new(Roi::new(40, 10, 30, 35), "C3_1", 0.95);
+    let c3_2 = DetectedTextBox::new(Roi::new(40, 50, 30, 35), "C3_2", 0.95);
+    let c3_3 = DetectedTextBox::new(Roi::new(40, 90, 30, 35), "C3_3", 0.95);
+    let c3_4 = DetectedTextBox::new(Roi::new(40, 130, 30, 35), "C3_4", 0.95);
+
+    // Scramble input boxes
+    let scrambled = vec![
+        c3_3.clone(),
+        c1_2.clone(),
+        c2_1.clone(),
+        c3_1.clone(),
+        c1_1.clone(),
+        c3_4.clone(),
+        c2_2.clone(),
+        c1_3.clone(),
+        c3_2.clone(),
+    ];
+
+    let sorted = sort_cjk_reading_order(scrambled, TextOrientation::Vertical);
+    let texts: Vec<&str> = sorted.iter().map(|b| b.text.as_str()).collect();
+
+    assert_eq!(
+        texts,
+        vec!["C1_Top", "C1_Mid", "C1_Bot", "C2_Top", "C2_Bot", "C3_1", "C3_2", "C3_3", "C3_4",]
+    );
+}
+
+#[test]
+fn test_complex_multi_line_horizontal_reading_order() {
+    // 3 lines of horizontal text:
+    // Line 1: Y=20..40, X=10, X=80, X=150
+    // Line 2: Y=60..80, X=10, X=100
+    // Line 3: Y=100..120, X=10, X=90, X=170
+    let l1_1 = DetectedTextBox::new(Roi::new(10, 20, 60, 20), "L1_W1", 0.9);
+    let l1_2 = DetectedTextBox::new(Roi::new(80, 20, 60, 20), "L1_W2", 0.9);
+    let l1_3 = DetectedTextBox::new(Roi::new(150, 20, 60, 20), "L1_W3", 0.9);
+
+    let l2_1 = DetectedTextBox::new(Roi::new(10, 60, 80, 20), "L2_W1", 0.9);
+    let l2_2 = DetectedTextBox::new(Roi::new(100, 60, 80, 20), "L2_W2", 0.9);
+
+    let l3_1 = DetectedTextBox::new(Roi::new(10, 100, 70, 20), "L3_W1", 0.9);
+    let l3_2 = DetectedTextBox::new(Roi::new(90, 100, 70, 20), "L3_W2", 0.9);
+    let l3_3 = DetectedTextBox::new(Roi::new(170, 100, 70, 20), "L3_W3", 0.9);
+
+    let scrambled = vec![
+        l3_2.clone(),
+        l1_3.clone(),
+        l2_1.clone(),
+        l1_1.clone(),
+        l3_3.clone(),
+        l2_2.clone(),
+        l1_2.clone(),
+        l3_1.clone(),
+    ];
+
+    let sorted = sort_cjk_reading_order(scrambled, TextOrientation::Horizontal);
+    let texts: Vec<&str> = sorted.iter().map(|b| b.text.as_str()).collect();
+
+    assert_eq!(
+        texts,
+        vec!["L1_W1", "L1_W2", "L1_W3", "L2_W1", "L2_W2", "L3_W1", "L3_W2", "L3_W3",]
+    );
+}
+
+#[test]
+fn test_cjk_joining_mixed_tokens() {
+    // Mixed Japanese with English loanword
+    let mixed = vec!["新機能", "RPG", "モード", "を", "解放", "!"];
+    // Since tokens contain CJK, join without spaces
+    let joined = join_cjk_or_latin_tokens(&mixed, is_cjk_text("新機能"));
+    assert_eq!(joined, "新機能RPGモードを解放!");
+
+    // Pure Latin tokens
+    let latin = vec!["Game", "Over", "Try", "Again"];
+    let joined_latin = join_cjk_or_latin_tokens(&latin, is_cjk_text("Game"));
+    assert_eq!(joined_latin, "Game Over Try Again");
+}
+
+#[tokio::test]
+async fn test_mock_backend_recognize_detailed_orientation_override() {
+    let boxes = vec![
+        DetectedTextBox::new(Roi::new(100, 20, 30, 80), "縦1", 0.9),
+        DetectedTextBox::new(Roi::new(50, 20, 30, 80), "縦2", 0.9),
+    ];
+    let mock = MockOcrBackend::new_detailed("縦1縦2", boxes.clone(), TextOrientation::Vertical);
+
+    let dummy = DynamicImage::ImageRgba8(RgbaImage::new(10, 10));
+
+    // Request default detailed result
+    let res = mock.recognize_detailed(&dummy, None).await.unwrap();
+    assert_eq!(res.orientation, TextOrientation::Vertical);
+    assert_eq!(res.boxes.len(), 2);
+    assert_eq!(res.text, "縦1縦2");
+
+    // Request with explicit orientation override
+    let res_override = mock
+        .recognize_detailed(&dummy, Some(TextOrientation::Horizontal))
+        .await
+        .unwrap();
+    assert_eq!(res_override.orientation, TextOrientation::Horizontal);
+}
+
+#[test]
+fn test_adversarial_cjk_western_token_transition_defect_demonstration() {
+    // 1. CJK space-less joining works when purely CJK
+    let cjk_tokens = vec!["これ", "は", "本"];
+    let cjk_joined = join_cjk_or_latin_tokens(&cjk_tokens, true);
+    assert_eq!(cjk_joined, "これは本");
+
+    // 2. Western space-joining works when purely Western
+    let latin_tokens = vec!["Hello", "World"];
+    let latin_joined = join_cjk_or_latin_tokens(&latin_tokens, false);
+    assert_eq!(latin_joined, "Hello World");
+
+    // 3. Mixed CJK + Western transitions:
+    // When tokens are ["Level", "10", "へ"]:
+    // "Level" and "10" are Western/Latin words requiring a word space ("Level 10").
+    // "10" and "へ" transition to CJK ("10へ").
+    // Expected typographic output: "Level 10へ".
+    let mixed_tokens = vec!["Level", "10", "へ"];
+    let is_cjk = mixed_tokens.iter().any(|t| is_cjk_text(t));
+    assert!(
+        is_cjk,
+        "Token 'へ' is CJK text, so is_cjk evaluates to true in OCR pipeline"
+    );
+
+    let actual_joined = join_cjk_or_latin_tokens(&mixed_tokens, is_cjk);
+
+    // Verify transition-aware joining:
+    // Western words retain spaces while transitioning to CJK without spaces
+    assert_eq!(
+        actual_joined, "Level 10へ",
+        "Western words retain spaces even when is_cjk=true"
+    );
 }

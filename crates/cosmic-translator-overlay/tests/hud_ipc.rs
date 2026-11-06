@@ -1,38 +1,148 @@
-use cosmic::iced::platform_specific::shell::commands::layer_surface::{
-    Anchor, KeyboardInteractivity, Layer,
-};
 use cosmic_translator_overlay::hud::SubtitleHudState;
 use std::time::Duration;
 use translator_core::ipc::{HudIpcClient, HudIpcServer, HudMessage};
 
-#[test]
-fn test_hud_layer_shell_clickthrough_contract() {
-    let hud = SubtitleHudState::default();
-    let settings = hud.layer_settings();
+#[tokio::test]
+async fn test_ipc_interleaved_subtitle_and_status_message_stream() {
+    let socket_path =
+        std::env::temp_dir().join(format!("test-hud-interleaved-{}.sock", std::process::id()));
 
-    // 1. Must be rendered on Overlay layer
-    assert_eq!(settings.layer, Layer::Overlay);
+    let server = HudIpcServer::new(&socket_path);
+    let mut server_rx = server.start().await.expect("HUD IPC server must start");
 
-    // 2. Must NEVER request keyboard focus (prevents focus stealing from games)
-    assert_eq!(settings.keyboard_interactivity, KeyboardInteractivity::None);
+    let client = HudIpcClient::new(&socket_path);
 
-    // 3. CRITICAL: input_zone must be Some(vec![])
-    // In zwlr_layer_shell_v1, an empty region explicitly tells the compositor
-    // to pass all pointer/touch/cursor events through to windows underneath.
-    assert!(
-        settings.input_zone.is_some(),
-        "input_zone must be explicitly set"
+    // Wait for server to bind
+    let mut ready = false;
+    for _ in 0..15 {
+        if client.is_running().await {
+            ready = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(ready, "HUD IPC server failed to bind in time");
+
+    // Interleave 100 alternating subtitle and status messages
+    let mut expected_messages = Vec::new();
+
+    for i in 0..50 {
+        let sub_msg = HudMessage::ShowSubtitle {
+            text: format!("Subtitle dialogue turn #{i}"),
+            original: Some(format!("Original #{i}")),
+            duration_ms: 5000,
+        };
+        client
+            .send(&sub_msg)
+            .await
+            .expect("Send subtitle must succeed");
+        expected_messages.push(sub_msg);
+
+        let status_msg = HudMessage::SetStatus {
+            active: i % 2 == 0,
+            text: format!("Status notification #{i}"),
+        };
+        client
+            .send(&status_msg)
+            .await
+            .expect("Send status must succeed");
+        expected_messages.push(status_msg);
+    }
+
+    // Drain and verify all messages received in strict FIFO order
+    let mut received_messages = Vec::new();
+    let timeout = Duration::from_secs(5);
+    let start = std::time::Instant::now();
+
+    while received_messages.len() < expected_messages.len() && start.elapsed() < timeout {
+        if let Ok(Some(msg)) =
+            tokio::time::timeout(Duration::from_millis(100), server_rx.recv()).await
+        {
+            if msg == HudMessage::Ping {
+                continue;
+            }
+            received_messages.push(msg);
+        }
+    }
+
+    assert_eq!(
+        received_messages.len(),
+        expected_messages.len(),
+        "All 100 interleaved IPC messages must be received without loss"
     );
-    assert!(
-        settings.input_zone.as_ref().unwrap().is_empty(),
-        "input_zone must be empty vec for 100% click-through guarantee"
+
+    for (idx, (received, expected)) in received_messages
+        .into_iter()
+        .zip(expected_messages.into_iter())
+        .enumerate()
+    {
+        assert_eq!(received, expected, "Message mismatch at FIFO index {idx}");
+    }
+
+    let _ = std::fs::remove_file(&socket_path);
+}
+
+#[tokio::test]
+async fn test_concurrent_timer_clear_preserves_status_badge() {
+    let mut hud = SubtitleHudState::default();
+    let mut subtitle_seq: u64 = 0;
+
+    // Step 1: Subtitle 1 arrives with 40ms duration
+    subtitle_seq = subtitle_seq.wrapping_add(1);
+    let seq_1 = subtitle_seq;
+    hud.current_text = "Subtitle 1: Active dialogue".to_string();
+    assert_eq!(hud.current_text, "Subtitle 1: Active dialogue");
+    assert!(hud.status_badge.is_none());
+
+    // Step 2: 15ms later, SetStatus arrives with HTTP 429 countdown
+    tokio::time::sleep(Duration::from_millis(15)).await;
+    hud.status_badge = Some("⏳ Rate Limited (HTTP 429): 25s remaining".to_string());
+    assert_eq!(hud.current_text, "Subtitle 1: Active dialogue");
+    assert_eq!(
+        hud.status_badge.as_deref(),
+        Some("⏳ Rate Limited (HTTP 429): 25s remaining")
     );
 
-    // 4. Must not allocate exclusive margins to avoid shifting game viewports
-    assert_eq!(settings.exclusive_zone, -1);
+    // Step 3: At 50ms, timer for Subtitle 1 fires (seq_1 matches)
+    tokio::time::sleep(Duration::from_millis(35)).await;
+    if seq_1 == subtitle_seq {
+        hud.current_text.clear();
+    }
+    // Subtitle cleared, BUT status badge MUST remain intact!
+    assert_eq!(hud.current_text, "");
+    assert_eq!(
+        hud.status_badge.as_deref(),
+        Some("⏳ Rate Limited (HTTP 429): 25s remaining"),
+        "Timer clear of subtitle MUST NOT clear active status badge"
+    );
 
-    // 5. Must anchor to bottom of screen
-    assert!(settings.anchor.contains(Anchor::BOTTOM));
+    // Step 4: Subtitle 2 arrives with persistent duration (duration_ms = 0)
+    subtitle_seq = subtitle_seq.wrapping_add(1);
+    let _seq_2 = subtitle_seq;
+    hud.current_text = "Subtitle 2: New scene dialogue".to_string();
+    assert_eq!(hud.current_text, "Subtitle 2: New scene dialogue");
+    assert_eq!(
+        hud.status_badge.as_deref(),
+        Some("⏳ Rate Limited (HTTP 429): 25s remaining")
+    );
+
+    // Step 5: Stale timer for seq_1 arrives late; must NOT clear Subtitle 2!
+    if seq_1 == subtitle_seq {
+        hud.current_text.clear();
+    }
+    assert_eq!(
+        hud.current_text, "Subtitle 2: New scene dialogue",
+        "Stale timer seq must be ignored"
+    );
+    assert_eq!(
+        hud.status_badge.as_deref(),
+        Some("⏳ Rate Limited (HTTP 429): 25s remaining")
+    );
+
+    // Step 6: Status badge cleared
+    hud.status_badge = None;
+    assert_eq!(hud.current_text, "Subtitle 2: New scene dialogue");
+    assert!(hud.status_badge.is_none());
 }
 
 #[tokio::test]
@@ -175,49 +285,4 @@ async fn test_hud_styling_and_control_messages() {
     assert_eq!(msg3, clear_msg);
 
     let _ = std::fs::remove_file(&socket_path);
-}
-
-#[test]
-fn test_hud_status_badge_coexistence_with_subtitles() {
-    let mut hud = SubtitleHudState {
-        current_text: "Active dialogue text".to_string(),
-        ..Default::default()
-    };
-    assert_eq!(hud.current_text, "Active dialogue text");
-    assert!(hud.status_badge.is_none());
-
-    // 1. Verify layer settings input zone is strictly empty vec for click-through
-    let settings = hud.layer_settings();
-    assert!(settings.input_zone.is_some());
-    assert!(settings.input_zone.as_ref().unwrap().is_empty());
-
-    // 2. Set status badge active
-    hud.status_badge = Some("⏳ Rate Limited (HTTP 429): 20s remaining".to_string());
-    assert_eq!(
-        hud.current_text, "Active dialogue text",
-        "current_text must NOT be overwritten"
-    );
-    assert_eq!(
-        hud.status_badge.as_deref(),
-        Some("⏳ Rate Limited (HTTP 429): 20s remaining")
-    );
-
-    // 3. Render view with both badge and text
-    let _ = hud.view(|_| ());
-
-    // 4. Deactivate status badge
-    hud.status_badge = None;
-    assert_eq!(
-        hud.current_text, "Active dialogue text",
-        "current_text must remain intact when badge cleared"
-    );
-    assert!(hud.status_badge.is_none());
-
-    // 5. Render view with text only
-    let _ = hud.view(|_| ());
-
-    // 6. Clear text and render with badge only
-    hud.current_text.clear();
-    hud.status_badge = Some("Status only".to_string());
-    let _ = hud.view(|_| ());
 }

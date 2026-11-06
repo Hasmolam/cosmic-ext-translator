@@ -1,7 +1,8 @@
 use image::{GrayImage, Luma, Rgba, RgbaImage};
 use translator_core::pipeline::preprocess::{
-    compute_otsu_threshold, preprocess_for_ocr, subtract_blur, PreprocessConfig,
+    compute_otsu_threshold, preprocess_for_ocr, PreprocessConfig,
 };
+use translator_core::subtract_blur;
 
 fn variance(img: &GrayImage) -> f64 {
     let n = (img.width() * img.height()) as f64;
@@ -13,6 +14,79 @@ fn variance(img: &GrayImage) -> f64 {
         .map(|p| (p[0] as f64 - mean).powi(2))
         .sum::<f64>()
         / n
+}
+
+fn render_synthetic_glyph(text: &str, dark_bg: bool) -> RgbaImage {
+    let char_w = 10u32;
+    let char_h = 18u32;
+    let margin = 12u32;
+    let total_w = margin * 2 + (text.len() as u32) * (char_w + 4);
+    let total_h = margin * 2 + char_h;
+
+    let bg_color = if dark_bg {
+        Rgba([20, 20, 25, 255])
+    } else {
+        Rgba([235, 235, 240, 255])
+    };
+    let fg_color = if dark_bg {
+        Rgba([245, 245, 250, 255])
+    } else {
+        Rgba([15, 15, 20, 255])
+    };
+
+    let mut img = RgbaImage::from_pixel(total_w, total_h, bg_color);
+
+    for (i, _) in text.chars().enumerate() {
+        let x_start = margin + (i as u32) * (char_w + 4);
+        let y_start = margin;
+
+        // Draw 1-pixel wide vertical strokes and horizontal bars (letter 'H')
+        for y in 0..char_h {
+            img.put_pixel(x_start, y_start + y, fg_color);
+            img.put_pixel(x_start + char_w - 1, y_start + y, fg_color);
+        }
+        for x in 0..char_w {
+            img.put_pixel(x_start + x, y_start + char_h / 2, fg_color);
+        }
+    }
+
+    img
+}
+
+#[test]
+fn test_adversarial_subtract_blur_zero_and_empty_dimensions() {
+    // 1. 0x0 image
+    let empty_0x0 = GrayImage::new(0, 0);
+    let out_0x0 = subtract_blur(&empty_0x0, 2.5);
+    assert_eq!(out_0x0.width(), 0);
+    assert_eq!(out_0x0.height(), 0);
+    assert!(out_0x0.is_empty());
+
+    // 2. 0x10 image (zero width, non-zero height)
+    let empty_0x10 = GrayImage::new(0, 10);
+    let out_0x10 = subtract_blur(&empty_0x10, 2.5);
+    assert_eq!(out_0x10.width(), 0);
+    assert_eq!(out_0x10.height(), 10);
+    assert!(out_0x10.is_empty());
+
+    // 3. 10x0 image (non-zero width, zero height)
+    let empty_10x0 = GrayImage::new(10, 0);
+    let out_10x0 = subtract_blur(&empty_10x0, 2.5);
+    assert_eq!(out_10x0.width(), 10);
+    assert_eq!(out_10x0.height(), 0);
+    assert!(out_10x0.is_empty());
+
+    // 4. Sigma extremes on empty images
+    let out_zero_sigma = subtract_blur(&empty_0x0, 0.0);
+    assert_eq!(out_zero_sigma.dimensions(), (0, 0));
+    let out_large_sigma = subtract_blur(&empty_0x0, 100.0);
+    assert_eq!(out_large_sigma.dimensions(), (0, 0));
+
+    // 5. 1x1 image (boundary non-zero case)
+    let img_1x1 = GrayImage::from_pixel(1, 1, image::Luma([200]));
+    let out_1x1 = subtract_blur(&img_1x1, 2.5);
+    assert_eq!(out_1x1.dimensions(), (1, 1));
+    assert_eq!(out_1x1.get_pixel(0, 0)[0], 128); // 128 + 200 - 200 = 128
 }
 
 #[test]
@@ -561,43 +635,6 @@ fn test_steep_dark_gradient_white_text() {
         0,
         "White text stroke must be inverted to black (0)"
     );
-}
-
-fn render_synthetic_glyph(text: &str, dark_bg: bool) -> RgbaImage {
-    let char_w = 10u32;
-    let char_h = 18u32;
-    let margin = 12u32;
-    let total_w = margin * 2 + (text.len() as u32) * (char_w + 4);
-    let total_h = margin * 2 + char_h;
-
-    let bg_color = if dark_bg {
-        Rgba([20, 20, 25, 255])
-    } else {
-        Rgba([235, 235, 240, 255])
-    };
-    let fg_color = if dark_bg {
-        Rgba([245, 245, 250, 255])
-    } else {
-        Rgba([15, 15, 20, 255])
-    };
-
-    let mut img = RgbaImage::from_pixel(total_w, total_h, bg_color);
-
-    for (i, _) in text.chars().enumerate() {
-        let x_start = margin + (i as u32) * (char_w + 4);
-        let y_start = margin;
-
-        // Draw 1-pixel wide vertical strokes and horizontal bars (letter 'H')
-        for y in 0..char_h {
-            img.put_pixel(x_start, y_start + y, fg_color);
-            img.put_pixel(x_start + char_w - 1, y_start + y, fg_color);
-        }
-        for x in 0..char_w {
-            img.put_pixel(x_start + x, y_start + char_h / 2, fg_color);
-        }
-    }
-
-    img
 }
 
 #[test]

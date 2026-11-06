@@ -1,5 +1,4 @@
 pub mod capture;
-pub mod dictionary;
 pub mod error;
 pub mod ipc;
 pub mod language;
@@ -23,7 +22,6 @@ pub use pipeline::preprocess::{
 };
 pub use pipeline::{spawn_recognition_pipeline, PipelineHandle, RecognizedEvent};
 
-pub use dictionary::{JapaneseDictionary, MorphemeCard};
 pub use error::{CaptureError, OcrInitError, Result};
 pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage, HudPosition};
 pub use language::{normalize_source_code, script_for_code, Script, SourceLanguage};
@@ -39,7 +37,7 @@ pub use orchestrator::{
 pub use shortcuts::{GlobalShortcutsManager, ShortcutAction};
 pub use translation::{
     parse_speaker_tags, BracketStyle, DeepLTranslationBackend, DialogueTurn, FuzzyLruCache,
-    GoogleTranslateBackend, MockTranslationBackend, OfflineTranslationBackend,
-    OllamaTranslationBackend, OpenAiTranslationBackend, ParsedDialogueLine, RateLimitManager,
-    TranslationBackend, TranslationContext, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
+    GoogleTranslateBackend, MockTranslationBackend, OllamaTranslationBackend,
+    OpenAiTranslationBackend, ParsedDialogueLine, RateLimitManager, TranslationBackend,
+    TranslationContext, DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
 };

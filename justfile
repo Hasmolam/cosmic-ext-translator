@@ -105,9 +105,9 @@ test-capture:
 
 # Run end-to-end automated integration tests across all components
 test-e2e:
-    cargo test --test e2e_debouncer_sim --test e2e_capture_pipeline --test e2e_ocr_accuracy -p translator-core
-    cargo test --test e2e_clickthrough -p cosmic-translator-overlay
-    cargo test --test e2e_ui_workflow -p cosmic-applet-translator
+    cargo test --test debouncer --test roi --test orchestrator --test ocr_accuracy -p translator-core
+    cargo test --test layer_surface --test hud_ipc -p cosmic-translator-overlay
+    cargo test --test settings --test selector_protocol -p cosmic-applet-translator
 
 # Run panel applet
 run-applet:

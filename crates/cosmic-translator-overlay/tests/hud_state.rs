@@ -1,9 +1,8 @@
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
-    Anchor, KeyboardInteractivity, Layer,
+    KeyboardInteractivity, Layer,
 };
 use cosmic_translator_overlay::hud::SubtitleHudState;
-use std::time::Duration;
-use translator_core::ipc::{HudIpcClient, HudIpcServer, HudMessage, HudPosition, HudStatus};
+use translator_core::ipc::{HudMessage, HudPosition, HudStatus};
 
 /// State machine matching the exact message handling logic in
 /// `crates/cosmic-translator-overlay/src/main.rs:177–224`.
@@ -69,10 +68,6 @@ impl HudOverlaySimulator {
         }
     }
 }
-
-// ============================================================================
-// TASK 1: SubtitleHudState & SetStatus Interleaving and Coexistence
-// ============================================================================
 
 #[test]
 fn test_status_badge_interleaving_never_corrupts_subtitle_text() {
@@ -348,127 +343,6 @@ fn test_adversarial_randomized_interleaving_fuzzing_10k_steps() {
     }
 }
 
-// ============================================================================
-// TASK 2: Click-Through Layer-Shell Invariants
-// ============================================================================
-
-#[test]
-fn test_clickthrough_input_zone_is_strictly_empty_vec_in_normal_mode() {
-    let mut hud = SubtitleHudState::default();
-
-    let test_statuses = [
-        None,
-        Some("".to_string()),
-        Some("   ".to_string()),
-        Some("⏳ Rate Limited (HTTP 429): 30s remaining".to_string()),
-        Some("Long status message spanning multiple words with emojis 🎮🔥".to_string()),
-        Some("A".repeat(5000)),
-    ];
-
-    let test_texts = [
-        "".to_string(),
-        "Active subtitle".to_string(),
-        "B".repeat(10000),
-    ];
-
-    let test_positions = [HudPosition::Top, HudPosition::Center, HudPosition::Bottom];
-    let test_offsets = [0, 20, 40, 100, 1000];
-
-    for status in &test_statuses {
-        hud.status_badge = status.clone();
-
-        for text in &test_texts {
-            hud.current_text = text.clone();
-
-            for pos in test_positions {
-                hud.position = pos;
-
-                for offset in test_offsets {
-                    hud.offset_y = offset;
-
-                    // NORMAL MODE (edit_mode = false)
-                    hud.edit_mode = false;
-                    let settings = hud.layer_settings();
-
-                    // Invariant 1: input_zone MUST be Some(vec![])
-                    assert!(
-                        settings.input_zone.is_some(),
-                        "Normal mode input_zone must be Some"
-                    );
-                    assert!(
-                        settings.input_zone.as_ref().unwrap().is_empty(),
-                        "Normal mode input_zone must be empty vec for click-through"
-                    );
-
-                    // Invariant 2: keyboard_interactivity MUST be None
-                    assert_eq!(
-                        settings.keyboard_interactivity,
-                        KeyboardInteractivity::None,
-                        "Normal mode must NEVER request keyboard focus"
-                    );
-
-                    // Invariant 3: layer MUST be Overlay
-                    assert_eq!(
-                        settings.layer,
-                        Layer::Overlay,
-                        "Layer must always be Overlay"
-                    );
-
-                    // Invariant 4: exclusive_zone MUST be -1
-                    assert_eq!(
-                        settings.exclusive_zone, -1,
-                        "Exclusive zone must be -1 to prevent window shifting"
-                    );
-
-                    // Invariant 5: Anchor correct
-                    match pos {
-                        HudPosition::Top => {
-                            assert!(settings.anchor.contains(Anchor::TOP));
-                            assert!(settings.anchor.contains(Anchor::LEFT | Anchor::RIGHT));
-                        }
-                        HudPosition::Bottom => {
-                            assert!(settings.anchor.contains(Anchor::BOTTOM));
-                            assert!(settings.anchor.contains(Anchor::LEFT | Anchor::RIGHT));
-                        }
-                        HudPosition::Center => {
-                            assert!(settings.anchor.contains(Anchor::LEFT | Anchor::RIGHT));
-                            assert!(!settings.anchor.contains(Anchor::TOP));
-                            assert!(!settings.anchor.contains(Anchor::BOTTOM));
-                        }
-                    }
-
-                    // EDIT MODE (edit_mode = true)
-                    hud.edit_mode = true;
-                    let edit_settings = hud.layer_settings();
-
-                    // In edit mode: input_zone is None (accepts clicks)
-                    assert!(
-                        edit_settings.input_zone.is_none(),
-                        "Edit mode input_zone must be None so calibration controls can be clicked"
-                    );
-                    assert_eq!(
-                        edit_settings.keyboard_interactivity,
-                        KeyboardInteractivity::OnDemand,
-                        "Edit mode must allow keyboard interactivity"
-                    );
-
-                    // Toggling back to false immediately restores click-through
-                    hud.edit_mode = false;
-                    let restored_settings = hud.layer_settings();
-                    assert!(
-                        restored_settings.input_zone.as_ref().unwrap().is_empty(),
-                        "Restoring edit_mode=false must immediately restore input_zone click-through"
-                    );
-                }
-            }
-        }
-    }
-}
-
-// ============================================================================
-// TASK 1 & 2: View Rendering Robustness & Coexistence Stress
-// ============================================================================
-
 #[test]
 fn test_view_coexistence_and_extreme_content_rendering_zero_panics() {
     let mut hud = SubtitleHudState::default();
@@ -539,153 +413,6 @@ fn test_view_coexistence_and_extreme_content_rendering_zero_panics() {
     let _ = hud.view(|_| ());
 }
 
-// ============================================================================
-// IPC End-to-End Interleaved Message Transmission Stress
-// ============================================================================
-
-#[tokio::test]
-async fn test_ipc_interleaved_subtitle_and_status_message_stream() {
-    let socket_path =
-        std::env::temp_dir().join(format!("test-hud-interleaved-{}.sock", std::process::id()));
-
-    let server = HudIpcServer::new(&socket_path);
-    let mut server_rx = server.start().await.expect("HUD IPC server must start");
-
-    let client = HudIpcClient::new(&socket_path);
-
-    // Wait for server to bind
-    let mut ready = false;
-    for _ in 0..15 {
-        if client.is_running().await {
-            ready = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    assert!(ready, "HUD IPC server failed to bind in time");
-
-    // Interleave 100 alternating subtitle and status messages
-    let mut expected_messages = Vec::new();
-
-    for i in 0..50 {
-        let sub_msg = HudMessage::ShowSubtitle {
-            text: format!("Subtitle dialogue turn #{i}"),
-            original: Some(format!("Original #{i}")),
-            duration_ms: 5000,
-        };
-        client
-            .send(&sub_msg)
-            .await
-            .expect("Send subtitle must succeed");
-        expected_messages.push(sub_msg);
-
-        let status_msg = HudMessage::SetStatus {
-            active: i % 2 == 0,
-            text: format!("Status notification #{i}"),
-        };
-        client
-            .send(&status_msg)
-            .await
-            .expect("Send status must succeed");
-        expected_messages.push(status_msg);
-    }
-
-    // Drain and verify all messages received in strict FIFO order
-    let mut received_messages = Vec::new();
-    let timeout = Duration::from_secs(5);
-    let start = std::time::Instant::now();
-
-    while received_messages.len() < expected_messages.len() && start.elapsed() < timeout {
-        if let Ok(Some(msg)) =
-            tokio::time::timeout(Duration::from_millis(100), server_rx.recv()).await
-        {
-            if msg == HudMessage::Ping {
-                continue;
-            }
-            received_messages.push(msg);
-        }
-    }
-
-    assert_eq!(
-        received_messages.len(),
-        expected_messages.len(),
-        "All 100 interleaved IPC messages must be received without loss"
-    );
-
-    for (idx, (received, expected)) in received_messages
-        .into_iter()
-        .zip(expected_messages.into_iter())
-        .enumerate()
-    {
-        assert_eq!(received, expected, "Message mismatch at FIFO index {idx}");
-    }
-
-    let _ = std::fs::remove_file(&socket_path);
-}
-
-#[tokio::test]
-async fn test_concurrent_timer_clear_preserves_status_badge() {
-    let mut hud = SubtitleHudState::default();
-    let mut subtitle_seq: u64 = 0;
-
-    // Step 1: Subtitle 1 arrives with 40ms duration
-    subtitle_seq = subtitle_seq.wrapping_add(1);
-    let seq_1 = subtitle_seq;
-    hud.current_text = "Subtitle 1: Active dialogue".to_string();
-    assert_eq!(hud.current_text, "Subtitle 1: Active dialogue");
-    assert!(hud.status_badge.is_none());
-
-    // Step 2: 15ms later, SetStatus arrives with HTTP 429 countdown
-    tokio::time::sleep(Duration::from_millis(15)).await;
-    hud.status_badge = Some("⏳ Rate Limited (HTTP 429): 25s remaining".to_string());
-    assert_eq!(hud.current_text, "Subtitle 1: Active dialogue");
-    assert_eq!(
-        hud.status_badge.as_deref(),
-        Some("⏳ Rate Limited (HTTP 429): 25s remaining")
-    );
-
-    // Step 3: At 50ms, timer for Subtitle 1 fires (seq_1 matches)
-    tokio::time::sleep(Duration::from_millis(35)).await;
-    if seq_1 == subtitle_seq {
-        hud.current_text.clear();
-    }
-    // Subtitle cleared, BUT status badge MUST remain intact!
-    assert_eq!(hud.current_text, "");
-    assert_eq!(
-        hud.status_badge.as_deref(),
-        Some("⏳ Rate Limited (HTTP 429): 25s remaining"),
-        "Timer clear of subtitle MUST NOT clear active status badge"
-    );
-
-    // Step 4: Subtitle 2 arrives with persistent duration (duration_ms = 0)
-    subtitle_seq = subtitle_seq.wrapping_add(1);
-    let _seq_2 = subtitle_seq;
-    hud.current_text = "Subtitle 2: New scene dialogue".to_string();
-    assert_eq!(hud.current_text, "Subtitle 2: New scene dialogue");
-    assert_eq!(
-        hud.status_badge.as_deref(),
-        Some("⏳ Rate Limited (HTTP 429): 25s remaining")
-    );
-
-    // Step 5: Stale timer for seq_1 arrives late; must NOT clear Subtitle 2!
-    if seq_1 == subtitle_seq {
-        hud.current_text.clear();
-    }
-    assert_eq!(
-        hud.current_text, "Subtitle 2: New scene dialogue",
-        "Stale timer seq must be ignored"
-    );
-    assert_eq!(
-        hud.status_badge.as_deref(),
-        Some("⏳ Rate Limited (HTTP 429): 25s remaining")
-    );
-
-    // Step 6: Status badge cleared
-    hud.status_badge = None;
-    assert_eq!(hud.current_text, "Subtitle 2: New scene dialogue");
-    assert!(hud.status_badge.is_none());
-}
-
 #[test]
 fn typed_status_sets_and_clears_badge_without_touching_subtitle() {
     let mut sim = HudOverlaySimulator::new();
@@ -723,4 +450,49 @@ fn typed_status_sets_and_clears_badge_without_touching_subtitle() {
     sim.handle_message(HudMessage::SetHudStatus { status: None });
     assert!(sim.hud.status_badge.is_none());
     assert_eq!(sim.hud.current_text, "Hello");
+}
+
+#[test]
+fn test_hud_status_badge_coexistence_with_subtitles() {
+    let mut hud = SubtitleHudState {
+        current_text: "Active dialogue text".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(hud.current_text, "Active dialogue text");
+    assert!(hud.status_badge.is_none());
+
+    // 1. Verify layer settings input zone is strictly empty vec for click-through
+    let settings = hud.layer_settings();
+    assert!(settings.input_zone.is_some());
+    assert!(settings.input_zone.as_ref().unwrap().is_empty());
+
+    // 2. Set status badge active
+    hud.status_badge = Some("⏳ Rate Limited (HTTP 429): 20s remaining".to_string());
+    assert_eq!(
+        hud.current_text, "Active dialogue text",
+        "current_text must NOT be overwritten"
+    );
+    assert_eq!(
+        hud.status_badge.as_deref(),
+        Some("⏳ Rate Limited (HTTP 429): 20s remaining")
+    );
+
+    // 3. Render view with both badge and text
+    let _ = hud.view(|_| ());
+
+    // 4. Deactivate status badge
+    hud.status_badge = None;
+    assert_eq!(
+        hud.current_text, "Active dialogue text",
+        "current_text must remain intact when badge cleared"
+    );
+    assert!(hud.status_badge.is_none());
+
+    // 5. Render view with text only
+    let _ = hud.view(|_| ());
+
+    // 6. Clear text and render with badge only
+    hud.current_text.clear();
+    hud.status_badge = Some("Status only".to_string());
+    let _ = hud.view(|_| ());
 }

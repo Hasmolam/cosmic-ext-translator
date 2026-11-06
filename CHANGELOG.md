@@ -7,6 +7,17 @@ the section of the released version.
 
 ## [Unreleased]
 
+### Removed
+
+- `translator_core::dictionary` (`JapaneseDictionary`, `MorphemeCard`) and
+  `OfflineTranslationBackend`. Neither was reachable from the applet; the offline
+  backend returned placeholder text without running a model.
+
+### Changed
+
+- Integration tests are grouped by component (`text_gate`, `ocr_layout`, `furigana`,
+  `rate_limit`, `hud_ipc`, ...) instead of by development milestone.
+
 ## [0.2.0] - 2026-11-06
 
 ### Added

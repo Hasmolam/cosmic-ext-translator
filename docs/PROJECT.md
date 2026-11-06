@@ -6,8 +6,7 @@ Multi-crate workspace under GPL-3.0-or-later:
   - `capture/`: Screencast portal (`ashpd`), restore token negotiation, PipeWire OS loop, `Roi`, `CaptureRegion` with `ignore_roi` masking.
   - `pipeline/`: Frame debouncer (`dhash_256`), high-pass blur subtraction, `preprocess.rs`, two-stage `TextGate`.
   - `ocr/`: `OcrBackend` trait, `layout.rs` (aspect ratio detection, vertical CJK topological sorter), `furigana.rs` (geometric ruby pruning), `OcrsBackend`, `TesseractBackend`, `MockOcrBackend`.
-  - `translation/`: `TranslationBackend` trait, `context.rs` (sliding dialogue turns), `speaker.rs` (bracket parser & glossary), `rate_limit.rs` (HTTP 429 exponential backoff), `offline.rs` (offline neural engine architecture), remote backends.
-  - `dictionary/`: Japanese morphological dictionary (`MorphemeCard`, lexicon lookup, tokenizer).
+  - `translation/`: `TranslationBackend` trait, `context.rs` (sliding dialogue turns), `speaker.rs` (bracket parser & glossary), `rate_limit.rs` (HTTP 429 exponential backoff), remote backends.
   - `orchestrator/`: Async main loop coordinating debouncer, text gate, OCR, speaker parsing, translation, rate limiting, and IPC.
   - `ipc/`: Unix domain socket messages (`HudMessage`, status, subtitles).
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary.
@@ -30,8 +29,8 @@ Multi-crate workspace under GPL-3.0-or-later:
 | 7 | Pluggable OCR Backend Architecture | `OcrBackend` trait enhancement with `recognize_detailed` returning `OcrResult { text, boxes, orientation }`, CJK joiner without ASCII spaces, and mockable CJK backends. | M2 | ORIGINAL_REQUEST §R1 |
 | 8 | Multi-Turn Sliding Dialogue History | `TranslationContext` with `DialogueTurn { speaker, source, target, timestamp }`, configurable FIFO window, and speaker-attributed system prompt assembly for LLM backends. | M3 | ORIGINAL_REQUEST §R2 |
 | 9 | Speaker Tag Parser & Glossary Resolution | Parsing bracketed speaker names (`【...】`, `〔...〕`, `[...]`, `Name:`) in `speaker.rs`, isolating dialogue body for translation, and resolving speaker name through character glossary. | M3 | ORIGINAL_REQUEST §R2 |
-| 10 | Offline Translation Architecture | Modular `OfflineTranslationBackend` and engine factory supporting local neural models detached from network access. | M3 | ORIGINAL_REQUEST §R2 |
-| 11 | Morphological Dictionary Module | Japanese morphological analysis (`MorphemeCard`, token segmentation, lemma extraction, definition lookup) in `dictionary/mod.rs`. | M3 | ORIGINAL_REQUEST §R2 |
+| 10 | Offline Translation Architecture | Removed after 0.2.0: the backend was a stub that never ran a model. | M3 | ORIGINAL_REQUEST §R2 |
+| 11 | Morphological Dictionary Module | Removed after 0.2.0: not wired into the applet or orchestrator. | M3 | ORIGINAL_REQUEST §R2 |
 | 12 | HTTP 429 Exponential Backoff Manager | `RateLimitManager` with backoff $30\text{s} \times 2^k$, pausing translation requests on HTTP 429 and ticking remaining seconds to HUD status display. | M3 | ORIGINAL_REQUEST §R2 |
 | 13 | Dialogue Backlog History Viewer | `DialogueBacklog` storing up to 500 translation entries, draining `OrchestratorEvent` in `AppModel` to avoid channel deadlocks, and scrollable History tab in `settings_dialog.rs`. | M4 | ORIGINAL_REQUEST §R2 |
 | 14 | HUD Status Badge & Overlay Countdown Feedback | Non-destructive status badge in `cosmic-translator-overlay` rendering active rate-limit countdown while preserving click-through input transparency (`input_zone: Some(vec![])`). | M4 | ORIGINAL_REQUEST §R2 |
@@ -43,7 +42,7 @@ Multi-crate workspace under GPL-3.0-or-later:
 |---|------|-------|-------------|--------|
 | 1 | Capture & Debouncing Pipeline | Features 1, 2, 3, 4: Screencast restore token fallback, `ignore_roi` masking in `CaptureRegion`/`pipewire_thread.rs`, `TextGate` in `debouncer.rs`/`orchestrator`, and blur subtraction in `preprocess.rs`. | none | DONE |
 | 2 | OCR & CJK Layout Analysis | Features 5, 6, 7: `layout.rs` topological sorter, `furigana.rs` ruby pruning, pluggable `OcrBackend` trait detailed results, CJK token joining without spaces. | none | DONE |
-| 3 | Translation Context & Engines | Features 8, 9, 10, 11, 12: `context.rs` sliding dialogue turns, `speaker.rs` tag parser & glossary, `offline.rs` engine architecture, `dictionary/` morphological analysis, and `rate_limit.rs` HTTP 429 backoff. | M1, M2 | PLANNED |
+| 3 | Translation Context & Engines | Features 8, 9, 10, 11, 12: `context.rs` sliding dialogue turns, `speaker.rs` tag parser & glossary, and `rate_limit.rs` HTTP 429 backoff. | M1, M2 | PLANNED |
 | 4 | Overlay & Applet User Experience | Features 13, 14, 15: Applet backlog history model, `OrchestratorEvent` channel drain in `app.rs`, 5th History tab in settings dialog, HUD countdown badge in overlay, and ignore ROI/blur subtraction UI controls. | M1, M3 | PLANNED |
 | 5 | E2E Integration & Final Quality Pass | Feature 16: Complete headless verification (`cargo check`, `cargo clippy -- -D warnings`, `cargo test --workspace`), 100% pass of E2E test suite (Tiers 1-4), adversarial test hardening (Tier 5), zero unwrap/expect in production code. | M1, M2, M3, M4 | PLANNED |
 
@@ -114,7 +113,7 @@ pub fn sort_cjk_reading_order(boxes: Vec<DetectedTextBox>, orientation: TextOrie
 pub fn filter_furigana(boxes: Vec<DetectedTextBox>, orientation: TextOrientation) -> Vec<DetectedTextBox>;
 ```
 
-### `crates/translator-core/src/translation/` & `dictionary/`
+### `crates/translator-core/src/translation/`
 ```rust
 pub struct ParsedDialogueLine {
     pub raw_speaker: Option<String>,
@@ -136,10 +135,6 @@ pub struct RateLimitManager {
     pub fn remaining_pause(&self) -> Option<Duration>;
     pub fn record_success(&mut self);
 }
-
-pub struct JapaneseDictionary {
-    pub fn analyze(&self, text: &str) -> Vec<MorphemeCard>;
-}
 ```
 
 ## Code Layout
@@ -147,8 +142,7 @@ pub struct JapaneseDictionary {
   - `src/capture/roi.rs`, `src/capture/pipewire_thread.rs`, `src/capture/screencast.rs`
   - `src/pipeline/debouncer.rs`, `src/pipeline/preprocess.rs`, `src/pipeline/mod.rs`
   - `src/ocr/layout.rs`, `src/ocr/furigana.rs`, `src/ocr/mod.rs`
-  - `src/translation/context.rs`, `src/translation/speaker.rs`, `src/translation/rate_limit.rs`, `src/translation/offline.rs`, `src/translation/mod.rs`
-  - `src/dictionary/mod.rs`
+  - `src/translation/context.rs`, `src/translation/speaker.rs`, `src/translation/rate_limit.rs`, `src/translation/mod.rs`
   - `src/orchestrator/mod.rs`
   - `src/ipc/mod.rs`
 - `crates/cosmic-translator-overlay`:
