@@ -159,7 +159,32 @@ Original scope:
 Done when: switching source language during an active capture changes the backend (log line),
 and deleting the model directory produces a visible error instead of a subtitle.
 
-### Phase 1: Working Japanese through Tesseract (defects 2, 3, 4, 10)
+### Phase 1: Working Japanese through Tesseract (defects 2, 3, 4, 10) -- implemented 2026-11-06
+
+Status: implemented. Verified with Tesseract 5.3.4 and the Ubuntu 24.04 `jpn` / `jpn_vert`
+traineddata (4.1.0) on rendered fixtures in `crates/translator-core/tests/fixtures/ja/`:
+horizontal, vertical, light-on-dark and furigana samples are read exactly in `Auto` mode
+(`tests/tesseract_ja.rs`, ignored by default). A stepwise typewriter reveal fed through the
+orchestrator produced correct prefixes. Not yet tested on captured game footage or inside a
+live COSMIC session.
+
+Findings during implementation:
+
+- TSV output is requested with `-c tessedit_create_tsv=1 -c tessedit_create_txt=0`, not the
+  `tsv` config name. That config file lives in `tessdata/configs/` and is missing from custom
+  `TESSDATA_PREFIX` directories, where Tesseract silently fell back to plain text and the
+  backend returned an empty string. Non-TSV output is now an error.
+- `Auto` originally retried with the vertical model whenever the horizontal confidence was
+  below 85. A partially revealed horizontal line scores low, and `jpn_vert` returned a
+  reversed, garbled string with a higher score. The retry now also requires geometric
+  evidence: stacked one-character lines, or a text area taller than wide.
+- On the furigana fixture, Tesseract (`--psm 6`) merged the ruby into the `勇者` word box
+  instead of emitting a separate line, so the geometric filter was not exercised there. It
+  is covered by a unit test with the ruby as a separate TSV line.
+- Normalisation uses a hand-written half-width katakana table instead of NFKC, to avoid a new
+  dependency and keep full-width punctuation (`！？`) unchanged.
+
+Original scope:
 
 - `TesseractBackend`:
   - `probe()` -> `Result<TesseractCaps, OcrError>` using `tesseract --list-langs`; report a

@@ -170,3 +170,11 @@ if [[ "${INSTALLED}" -eq 1 ]]; then
     echo -e "  - Add to panel: Settings -> Desktop -> Panel -> Configure panel applets -> Add applet -> Screen Translator"
     echo -e "  - To uninstall anytime, run: ./uninstall.sh\n"
 fi
+
+# Japanese/Chinese/Korean OCR uses Tesseract; Latin text works without it.
+if ! command -v tesseract &>/dev/null || ! tesseract --list-langs 2>&1 | grep -qx "jpn"; then
+    echo -e "${YELLOW}[!] Optional:${NC} Japanese text recognition needs Tesseract with Japanese data."
+    echo -e "    Debian/Ubuntu/Pop!_OS: sudo apt install tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert"
+    echo -e "    Arch:                  sudo pacman -S tesseract tesseract-data-jpn tesseract-data-jpn_vert"
+    echo -e "    Fedora:                sudo dnf install tesseract tesseract-langpack-jpn tesseract-langpack-jpn_vert\n"
+fi

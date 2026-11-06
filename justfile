@@ -47,7 +47,7 @@ deb: build-release
     install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.desktop target/deb-pkg/usr/share/applications/{{appid}}.desktop
     install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.metainfo.xml target/deb-pkg/usr/share/metainfo/{{appid}}.metainfo.xml
     install -Dm0644 crates/cosmic-applet-translator/resources/icon.svg target/deb-pkg/usr/share/icons/hicolor/scalable/apps/{{appid}}.svg
-    printf "Package: cosmic-ext-translator\nVersion: 0.1.0\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Hasmolam <hasanhuseyinyolcu25@gmail.com>\nDepends: libc6, libpipewire-0.3-0, libxkbcommon0\nDescription: Real-time Wayland screen and game subtitle translator for COSMIC Desktop\n Translates on-screen text in games and visual novels on the COSMIC desktop.\n It reads a screen region you choose, runs OCR locally, and shows the\n translation as a subtitle line on top of the game.\n" > target/deb-pkg/DEBIAN/control
+    printf "Package: cosmic-ext-translator\nVersion: 0.1.0\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Hasmolam <hasanhuseyinyolcu25@gmail.com>\nDepends: libc6, libpipewire-0.3-0, libxkbcommon0\nRecommends: tesseract-ocr, tesseract-ocr-jpn, tesseract-ocr-jpn-vert\nDescription: Real-time Wayland screen and game subtitle translator for COSMIC Desktop\n Translates on-screen text in games and visual novels on the COSMIC desktop.\n It reads a screen region you choose, runs OCR locally, and shows the\n translation as a subtitle line on top of the game.\n" > target/deb-pkg/DEBIAN/control
     dpkg-deb --build --root-owner-group target/deb-pkg target/cosmic-ext-translator_0.1.0_amd64.deb
 
 # Install both binaries and desktop integration files

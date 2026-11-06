@@ -5,6 +5,7 @@ use cosmic::iced::Alignment;
 use cosmic::widget::{self, button, column, container, row, text};
 use cosmic::Element;
 use translator_core::capture::roi::RoiPreset;
+use translator_core::ocr::OrientationMode;
 use translator_core::SourceLanguage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -46,6 +47,7 @@ pub enum SettingsMessage {
     OpenAiModelChanged(String),
     TargetLangChanged(String),
     SourceLangChanged(String),
+    OcrOrientationChanged(String),
     TestOllamaConnection,
     OllamaTestResult(Result<Vec<String>, String>),
     HudPositionChanged(String),
@@ -259,6 +261,25 @@ impl SettingsState {
                     },
                 ),
             ));
+
+        let source_is_cjk = SourceLanguage::from_code(&config.source_lang)
+            .is_some_and(|lang| lang.script().is_cjk());
+        if source_is_cjk {
+            section = section.add(widget::settings::item(
+                fl!("text-direction"),
+                widget::dropdown(
+                    orientation_labels(),
+                    Some(OrientationMode::from_code(&config.ocr_orientation).index()),
+                    |idx| {
+                        let mode = OrientationMode::ALL
+                            .get(idx)
+                            .copied()
+                            .unwrap_or(OrientationMode::Auto);
+                        SettingsMessage::OcrOrientationChanged(mode.code().to_string())
+                    },
+                ),
+            ));
+        }
 
         match active_engine {
             "google" => {
@@ -589,6 +610,18 @@ fn tab_button<'a>(
             .on_press(SettingsMessage::TabSelected(tab))
             .into()
     }
+}
+
+/// Localised dropdown labels, in [`OrientationMode::ALL`] order.
+fn orientation_labels() -> Vec<String> {
+    OrientationMode::ALL
+        .iter()
+        .map(|mode| match mode {
+            OrientationMode::Auto => fl!("text-direction-auto"),
+            OrientationMode::Horizontal => fl!("text-direction-horizontal"),
+            OrientationMode::Vertical => fl!("text-direction-vertical"),
+        })
+        .collect()
 }
 
 /// Localised dropdown labels, in [`SourceLanguage::ALL`] order.

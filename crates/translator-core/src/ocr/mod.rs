@@ -12,10 +12,15 @@ use crate::language::{normalize_source_code, script_for_code};
 pub mod layout;
 pub mod furigana;
 pub mod models;
+pub mod normalize;
+pub mod tesseract;
 
 pub use layout::{
-    detect_dominant_orientation, sort_cjk_reading_order, DetectedTextBox, TextOrientation,
+    detect_dominant_orientation, sort_cjk_reading_order, DetectedTextBox, OrientationMode,
+    TextOrientation,
 };
+pub use normalize::normalize_cjk_text;
+pub use tesseract::{parse_tesseract_lang_list, TesseractBackend};
 pub use furigana::{filter_furigana, is_punctuation_char};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -290,93 +295,12 @@ impl OcrsBackend {
     }
 }
 
-/// Tesseract OCR backend for extended language support (CJK: Japanese, Chinese, Korean).
-#[derive(Debug, Clone)]
-pub struct TesseractBackend {
-    pub lang: String,
-}
-
-impl TesseractBackend {
-    pub fn new(lang: impl Into<String>) -> Self {
-        Self {
-            lang: lang.into(),
-        }
-    }
-
-    /// Returns true if a `tesseract` binary can be executed.
-    pub fn is_available() -> bool {
-        std::process::Command::new("tesseract")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }
-
-    /// Lists installed Tesseract language packs, or `None` if Tesseract cannot be run.
-    pub async fn installed_languages() -> Option<Vec<String>> {
-        let output = tokio::process::Command::new("tesseract")
-            .arg("--list-langs")
-            .stdin(std::process::Stdio::null())
-            .output()
-            .await
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        // Older releases print the list to stderr, newer ones to stdout.
-        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-        text.push('\n');
-        text.push_str(&String::from_utf8_lossy(&output.stderr));
-        Some(parse_tesseract_lang_list(&text))
-    }
-}
-
-/// Parses `tesseract --list-langs` output, skipping the header line.
-#[must_use]
-pub fn parse_tesseract_lang_list(output: &str) -> Vec<String> {
-    output
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with("List of available languages"))
-        .map(str::to_string)
-        .collect()
-}
-
-impl OcrBackend for TesseractBackend {
-    fn recognize<'a>(&'a self, image: &'a DynamicImage) -> BoxFuture<'a, Result<String>> {
-        let lang = self.lang.clone();
-        let rgb = image.to_rgb8();
-        Box::pin(async move {
-            let mut cursor = std::io::Cursor::new(Vec::new());
-            rgb.write_to(&mut cursor, image::ImageFormat::Png)
-                .map_err(|e| anyhow::anyhow!("Failed to encode image to PNG for Tesseract: {e}"))?;
-            let png_bytes = cursor.into_inner();
-
-            let mut child = tokio::process::Command::new("tesseract")
-                .arg("stdin")
-                .arg("stdout")
-                .arg("-l")
-                .arg(&lang)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .map_err(|e| anyhow::anyhow!("Failed to spawn tesseract: {e}"))?;
-
-            if let Some(mut stdin) = child.stdin.take() {
-                use tokio::io::AsyncWriteExt;
-                stdin.write_all(&png_bytes).await?;
-            }
-
-            let output = child.wait_with_output().await?;
-            if !output.status.success() {
-                anyhow::bail!("Tesseract exited with non-zero status");
-            }
-
-            let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            Ok(text)
-        })
-    }
+/// Selects and constructs the OCR engine for a source language code with automatic
+/// text direction. See [`create_ocr_backend`].
+pub async fn create_ocr_backend_for_lang(
+    src_lang: &str,
+) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
+    create_ocr_backend(src_lang, OrientationMode::Auto).await
 }
 
 /// Selects and constructs the OCR engine for a source language code.
@@ -384,8 +308,12 @@ impl OcrBackend for TesseractBackend {
 /// Latin-script languages (and `auto`) use the bundled `ocrs` models. Scripts the `ocrs`
 /// model cannot read require Tesseract with the matching language pack; if it is missing
 /// an error is returned instead of silently using a backend that produces garbage.
-pub async fn create_ocr_backend_for_lang(
+///
+/// `orientation` applies to Tesseract only. `Vertical` requires the vertical language pack
+/// (e.g. `jpn_vert`); `Auto` uses it when installed and falls back to horizontal only.
+pub async fn create_ocr_backend(
     src_lang: &str,
+    orientation: OrientationMode,
 ) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
     let script = script_for_code(src_lang);
 
@@ -394,16 +322,56 @@ pub async fn create_ocr_backend_for_lang(
         let Some(installed) = TesseractBackend::installed_languages().await else {
             return Err(OcrInitError::TesseractMissing { language, pack });
         };
-        if !installed.iter().any(|l| l == pack) {
+        let has = |p: &str| installed.iter().any(|l| l == p);
+        if !has(pack) {
             return Err(OcrInitError::TesseractLanguageMissing { language, pack });
         }
-        tracing::info!("Using Tesseract OCR backend for {language} ({pack})");
-        return Ok(Arc::new(TesseractBackend::new(pack)));
+
+        let mut backend = TesseractBackend::new(pack).with_mode(orientation);
+        match script.tesseract_vertical_pack() {
+            Some(vert) if has(vert) => backend = backend.with_vertical_lang(vert),
+            Some(vert) if orientation == OrientationMode::Vertical => {
+                return Err(OcrInitError::TesseractLanguageMissing {
+                    language,
+                    pack: vert,
+                });
+            }
+            Some(vert) => tracing::warn!(
+                "Tesseract '{vert}' data not installed; vertical {language} text will not be recognized"
+            ),
+            None => {}
+        }
+        tracing::info!(
+            "Using Tesseract OCR backend for {language} ({pack}, vertical: {:?}, mode: {})",
+            backend.vertical_lang,
+            orientation.code()
+        );
+        return Ok(Arc::new(backend));
     }
 
     let backend = OcrsBackend::load_default_or_download().await?;
     tracing::info!("Using ocrs OCR backend for source language '{src_lang}'");
     Ok(Arc::new(backend.with_lang(normalize_source_code(src_lang))))
+}
+
+/// Shared post-processing for line boxes from any backend: furigana pruning, reading-order
+/// sorting, CJK-aware joining and text normalisation.
+pub(crate) fn assemble_result(
+    raw_boxes: Vec<DetectedTextBox>,
+    orientation: Option<TextOrientation>,
+    force_cjk: bool,
+) -> OcrResult {
+    let orientation = orientation.unwrap_or_else(|| detect_dominant_orientation(&raw_boxes));
+    let pruned = filter_furigana(raw_boxes, orientation);
+    let sorted = sort_cjk_reading_order(pruned, orientation);
+    let is_cjk = force_cjk || sorted.iter().any(|b| is_cjk_text(&b.text));
+    let tokens: Vec<&str> = sorted.iter().map(|b| b.text.as_str()).collect();
+    let text = normalize_cjk_text(&join_cjk_or_latin_tokens(&tokens, is_cjk));
+    OcrResult {
+        text,
+        boxes: sorted,
+        orientation,
+    }
 }
 
 impl OcrBackend for OcrsBackend {
@@ -462,26 +430,7 @@ impl OcrBackend for OcrsBackend {
                     }
                 }
 
-                let dominant_ori = orientation.unwrap_or_else(|| {
-                    detect_dominant_orientation(&raw_boxes)
-                });
-
-                // 1. Furigana geometric pruning
-                let pruned_boxes = filter_furigana(raw_boxes, dominant_ori);
-
-                // 2. Reading order topological sorting
-                let sorted_boxes = sort_cjk_reading_order(pruned_boxes, dominant_ori);
-
-                // 3. Space-less (CJK) vs spaced (Latin) token joining
-                let is_cjk = is_cjk_config || sorted_boxes.iter().any(|b| is_cjk_text(&b.text));
-                let token_strs: Vec<&str> = sorted_boxes.iter().map(|b| b.text.as_str()).collect();
-                let joined_text = join_cjk_or_latin_tokens(&token_strs, is_cjk);
-
-                Ok(OcrResult {
-                    text: joined_text,
-                    boxes: sorted_boxes,
-                    orientation: dominant_ori,
-                })
+                Ok(assemble_result(raw_boxes, orientation, is_cjk_config))
             })
             .await
             .map_err(|e| anyhow::anyhow!("Spawn blocking error: {e}"))?
@@ -557,13 +506,6 @@ mod tests {
 
         assert!(is_cjk_text("レベルアップ!"));
         assert!(!is_cjk_text("Level Up!"));
-    }
-
-    #[test]
-    fn test_parse_tesseract_lang_list() {
-        let out = "List of available languages in \"/usr/share/tesseract-ocr/5/tessdata/\" (3):\neng\njpn\nosd\n";
-        assert_eq!(parse_tesseract_lang_list(out), vec!["eng", "jpn", "osd"]);
-        assert!(parse_tesseract_lang_list("").is_empty());
     }
 
     #[tokio::test]

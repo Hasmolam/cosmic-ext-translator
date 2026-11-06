@@ -525,4 +525,26 @@ mod tests {
         // Dialogue turn change
         assert_eq!(gate.evaluate("【勇者】魔王を倒す時が来た！"), TextDiffAction::EmitTranslation);
     }
+
+    #[test]
+    fn test_text_gate_typewriter_with_spaced_tesseract_output() {
+        use crate::ocr::normalize_cjk_text;
+        let t0 = Instant::now();
+        let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
+
+        // Tesseract spacing differs between frames; normalisation makes them prefixes.
+        let frames = ["私 は", "私は 学生", "私 は 学生 です 。"];
+        let first = normalize_cjk_text(frames[0]);
+        assert_eq!(gate.evaluate_at(&first, t0), TextDiffAction::EmitTranslation);
+        for (i, raw) in frames.iter().enumerate().skip(1) {
+            let text = normalize_cjk_text(raw);
+            assert_eq!(
+                gate.evaluate_at(&text, t0 + Duration::from_millis(50 * i as u64)),
+                TextDiffAction::TypewriterWait,
+                "frame {i} ({text}) should extend the previous line"
+            );
+        }
+        assert_eq!(gate.flush_pending().as_deref(), Some("私は学生です。"));
+    }
+
 }

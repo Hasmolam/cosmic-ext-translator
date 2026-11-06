@@ -9,6 +9,9 @@ pub struct Config {
     pub enabled: bool,
     pub target_lang: String,
     pub source_lang: String,
+    /// Text direction for CJK OCR: `auto`, `horizontal` or `vertical`.
+    #[serde(default = "default_ocr_orientation")]
+    pub ocr_orientation: String,
     pub restore_token: Option<String>,
     pub preset: String,
     pub custom_roi: Option<Roi>,
@@ -34,12 +37,17 @@ pub struct Config {
     pub glossary: HashMap<String, String>,
 }
 
+fn default_ocr_orientation() -> String {
+    "auto".to_string()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             enabled: false,
             target_lang: "tr".to_string(),
             source_lang: "auto".to_string(),
+            ocr_orientation: default_ocr_orientation(),
             restore_token: None,
             preset: "rpg_bottom_25".to_string(),
             custom_roi: None,
@@ -76,5 +84,6 @@ mod tests {
         assert_eq!(cfg.font_size, 22);
         assert_eq!(cfg.hud_opacity, 92);
         assert_eq!(cfg.ollama_endpoint, "http://localhost:11434");
+        assert_eq!(cfg.ocr_orientation, "auto");
     }
 }

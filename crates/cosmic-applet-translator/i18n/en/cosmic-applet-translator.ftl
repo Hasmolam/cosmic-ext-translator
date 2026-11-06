@@ -127,3 +127,7 @@ lang-es = Spanish
 lang-it = Italian
 lang-pt = Portuguese
 lang-tr = Turkish
+text-direction = Text direction
+text-direction-auto = Automatic
+text-direction-horizontal = Horizontal
+text-direction-vertical = Vertical (top to bottom, right to left)

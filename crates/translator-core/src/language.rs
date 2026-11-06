@@ -30,6 +30,17 @@ impl Script {
         }
     }
 
+    /// Tesseract traineddata name for vertically written text, where one exists.
+    #[must_use]
+    pub fn tesseract_vertical_pack(self) -> Option<&'static str> {
+        match self {
+            Self::Latin => None,
+            Self::Japanese => Some("jpn_vert"),
+            Self::ChineseSimplified => Some("chi_sim_vert"),
+            Self::Korean => Some("kor_vert"),
+        }
+    }
+
     /// English display name, used in logs and error messages.
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -207,6 +218,8 @@ mod tests {
         assert!(!Script::Latin.is_cjk());
         assert_eq!(Script::Japanese.tesseract_pack(), Some("jpn"));
         assert_eq!(Script::Latin.tesseract_pack(), None);
+        assert_eq!(Script::Japanese.tesseract_vertical_pack(), Some("jpn_vert"));
+        assert_eq!(Script::Latin.tesseract_vertical_pack(), None);
         assert_eq!(script_for_code("auto"), Script::Latin);
     }
 

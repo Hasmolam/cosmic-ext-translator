@@ -8,6 +8,11 @@ url="https://github.com/Hasmolam/cosmic-ext-translator"
 license=('GPL-3.0-or-later')
 depends=('libpipewire' 'libxkbcommon' 'wayland' 'hicolor-icon-theme')
 makedepends=('cargo' 'just' 'git' 'clang' 'pkgconf')
+optdepends=('tesseract: OCR for Japanese, Chinese and Korean source text'
+            'tesseract-data-jpn: Japanese horizontal text'
+            'tesseract-data-jpn_vert: Japanese vertical text'
+            'tesseract-data-chi_sim: Simplified Chinese text'
+            'tesseract-data-kor: Korean text')
 provides=('cosmic-ext-translator')
 conflicts=('cosmic-ext-translator')
 source=("git+https://github.com/Hasmolam/cosmic-ext-translator.git")

@@ -162,6 +162,17 @@ Useful options for difficult games:
 - **Settle time**: how long the text must stay unchanged before OCR runs. Increase it if half-finished lines get translated.
 - **Binarization / blur filter**: try these when text sits on a busy or gradient background.
 
+### Japanese text
+
+Install Tesseract with Japanese data, then select **Japanese** as the source language in the Engine tab:
+
+```sh
+sudo apt install tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert   # Debian, Ubuntu, Pop!_OS
+sudo pacman -S tesseract tesseract-data-jpn tesseract-data-jpn_vert         # Arch
+```
+
+The **Text direction** setting appears for Japanese, Chinese, and Korean. *Automatic* reads horizontal text and retries with the vertical model (`jpn_vert`) when the result looks like vertical text. Set *Vertical* for visual novels that only use vertical text. Small ruby text (furigana) above or beside kanji is removed before translation.
+
 ### OCR models
 
 On first start the [ocrs](https://github.com/robertknight/ocrs) detection and recognition models are downloaded to `$XDG_DATA_HOME/cosmic-ext-translator/models` (usually `~/.local/share/cosmic-ext-translator/models`). If the models are present in `/usr/share/cosmic-ext-translator/models`, that copy is used and nothing is downloaded. For offline machines, place `text-detection.onnx` and `text-recognition.onnx` (or the older `text-detection.rten` / `text-recognition.rten`) in either directory.
@@ -170,7 +181,7 @@ Downloads are written to a temporary file and only moved into place after the mo
 
 ## Limitations
 
-- **The bundled OCR models recognize only Latin script.** Selecting Japanese, Chinese, or Korean as the source language requires `tesseract` with the matching language data (`jpn`, `chi_sim`, `kor`); if it is missing, the applet reports which package to install. Tesseract output is not yet post-processed (vertical text, furigana removal). See [docs/JAPANESE_SUPPORT_PLAN.md](docs/JAPANESE_SUPPORT_PLAN.md).
+- **The bundled OCR models recognize only Latin script.** Japanese, Chinese, and Korean use `tesseract` with the matching language data; if it is missing, the applet reports which package to install. Accuracy depends on Tesseract and drops on small, outlined, or pixel fonts. See [docs/JAPANESE_SUPPORT_PLAN.md](docs/JAPANESE_SUPPORT_PLAN.md) for the planned bundled model.
 - Only COSMIC is tested. Other wlroots-based compositors may work for the overlay, but the applet requires the COSMIC panel.
 - Games that bypass the compositor (direct scanout through some full-screen modes) may produce black frames. Use borderless windowed mode in that case.
 - Stylized or pixel fonts reduce OCR accuracy.

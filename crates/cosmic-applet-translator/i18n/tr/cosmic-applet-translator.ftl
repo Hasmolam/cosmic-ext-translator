@@ -127,3 +127,7 @@ lang-es = İspanyolca
 lang-it = İtalyanca
 lang-pt = Portekizce
 lang-tr = Türkçe
+text-direction = Yazı yönü
+text-direction-auto = Otomatik
+text-direction-horizontal = Yatay
+text-direction-vertical = Dikey (yukarıdan aşağı, sağdan sola)

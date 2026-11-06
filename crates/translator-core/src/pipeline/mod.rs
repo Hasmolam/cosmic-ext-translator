@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info};
 
 use crate::capture::pipewire_thread::CapturedFrame;
-use crate::ocr::OcrBackend;
+use crate::ocr::{OcrBackend, TextOrientation};
 pub use debouncer::{DebounceState, FrameDebouncer, SettledFrame, TextDiffAction, TextGate};
 use preprocess::{preprocess_for_ocr, PreprocessConfig};
 
@@ -19,6 +19,8 @@ pub struct RecognizedEvent {
     pub text: String,
     pub timestamp: Instant,
     pub hash: u64,
+    /// Text direction the OCR backend used or detected for this frame.
+    pub orientation: TextOrientation,
 }
 
 pub struct PipelineHandle {
@@ -97,15 +99,19 @@ pub fn spawn_recognition_pipeline(
             let dynamic_img = DynamicImage::ImageLuma8(processed_gray);
 
             // 3. OCR Recognition
-            match ocr_backend.recognize(&dynamic_img).await {
-                Ok(text) => {
-                    let trimmed = text.trim();
+            match ocr_backend.recognize_detailed(&dynamic_img, None).await {
+                Ok(result) => {
+                    let trimmed = result.text.trim();
                     if !trimmed.is_empty() {
-                        debug!("Pipeline OCR recognized: \"{trimmed}\"");
+                        debug!(
+                            "Pipeline OCR recognized ({:?}): \"{trimmed}\"",
+                            result.orientation
+                        );
                         let event = RecognizedEvent {
                             text: trimmed.to_string(),
                             timestamp: Instant::now(),
                             hash: settled.hash,
+                            orientation: result.orientation,
                         };
                         let _ = event_sender.send(event).await;
                     }

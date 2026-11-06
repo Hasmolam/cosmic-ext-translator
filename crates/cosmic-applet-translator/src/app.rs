@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 use translator_core::capture::pipewire_thread::CapturedFrame;
 use translator_core::capture::roi::{CaptureRegion, RoiPreset};
 use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition, HudStatus};
-use translator_core::ocr::{create_ocr_backend_for_lang, OcrBackend};
+use translator_core::ocr::{create_ocr_backend, OcrBackend, OrientationMode};
 use translator_core::orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
 };
@@ -87,10 +87,11 @@ impl AppModel {
         self.ocr_generation = self.ocr_generation.wrapping_add(1);
         let generation = self.ocr_generation;
         let src_lang = self.config.source_lang.clone();
+        let orientation = OrientationMode::from_code(&self.config.ocr_orientation);
 
         Task::perform(
             async move {
-                let result = create_ocr_backend_for_lang(&src_lang)
+                let result = create_ocr_backend(&src_lang, orientation)
                     .await
                     .map_err(|err| err.to_string());
                 Message::OcrBackendLoaded { generation, result }
@@ -104,6 +105,11 @@ impl AppModel {
         self.ocr_generation = self.ocr_generation.wrapping_add(1);
         self.ocr_backend = None;
         self.ocr_status = OcrStatus::Idle;
+    }
+
+    /// True if switching from `old` to the current config requires a new OCR backend.
+    fn ocr_settings_changed(&self, old: &Config) -> bool {
+        ocr_settings_differ(old, &self.config)
     }
 
     fn restart_orchestrator_if_active(&mut self) {
@@ -670,18 +676,17 @@ impl cosmic::Application for AppModel {
             }
 
             Message::ConfigChanged(new_config) => {
-                let source_changed = normalize_source_code(&self.config.source_lang)
-                    != normalize_source_code(&new_config.source_lang);
-                self.config = *new_config;
+                let old_config = std::mem::replace(&mut self.config, *new_config);
+                let ocr_changed = self.ocr_settings_changed(&old_config);
                 if let Some(ref session) = self.capture_session {
                     let preset = RoiPreset::from_str_name(&self.config.preset);
                     let region = CaptureRegion::new(preset, self.config.custom_roi, self.config.ignore_roi);
                     session.update_region(region);
                 }
-                let ocr_task = if source_changed && self.capture_session.is_some() {
+                let ocr_task = if ocr_changed && self.capture_session.is_some() {
                     info!(
-                        "Source language changed to '{}', rebuilding OCR backend",
-                        self.config.source_lang
+                        "OCR settings changed (source '{}', orientation '{}'), rebuilding OCR backend",
+                        self.config.source_lang, self.config.ocr_orientation
                     );
                     self.rebuild_ocr_backend()
                 } else {
@@ -882,11 +887,18 @@ impl cosmic::Application for AppModel {
                         self.restart_orchestrator_if_active();
                     }
                     SettingsMessage::SourceLangChanged(lang) => {
-                        let changed = normalize_source_code(&self.config.source_lang)
-                            != normalize_source_code(&lang);
+                        let old = self.config.clone();
                         self.config.source_lang = lang;
                         self.save_config();
-                        if changed && self.capture_session.is_some() {
+                        if self.ocr_settings_changed(&old) && self.capture_session.is_some() {
+                            return self.rebuild_ocr_backend();
+                        }
+                    }
+                    SettingsMessage::OcrOrientationChanged(mode) => {
+                        let old = self.config.clone();
+                        self.config.ocr_orientation = mode;
+                        self.save_config();
+                        if self.ocr_settings_changed(&old) && self.capture_session.is_some() {
                             return self.rebuild_ocr_backend();
                         }
                     }
@@ -1672,6 +1684,13 @@ impl Drop for AppModel {
     }
 }
 
+/// Compares the config fields that determine which OCR backend is built.
+fn ocr_settings_differ(a: &Config, b: &Config) -> bool {
+    normalize_source_code(&a.source_lang) != normalize_source_code(&b.source_lang)
+        || OrientationMode::from_code(&a.ocr_orientation)
+            != OrientationMode::from_code(&b.ocr_orientation)
+}
+
 fn overlay_binary_path() -> std::path::PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
@@ -1695,4 +1714,43 @@ fn applet_binary_path() -> std::path::PathBuf {
         }
     }
     std::path::PathBuf::from("cosmic-applet-translator")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ocr_rebuild_triggers() {
+        let base = Config::default();
+        let same_lang_alias = Config {
+            source_lang: "AUTO".to_string(),
+            ..Config::default()
+        };
+        assert!(!ocr_settings_differ(&base, &same_lang_alias));
+
+        let japanese = Config {
+            source_lang: "ja".to_string(),
+            ..Config::default()
+        };
+        assert!(ocr_settings_differ(&base, &japanese));
+
+        let japanese_alias = Config {
+            source_lang: "jp".to_string(),
+            ..Config::default()
+        };
+        assert!(!ocr_settings_differ(&japanese, &japanese_alias));
+
+        let vertical = Config {
+            ocr_orientation: "vertical".to_string(),
+            ..japanese.clone()
+        };
+        assert!(ocr_settings_differ(&japanese, &vertical));
+
+        let unrelated = Config {
+            font_size: 40,
+            ..japanese.clone()
+        };
+        assert!(!ocr_settings_differ(&japanese, &unrelated));
+    }
 }
