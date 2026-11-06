@@ -1,3 +1,7 @@
+pub mod selector;
+
+pub use selector::SelectorOutput;
+
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

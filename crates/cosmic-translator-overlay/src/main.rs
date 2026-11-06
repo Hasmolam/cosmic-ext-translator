@@ -12,7 +12,9 @@ use cosmic_translator_overlay::selector::{SelectorMessage, SelectorProgram};
 use std::env;
 use std::io::Write;
 use std::time::Duration;
-use translator_core::ipc::{default_socket_path, HudIpcServer, HudMessage};
+use translator_core::ipc::{
+    default_socket_path, selector, HudIpcServer, HudMessage, SelectorOutput,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppMode {
@@ -172,11 +174,14 @@ impl cosmic::Application for OverlayApp {
                 surface_width,
                 surface_height,
             }) => {
-                let _ = writeln!(
-                    std::io::stdout(),
-                    "ROI_SELECTED:{{\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"surface_width\":{},\"surface_height\":{}}}",
-                    roi.x, roi.y, roi.width, roi.height, surface_width, surface_height
-                );
+                let line = match SelectorOutput::new(roi, surface_width, surface_height).to_line() {
+                    Ok(line) => line,
+                    Err(err) => {
+                        tracing::error!("Failed to encode selector output: {err}");
+                        selector::CANCELLED_LINE.to_string()
+                    }
+                };
+                let _ = writeln!(std::io::stdout(), "{line}");
                 let _ = std::io::stdout().flush();
                 let _ = destroy_layer_surface::<Message>(self.selector_id);
                 Task::perform(
@@ -189,7 +194,7 @@ impl cosmic::Application for OverlayApp {
             }
 
             Message::Selector(SelectorMessage::Cancelled) => {
-                let _ = writeln!(std::io::stdout(), "ROI_CANCELLED");
+                let _ = writeln!(std::io::stdout(), "{}", selector::CANCELLED_LINE);
                 let _ = std::io::stdout().flush();
                 let _ = destroy_layer_surface::<Message>(self.selector_id);
                 Task::perform(

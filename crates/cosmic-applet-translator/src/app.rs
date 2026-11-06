@@ -1,6 +1,8 @@
 use crate::config::Config;
 use crate::fl;
 use crate::history::DialogueBacklog;
+use crate::services::hud::style_message;
+use crate::services::{self, HudService, RegionKind};
 use crate::settings_dialog::{SettingsMessage, SettingsState};
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup};
@@ -10,7 +12,7 @@ use cosmic::widget::{self, button, row};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use translator_core::capture::pipewire_thread::CapturedFrame;
-use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition, HudStatus};
+use translator_core::ipc::{HudMessage, HudStatus, SelectorOutput};
 use translator_core::ocr::{create_ocr_backend, OcrBackend, OcrEngineChoice, OrientationMode};
 use translator_core::orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
@@ -65,6 +67,7 @@ pub struct AppModel {
     last_ocr_text: String,
     last_translated_text: String,
     pub backlog: DialogueBacklog,
+    hud: HudService,
 }
 
 impl AppModel {
@@ -173,6 +176,44 @@ impl AppModel {
             }
         });
         self.orchestrator = Some(handle);
+    }
+
+    fn run_region_selector(&self, kind: RegionKind) -> Task<cosmic::Action<Message>> {
+        let snapshot = self
+            .capture_session
+            .as_ref()
+            .map(CaptureSession::snapshot_requester);
+        Task::perform(
+            services::selector::select_region(kind, snapshot),
+            move |output| cosmic::Action::from(Message::RegionSelectorFinished(kind, output)),
+        )
+    }
+
+    /// Scales a selection from the selector's logical surface to the capture buffer.
+    /// Falls back to the unscaled region when either size is unknown.
+    fn selection_in_frame_coordinates(&self, output: SelectorOutput) -> Roi {
+        let roi = output.roi();
+        let (Some(sw), Some(sh), Some(session)) = (
+            output.surface_width,
+            output.surface_height,
+            &self.capture_session,
+        ) else {
+            return roi;
+        };
+        let Some(frame) = session
+            .frame_receiver
+            .borrow()
+            .as_ref()
+            .map(|f| (f.original_width, f.original_height))
+        else {
+            return roi;
+        };
+        let scaled = roi.scale_to_frame(sw, sh, frame.0, frame.1);
+        info!(
+            "Scaled selection from surface ({sw}x{sh}) to frame ({}x{}): {:?}",
+            frame.0, frame.1, scaled
+        );
+        scaled
     }
 
     pub fn is_standalone(&self) -> bool {
@@ -374,20 +415,10 @@ pub enum Message {
     ChangeCaptureTarget,
     SelectRoiRequested,
     RoiSelected(Roi),
-    RoiSelectedWithSurface {
-        roi: Roi,
-        surface_width: Option<u32>,
-        surface_height: Option<u32>,
-    },
-    RoiSelectionCancelled,
     SelectIgnoreRoiRequested,
-    IgnoreRoiSelectedWithSurface {
-        roi: Roi,
-        surface_width: Option<u32>,
-        surface_height: Option<u32>,
-    },
     IgnoreRoiSelected(Roi),
-    IgnoreRoiSelectionCancelled,
+    /// Selector process exited; `None` when cancelled or failed.
+    RegionSelectorFinished(RegionKind, Option<SelectorOutput>),
     ClearIgnoreRoi,
     PresetSelected(RoiPreset),
     CaptureStarted(CaptureSession),
@@ -420,28 +451,11 @@ impl Clone for Message {
             Self::ChangeCaptureTarget => Self::ChangeCaptureTarget,
             Self::SelectRoiRequested => Self::SelectRoiRequested,
             Self::RoiSelected(r) => Self::RoiSelected(*r),
-            Self::RoiSelectedWithSurface {
-                roi,
-                surface_width,
-                surface_height,
-            } => Self::RoiSelectedWithSurface {
-                roi: *roi,
-                surface_width: *surface_width,
-                surface_height: *surface_height,
-            },
-            Self::RoiSelectionCancelled => Self::RoiSelectionCancelled,
             Self::SelectIgnoreRoiRequested => Self::SelectIgnoreRoiRequested,
-            Self::IgnoreRoiSelectedWithSurface {
-                roi,
-                surface_width,
-                surface_height,
-            } => Self::IgnoreRoiSelectedWithSurface {
-                roi: *roi,
-                surface_width: *surface_width,
-                surface_height: *surface_height,
-            },
             Self::IgnoreRoiSelected(r) => Self::IgnoreRoiSelected(*r),
-            Self::IgnoreRoiSelectionCancelled => Self::IgnoreRoiSelectionCancelled,
+            Self::RegionSelectorFinished(kind, output) => {
+                Self::RegionSelectorFinished(*kind, *output)
+            }
             Self::ClearIgnoreRoi => Self::ClearIgnoreRoi,
             Self::PresetSelected(p) => Self::PresetSelected(*p),
             Self::CaptureStarted(_) => Self::CaptureFailed("Cannot clone active session".into()),
@@ -526,39 +540,6 @@ fn global_shortcuts_subscription() -> cosmic::iced::Subscription<Message> {
     })
 }
 
-fn hud_position_from_str(pos: &str) -> HudPosition {
-    match pos {
-        "top" => HudPosition::Top,
-        "center" => HudPosition::Center,
-        _ => HudPosition::Bottom,
-    }
-}
-
-async fn ensure_hud_running_and_styled(
-    font_size: u16,
-    opacity: u8,
-    duration_ms: u64,
-    position: &str,
-    offset_y: u32,
-) {
-    let client = HudIpcClient::default_client();
-    if !client.is_running().await {
-        let bin = overlay_binary_path();
-        let _ = std::process::Command::new(bin).arg("--hud").spawn();
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    }
-    let hud_pos = hud_position_from_str(position);
-    let _ = client
-        .send(&HudMessage::UpdateStyle {
-            font_size,
-            opacity: (opacity as f32) / 100.0,
-            duration_ms,
-            position: hud_pos,
-            offset_y,
-        })
-        .await;
-}
-
 impl cosmic::Application for AppModel {
     type Executor = cosmic::executor::Default;
     type Flags = ();
@@ -613,6 +594,7 @@ impl cosmic::Application for AppModel {
             last_ocr_text: String::new(),
             last_translated_text: String::new(),
             backlog: DialogueBacklog::default(),
+            hud: HudService::default(),
         };
 
         (app, Task::none())
@@ -681,16 +663,10 @@ impl cosmic::Application for AppModel {
                     Task::none()
                 };
 
-                let spawn_task = Task::perform(
-                    async move {
-                        let bin = applet_binary_path();
-                        let mut cmd = std::process::Command::new(bin);
-                        if let Err(e) = cmd.spawn() {
-                            error!("Failed to launch settings application: {e}");
-                        }
-                    },
-                    |_| cosmic::Action::None,
-                );
+                let spawn_task =
+                    Task::perform(async { services::process::spawn_settings_window() }, |()| {
+                        cosmic::Action::None
+                    });
 
                 return Task::batch([close_popup_task, spawn_task]);
             }
@@ -715,23 +691,11 @@ impl cosmic::Application for AppModel {
                     Task::none()
                 };
 
-                let font_size = self.config.font_size;
-                let opacity = self.config.hud_opacity;
-                let duration_ms = self.config.hud_duration_ms;
-                let position = self.config.hud_position.clone();
-                let offset_y = self.config.hud_offset_y;
+                let hud = self.hud.clone();
+                let style = style_message(&self.config);
                 let hud_task = Task::perform(
-                    async move {
-                        ensure_hud_running_and_styled(
-                            font_size,
-                            opacity,
-                            duration_ms,
-                            &position,
-                            offset_y,
-                        )
-                        .await;
-                    },
-                    |_| cosmic::Action::None,
+                    async move { hud.ensure_running_with_style(style).await },
+                    |()| cosmic::Action::None,
                 );
                 return Task::batch([ocr_task, hud_task]);
             }
@@ -748,13 +712,7 @@ impl cosmic::Application for AppModel {
                 } else {
                     Task::none()
                 };
-                let quit_task = Task::perform(
-                    async move {
-                        let client = HudIpcClient::default_client();
-                        let _ = client.send(&HudMessage::Quit).await;
-                    },
-                    |_| cosmic::Action::None,
-                );
+                let quit_task = self.hud.send_task(HudMessage::Quit);
                 return Task::batch([quit_task, close_task]);
             }
 
@@ -772,13 +730,7 @@ impl cosmic::Application for AppModel {
                 ShortcutAction::ToggleHud => {
                     self.hud_visible = !self.hud_visible;
                     let visible = self.hud_visible;
-                    return Task::perform(
-                        async move {
-                            let client = HudIpcClient::default_client();
-                            let _ = client.send(&HudMessage::SetVisible { visible }).await;
-                        },
-                        |_| cosmic::Action::None,
-                    );
+                    return self.hud.send_task(HudMessage::SetVisible { visible });
                 }
                 ShortcutAction::TranslateCurrentScreen => {
                     return self.update(Message::OneShotTranslate);
@@ -825,20 +777,10 @@ impl cosmic::Application for AppModel {
                 SettingsMessage::HudPositionChanged(pos) => {
                     self.config.hud_position = pos.clone();
                     self.save_config();
-                    let hud_pos = hud_position_from_str(&pos);
-                    let offset_y = self.config.hud_offset_y;
-                    return Task::perform(
-                        async move {
-                            let client = HudIpcClient::default_client();
-                            let _ = client
-                                .send(&HudMessage::SetPosition {
-                                    position: hud_pos,
-                                    offset_y,
-                                })
-                                .await;
-                        },
-                        |_| cosmic::Action::None,
-                    );
+                    return self.hud.send_task(HudMessage::SetPosition {
+                        position: services::hud::position_from_str(&pos),
+                        offset_y: self.config.hud_offset_y,
+                    });
                 }
                 SettingsMessage::HudPersistentToggled(persistent) => {
                     self.config.hud_persistent = persistent;
@@ -849,38 +791,12 @@ impl cosmic::Application for AppModel {
                     }
                     self.save_config();
                     self.restart_orchestrator_if_active();
-                    let msg = HudMessage::UpdateStyle {
-                        font_size: self.config.font_size,
-                        opacity: (self.config.hud_opacity as f32) / 100.0,
-                        duration_ms: self.config.hud_duration_ms,
-                        position: hud_position_from_str(&self.config.hud_position),
-                        offset_y: self.config.hud_offset_y,
-                    };
-                    return Task::perform(
-                        async move {
-                            let client = HudIpcClient::default_client();
-                            let _ = client.send(&msg).await;
-                        },
-                        |_| cosmic::Action::None,
-                    );
+                    return self.hud.send_task(style_message(&self.config));
                 }
                 SettingsMessage::HudOffsetYChanged(offset) => {
                     self.config.hud_offset_y = offset;
                     self.save_config();
-                    let msg = HudMessage::UpdateStyle {
-                        font_size: self.config.font_size,
-                        opacity: (self.config.hud_opacity as f32) / 100.0,
-                        duration_ms: self.config.hud_duration_ms,
-                        position: hud_position_from_str(&self.config.hud_position),
-                        offset_y: offset,
-                    };
-                    return Task::perform(
-                        async move {
-                            let client = HudIpcClient::default_client();
-                            let _ = client.send(&msg).await;
-                        },
-                        |_| cosmic::Action::None,
-                    );
+                    return self.hud.send_task(style_message(&self.config));
                 }
                 SettingsMessage::DeepLApiKeyChanged(key) => {
                     self.config.deepl_api_key = key;
@@ -982,97 +898,45 @@ impl cosmic::Application for AppModel {
                 SettingsMessage::FontSizeChanged(size) => {
                     self.config.font_size = size;
                     self.save_config();
-                    let msg = HudMessage::UpdateStyle {
-                        font_size: size,
-                        opacity: (self.config.hud_opacity as f32) / 100.0,
-                        duration_ms: self.config.hud_duration_ms,
-                        position: hud_position_from_str(&self.config.hud_position),
-                        offset_y: self.config.hud_offset_y,
-                    };
-                    return Task::perform(
-                        async move {
-                            let client = HudIpcClient::default_client();
-                            let _ = client.send(&msg).await;
-                        },
-                        |_| cosmic::Action::None,
-                    );
+                    return self.hud.send_task(style_message(&self.config));
                 }
                 SettingsMessage::OpacityChanged(opacity) => {
                     self.config.hud_opacity = opacity;
                     self.save_config();
-                    let msg = HudMessage::UpdateStyle {
-                        font_size: self.config.font_size,
-                        opacity: (opacity as f32) / 100.0,
-                        duration_ms: self.config.hud_duration_ms,
-                        position: hud_position_from_str(&self.config.hud_position),
-                        offset_y: self.config.hud_offset_y,
-                    };
-                    return Task::perform(
-                        async move {
-                            let client = HudIpcClient::default_client();
-                            let _ = client.send(&msg).await;
-                        },
-                        |_| cosmic::Action::None,
-                    );
+                    return self.hud.send_task(style_message(&self.config));
                 }
                 SettingsMessage::DurationChanged(dur) => {
                     self.config.hud_duration_ms = dur;
                     self.save_config();
                     self.restart_orchestrator_if_active();
-                    let msg = HudMessage::UpdateStyle {
-                        font_size: self.config.font_size,
-                        opacity: (self.config.hud_opacity as f32) / 100.0,
-                        duration_ms: dur,
-                        position: hud_position_from_str(&self.config.hud_position),
-                        offset_y: self.config.hud_offset_y,
-                    };
-                    return Task::perform(
-                        async move {
-                            let client = HudIpcClient::default_client();
-                            let _ = client.send(&msg).await;
-                        },
-                        |_| cosmic::Action::None,
-                    );
+                    return self.hud.send_task(style_message(&self.config));
                 }
                 SettingsMessage::TestHudRequested => {
-                    let font_size = self.config.font_size;
-                    let opacity = self.config.hud_opacity;
-                    let dur = self.config.hud_duration_ms;
-                    let pos = self.config.hud_position.clone();
-                    let offset_y = self.config.hud_offset_y;
+                    let hud = self.hud.clone();
+                    let style = style_message(&self.config);
+                    let duration_ms = self.config.hud_duration_ms;
                     return Task::perform(
                         async move {
-                            ensure_hud_running_and_styled(font_size, opacity, dur, &pos, offset_y)
-                                .await;
-                            let client = HudIpcClient::default_client();
-                            let test_text = fl!("test-subtitle-content");
-                            let _ = client
-                                .send(&HudMessage::ShowSubtitle {
-                                    text: test_text,
-                                    original: Some("Test Subtitle".to_string()),
-                                    duration_ms: dur,
-                                })
-                                .await;
+                            hud.ensure_running_with_style(style).await;
+                            hud.send(&HudMessage::ShowSubtitle {
+                                text: fl!("test-subtitle-content"),
+                                original: Some("Test Subtitle".to_string()),
+                                duration_ms,
+                            })
+                            .await;
                         },
-                        |_| cosmic::Action::None,
+                        |()| cosmic::Action::None,
                     );
                 }
                 SettingsMessage::StartInteractivePositioning => {
-                    let font_size = self.config.font_size;
-                    let opacity = self.config.hud_opacity;
-                    let dur = self.config.hud_duration_ms;
-                    let pos = self.config.hud_position.clone();
-                    let offset_y = self.config.hud_offset_y;
+                    let hud = self.hud.clone();
+                    let style = style_message(&self.config);
                     return Task::perform(
                         async move {
-                            ensure_hud_running_and_styled(font_size, opacity, dur, &pos, offset_y)
-                                .await;
-                            let client = HudIpcClient::default_client();
-                            let _ = client
-                                .send(&HudMessage::SetEditMode { edit_mode: true })
-                                .await;
+                            hud.ensure_running_with_style(style).await;
+                            hud.send(&HudMessage::SetEditMode { edit_mode: true }).await;
                         },
-                        |_| cosmic::Action::None,
+                        |()| cosmic::Action::None,
                     );
                 }
                 SettingsMessage::GlossarySourceChanged(s) => {
@@ -1145,97 +1009,19 @@ impl cosmic::Application for AppModel {
             }
 
             Message::SelectRoiRequested => {
-                let bin = overlay_binary_path();
-                let requester = self
-                    .capture_session
-                    .as_ref()
-                    .map(|s| s.snapshot_requester());
-
-                return Task::perform(
-                    async move {
-                        let full_snapshot = if let Some(req) = requester {
-                            req.get_full_snapshot().await
-                        } else {
-                            None
-                        };
-
-                        let preview_path = if let Some(img) = full_snapshot {
-                            let path = std::env::temp_dir().join(format!(
-                                "cosmic-ext-translator-full-{}.bmp",
-                                std::process::id()
-                            ));
-                            if img.save_with_format(&path, image::ImageFormat::Bmp).is_ok() {
-                                Some(path)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-
-                        let mut cmd = tokio::process::Command::new(bin);
-                        cmd.arg("--selector");
-                        if let Some(ref p) = preview_path {
-                            cmd.arg(p);
-                        }
-                        let output = cmd.output().await;
-                        if let Some(ref p) = preview_path {
-                            let _ = std::fs::remove_file(p);
-                        }
-                        if let Ok(out) = output {
-                            let stdout_str = String::from_utf8_lossy(&out.stdout);
-                            for line in stdout_str.lines() {
-                                if let Some(json_str) = line.strip_prefix("ROI_SELECTED:") {
-                                    #[derive(serde::Deserialize)]
-                                    struct SelectedPayload {
-                                        x: u32,
-                                        y: u32,
-                                        width: u32,
-                                        height: u32,
-                                        surface_width: Option<u32>,
-                                        surface_height: Option<u32>,
-                                    }
-                                    if let Ok(p) = serde_json::from_str::<SelectedPayload>(json_str)
-                                    {
-                                        let roi = Roi::new(p.x, p.y, p.width, p.height);
-                                        return Message::RoiSelectedWithSurface {
-                                            roi,
-                                            surface_width: p.surface_width,
-                                            surface_height: p.surface_height,
-                                        };
-                                    }
-                                }
-                            }
-                        }
-                        Message::RoiSelectionCancelled
-                    },
-                    cosmic::Action::from,
-                );
+                return self.run_region_selector(RegionKind::Capture);
             }
 
-            Message::RoiSelectedWithSurface {
-                roi,
-                surface_width,
-                surface_height,
-            } => {
-                let effective_roi = if let (Some(sw), Some(sh), Some(ref session)) =
-                    (surface_width, surface_height, &self.capture_session)
-                {
-                    if let Some(frame) = session.frame_receiver.borrow().as_ref() {
-                        let scaled =
-                            roi.scale_to_frame(sw, sh, frame.original_width, frame.original_height);
-                        info!(
-                            "Scaled ROI from surface ({sw}x{sh}) to frame ({}x{}): {:?}",
-                            frame.original_width, frame.original_height, scaled
-                        );
-                        scaled
-                    } else {
-                        roi
-                    }
-                } else {
-                    roi
+            Message::RegionSelectorFinished(kind, output) => {
+                let Some(output) = output else {
+                    info!("{kind:?} region selection was cancelled");
+                    return Task::none();
                 };
-                return self.update(Message::RoiSelected(effective_roi));
+                let roi = self.selection_in_frame_coordinates(output);
+                return self.update(match kind {
+                    RegionKind::Capture => Message::RoiSelected(roi),
+                    RegionKind::Ignore => Message::IgnoreRoiSelected(roi),
+                });
             }
 
             Message::RoiSelected(roi) => {
@@ -1250,102 +1036,8 @@ impl cosmic::Application for AppModel {
                 }
             }
 
-            Message::RoiSelectionCancelled => {
-                info!("ROI selection was cancelled");
-            }
-
             Message::SelectIgnoreRoiRequested => {
-                let bin = overlay_binary_path();
-                let requester = self
-                    .capture_session
-                    .as_ref()
-                    .map(|s| s.snapshot_requester());
-
-                return Task::perform(
-                    async move {
-                        let full_snapshot = if let Some(req) = requester {
-                            req.get_full_snapshot().await
-                        } else {
-                            None
-                        };
-
-                        let preview_path = if let Some(img) = full_snapshot {
-                            let path = std::env::temp_dir().join(format!(
-                                "cosmic-ext-translator-ignore-{}.bmp",
-                                std::process::id()
-                            ));
-                            if img.save_with_format(&path, image::ImageFormat::Bmp).is_ok() {
-                                Some(path)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-
-                        let mut cmd = tokio::process::Command::new(bin);
-                        cmd.arg("--selector");
-                        if let Some(ref p) = preview_path {
-                            cmd.arg(p);
-                        }
-                        let output = cmd.output().await;
-                        if let Some(ref p) = preview_path {
-                            let _ = std::fs::remove_file(p);
-                        }
-                        if let Ok(out) = output {
-                            let stdout_str = String::from_utf8_lossy(&out.stdout);
-                            for line in stdout_str.lines() {
-                                if let Some(json_str) = line.strip_prefix("ROI_SELECTED:") {
-                                    #[derive(serde::Deserialize)]
-                                    struct SelectedPayload {
-                                        x: u32,
-                                        y: u32,
-                                        width: u32,
-                                        height: u32,
-                                        surface_width: Option<u32>,
-                                        surface_height: Option<u32>,
-                                    }
-                                    if let Ok(p) = serde_json::from_str::<SelectedPayload>(json_str)
-                                    {
-                                        let roi = Roi::new(p.x, p.y, p.width, p.height);
-                                        return Message::IgnoreRoiSelectedWithSurface {
-                                            roi,
-                                            surface_width: p.surface_width,
-                                            surface_height: p.surface_height,
-                                        };
-                                    }
-                                }
-                            }
-                        }
-                        Message::IgnoreRoiSelectionCancelled
-                    },
-                    cosmic::Action::from,
-                );
-            }
-
-            Message::IgnoreRoiSelectedWithSurface {
-                roi,
-                surface_width,
-                surface_height,
-            } => {
-                let effective_roi = if let (Some(sw), Some(sh), Some(ref session)) =
-                    (surface_width, surface_height, &self.capture_session)
-                {
-                    if let Some(frame) = session.frame_receiver.borrow().as_ref() {
-                        let scaled =
-                            roi.scale_to_frame(sw, sh, frame.original_width, frame.original_height);
-                        info!(
-                            "Scaled Ignore ROI from surface ({sw}x{sh}) to frame ({}x{}): {:?}",
-                            frame.original_width, frame.original_height, scaled
-                        );
-                        scaled
-                    } else {
-                        roi
-                    }
-                } else {
-                    roi
-                };
-                return self.update(Message::IgnoreRoiSelected(effective_roi));
+                return self.run_region_selector(RegionKind::Ignore);
             }
 
             Message::IgnoreRoiSelected(roi) => {
@@ -1358,10 +1050,6 @@ impl cosmic::Application for AppModel {
                     session.update_region(region);
                 }
                 self.restart_orchestrator_if_active();
-            }
-
-            Message::IgnoreRoiSelectionCancelled => {
-                info!("Ignore ROI selection was cancelled");
             }
 
             Message::ClearIgnoreRoi => {
@@ -1438,6 +1126,7 @@ impl cosmic::Application for AppModel {
                 let blur_subtraction = self.config.blur_subtraction;
                 let glossary = self.config.glossary.clone();
                 let hud_duration = self.config.hud_duration_ms;
+                let hud = self.hud.clone();
                 let ollama_ep = self.config.ollama_endpoint.clone();
                 let ollama_model = self.config.ollama_model.clone();
                 let deepl_key = self.config.deepl_api_key.clone();
@@ -1493,14 +1182,12 @@ impl cosmic::Application for AppModel {
                             .await
                         {
                             Ok(translated) => {
-                                let client = HudIpcClient::default_client();
-                                let _ = client
-                                    .send(&HudMessage::ShowSubtitle {
-                                        text: translated.clone(),
-                                        original: Some(text.clone()),
-                                        duration_ms: hud_duration,
-                                    })
-                                    .await;
+                                hud.send(&HudMessage::ShowSubtitle {
+                                    text: translated.clone(),
+                                    original: Some(text.clone()),
+                                    duration_ms: hud_duration,
+                                })
+                                .await;
                                 Message::OneShotCompleted(Some((text, translated)))
                             }
                             Err(err) => {
@@ -1527,11 +1214,8 @@ impl cosmic::Application for AppModel {
             Message::ToggleCapture(true) => {
                 self.capture_active = true;
 
-                let font_size = self.config.font_size;
-                let opacity = self.config.hud_opacity;
-                let duration_ms = self.config.hud_duration_ms;
-                let position = self.config.hud_position.clone();
-                let offset_y = self.config.hud_offset_y;
+                let hud = self.hud.clone();
+                let style = style_message(&self.config);
                 let restore_token = self.config.restore_token.clone();
                 let preset = RoiPreset::from_str_name(&self.config.preset);
                 let region =
@@ -1539,14 +1223,7 @@ impl cosmic::Application for AppModel {
 
                 return Task::perform(
                     async move {
-                        ensure_hud_running_and_styled(
-                            font_size,
-                            opacity,
-                            duration_ms,
-                            &position,
-                            offset_y,
-                        )
-                        .await;
+                        hud.ensure_running_with_style(style).await;
                         let session =
                             match CaptureSession::start(restore_token.as_deref(), true, region)
                                 .await
@@ -1598,15 +1275,7 @@ impl cosmic::Application for AppModel {
                         Some(HudStatus::OcrUnavailable { reason })
                     }
                 };
-                return Task::perform(
-                    async move {
-                        let client = HudIpcClient::default_client();
-                        if let Err(err) = client.send(&HudMessage::SetHudStatus { status }).await {
-                            debug!("HUD status send failed: {err}");
-                        }
-                    },
-                    |_| cosmic::Action::None,
-                );
+                return self.hud.send_task(HudMessage::SetHudStatus { status });
             }
 
             Message::CaptureFailed(err) => {
@@ -1631,13 +1300,13 @@ impl cosmic::Application for AppModel {
                 }
                 self.reset_ocr_backend();
                 return Task::perform(
-                    async move {
-                        let client = HudIpcClient::default_client();
-                        let _ = client.send(&HudMessage::ClearSubtitle).await;
-                        let _ = client
-                            .send(&HudMessage::SetHudStatus { status: None })
-                            .await;
-                        Message::HudCleared
+                    {
+                        let hud = self.hud.clone();
+                        async move {
+                            hud.send(&HudMessage::ClearSubtitle).await;
+                            hud.send(&HudMessage::SetHudStatus { status: None }).await;
+                            Message::HudCleared
+                        }
                     },
                     cosmic::Action::from,
                 );
@@ -1782,17 +1451,7 @@ impl Drop for AppModel {
         if let Some(mut session) = self.capture_session.take() {
             let _ = session.stop();
         }
-        let client = HudIpcClient::default_client();
-        let _ = std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build();
-            if let Ok(runtime) = rt {
-                runtime.block_on(async {
-                    let _ = client.send(&HudMessage::Quit).await;
-                });
-            }
-        });
+        self.hud.quit_detached();
     }
 }
 
@@ -1802,31 +1461,6 @@ fn ocr_settings_differ(a: &Config, b: &Config) -> bool {
         || OrientationMode::from_code(&a.ocr_orientation)
             != OrientationMode::from_code(&b.ocr_orientation)
         || OcrEngineChoice::from_code(&a.ocr_engine) != OcrEngineChoice::from_code(&b.ocr_engine)
-}
-
-fn overlay_binary_path() -> std::path::PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let candidate = parent.join("cosmic-translator-overlay");
-            if candidate.exists() {
-                return candidate;
-            }
-        }
-    }
-    let target_debug = std::path::PathBuf::from("target/debug/cosmic-translator-overlay");
-    if target_debug.exists() {
-        return target_debug;
-    }
-    std::path::PathBuf::from("cosmic-translator-overlay")
-}
-
-fn applet_binary_path() -> std::path::PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if exe.is_file() {
-            return exe;
-        }
-    }
-    std::path::PathBuf::from("cosmic-applet-translator")
 }
 
 #[cfg(test)]

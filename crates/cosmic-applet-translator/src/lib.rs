@@ -2,6 +2,7 @@ pub mod app;
 pub mod config;
 pub mod history;
 pub mod i18n;
+pub mod services;
 pub mod settings_dialog;
 
 pub use app::{AppModel, Message};

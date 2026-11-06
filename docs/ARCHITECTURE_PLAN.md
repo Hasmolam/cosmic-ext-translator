@@ -231,10 +231,18 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   the `cjk-ocr-layout` public API. While `Roi` is in a dependency-free module it adds
   churn without removing a dependency.
 
-**A2. Applet services.**
-- Add `services::hud::HudClient` and route all 15 call sites through it.
-- Add `services::selector` and remove the duplicated selector flow. Define the selector
-  output as a typed struct shared with the overlay.
+**A2. Applet services.** Done.
+- `services::HudService` is the only HUD client in the applet (a field of `AppModel`).
+  It owns auto-spawn, style updates (`style_message(&Config)`) and the detached `Quit`
+  on drop. Delivery failures are logged at debug level instead of being discarded.
+- `services::selector::select_region(RegionKind, snapshot)` replaces the two copied
+  selector blocks. Four messages (`RoiSelectedWithSurface`, `RoiSelectionCancelled`,
+  `IgnoreRoiSelectedWithSurface`, `IgnoreRoiSelectionCancelled`) became one
+  `RegionSelectorFinished(RegionKind, Option<SelectorOutput>)`.
+- `translator_core::ipc::SelectorOutput` defines the `ROI_SELECTED:` line; the overlay
+  writes it and the applet parses it. The line format is unchanged.
+- `services::process` holds executable lookup and the settings-window launch.
+- `app.rs`: 1880 -> 1514 lines.
 
 **A3. Applet modules.**
 - Move settings tabs into `settings/<page>.rs` with page messages.
