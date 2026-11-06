@@ -1,14 +1,14 @@
-use std::os::fd::OwnedFd;
-use std::sync::{Arc, RwLock};
-use std::time::Instant;
 use image::RgbaImage;
 use pipewire as pw;
 use pw::spa;
 use spa::pod::Pod;
+use std::os::fd::OwnedFd;
+use std::sync::{Arc, RwLock};
+use std::time::Instant;
 use tracing::{debug, info, warn};
 
-use crate::error::{CaptureError, Result};
 use super::roi::{CaptureRegion, Roi, RoiPreset};
+use crate::error::{CaptureError, Result};
 
 #[derive(Clone, Debug)]
 pub struct CapturedFrame {
@@ -43,7 +43,8 @@ pub struct SnapshotRequester {
 impl SnapshotRequester {
     pub async fn get_full_snapshot(&self) -> Option<RgbaImage> {
         let mut rx = self.snapshot_receiver.clone();
-        self.snapshot_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.snapshot_requested
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         tokio::time::timeout(std::time::Duration::from_millis(1500), async {
             loop {
                 if rx.changed().await.is_err() {
@@ -73,7 +74,9 @@ impl PipewireCaptureHandle {
         if let Ok(mut current) = self.region.write() {
             *current = region;
         }
-        let _ = self.command_sender.send(PipewireCommand::UpdateRegion(region));
+        let _ = self
+            .command_sender
+            .send(PipewireCommand::UpdateRegion(region));
     }
 
     pub fn update_roi(&self, roi: Option<Roi>) {
@@ -94,7 +97,9 @@ impl PipewireCaptureHandle {
         if let Ok(mut current) = self.region.write() {
             current.ignore_roi = ignore_roi;
             let region = *current;
-            let _ = self.command_sender.send(PipewireCommand::UpdateRegion(region));
+            let _ = self
+                .command_sender
+                .send(PipewireCommand::UpdateRegion(region));
         }
     }
 
@@ -295,22 +300,31 @@ fn run_pipewire_loop(
             };
 
             // 1. If a full snapshot was requested (for full game region picker), capture it immediately!
-            if user_data.snapshot_requested.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            if user_data
+                .snapshot_requested
+                .swap(false, std::sync::atomic::Ordering::SeqCst)
+            {
                 let full_roi = Roi::new(0, 0, frame_w, frame_h);
-                if let Ok(full_img) = full_roi.crop_to_rgba(slice, frame_w, frame_h, effective_stride, is_bgr) {
+                if let Ok(full_img) =
+                    full_roi.crop_to_rgba(slice, frame_w, frame_h, effective_stride, is_bgr)
+                {
                     let _ = user_data.snapshot_sender.send(Some(full_img));
                 }
             }
 
             // 2. Throttle frame processing to max 20 FPS (50ms interval).
             let now = Instant::now();
-            if now.duration_since(user_data.last_capture_time) < std::time::Duration::from_millis(50) {
+            if now.duration_since(user_data.last_capture_time)
+                < std::time::Duration::from_millis(50)
+            {
                 return;
             }
             user_data.last_capture_time = now;
 
             let region = user_data.region.read().ok().map(|r| *r).unwrap_or_default();
-            let target_roi = region.compute(frame_w, frame_h).unwrap_or_else(|| Roi::new(0, 0, frame_w, frame_h));
+            let target_roi = region
+                .compute(frame_w, frame_h)
+                .unwrap_or_else(|| Roi::new(0, 0, frame_w, frame_h));
 
             match target_roi.crop_to_rgba(slice, frame_w, frame_h, effective_stride, is_bgr) {
                 Ok(mut image) => {

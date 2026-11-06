@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Supported bracket styles for visual novel and RPG speaker nameplates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

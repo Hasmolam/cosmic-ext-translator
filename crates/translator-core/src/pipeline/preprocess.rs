@@ -65,7 +65,12 @@ pub fn preprocess_for_ocr(image: &RgbaImage, config: &PreprocessConfig) -> GrayI
     let gray_scaled = if should_scale {
         let new_w = ((image.width() as f32) * config.scale_factor).round() as u32;
         let new_h = ((image.height() as f32) * config.scale_factor).round() as u32;
-        image::imageops::resize(&gray_base, new_w.max(1), new_h.max(1), FilterType::CatmullRom)
+        image::imageops::resize(
+            &gray_base,
+            new_w.max(1),
+            new_h.max(1),
+            FilterType::CatmullRom,
+        )
     } else {
         gray_base
     };
@@ -208,7 +213,10 @@ mod tests {
         }
 
         let threshold = compute_otsu_threshold(&img);
-        assert!((30..=220).contains(&threshold), "Otsu threshold should be between peaks: {threshold}");
+        assert!(
+            (30..=220).contains(&threshold),
+            "Otsu threshold should be between peaks: {threshold}"
+        );
     }
 
     #[test]
@@ -221,12 +229,15 @@ mod tests {
             }
         }
 
-        let processed = preprocess_for_ocr(&img, &PreprocessConfig {
-            scale_factor: 1.0,
-            binarize: true,
-            auto_invert: true,
-            ..Default::default()
-        });
+        let processed = preprocess_for_ocr(
+            &img,
+            &PreprocessConfig {
+                scale_factor: 1.0,
+                binarize: true,
+                auto_invert: true,
+                ..Default::default()
+            },
+        );
 
         // Background should be inverted to white (255)
         assert_eq!(processed.get_pixel(0, 0)[0], 255);
@@ -251,15 +262,26 @@ mod tests {
         // Compute baseline variance of raw gradient
         let n = (w * h) as f64;
         let mean_orig: f64 = grad_img.pixels().map(|p| p[0] as f64).sum::<f64>() / n;
-        let var_orig: f64 = grad_img.pixels().map(|p| (p[0] as f64 - mean_orig).powi(2)).sum::<f64>() / n;
-        assert!(var_orig > 3000.0, "Raw gradient should have high variance: {var_orig}");
+        let var_orig: f64 = grad_img
+            .pixels()
+            .map(|p| (p[0] as f64 - mean_orig).powi(2))
+            .sum::<f64>()
+            / n;
+        assert!(
+            var_orig > 3000.0,
+            "Raw gradient should have high variance: {var_orig}"
+        );
 
         // Apply high-pass blur subtraction
         let filtered = subtract_blur(&grad_img, 2.5);
 
         // Compute variance after high-pass filtering
         let mean_filt: f64 = filtered.pixels().map(|p| p[0] as f64).sum::<f64>() / n;
-        let var_filt: f64 = filtered.pixels().map(|p| (p[0] as f64 - mean_filt).powi(2)).sum::<f64>() / n;
+        let var_filt: f64 = filtered
+            .pixels()
+            .map(|p| (p[0] as f64 - mean_filt).powi(2))
+            .sum::<f64>()
+            / n;
 
         // Gradient variance must be attenuated by >99.9% (below 5.0)
         assert!(
@@ -298,12 +320,21 @@ mod tests {
 
         // Stroke must stand out significantly above the 128 baseline
         assert!(stroke_val >= 200, "Stroke value must be high: {stroke_val}");
-        assert!((126..=130).contains(&left_bg_val), "Left background should be ~128: {left_bg_val}");
-        assert!((126..=130).contains(&right_bg_val), "Right background should be ~128: {right_bg_val}");
+        assert!(
+            (126..=130).contains(&left_bg_val),
+            "Left background should be ~128: {left_bg_val}"
+        );
+        assert!(
+            (126..=130).contains(&right_bg_val),
+            "Right background should be ~128: {right_bg_val}"
+        );
 
         // Contrast between stroke and background must exceed 70 gray levels
         let contrast = (stroke_val as i32) - (left_bg_val as i32);
-        assert!(contrast >= 70, "Contrast retention must be >= 70: {contrast}");
+        assert!(
+            contrast >= 70,
+            "Contrast retention must be >= 70: {contrast}"
+        );
     }
 
     #[test]

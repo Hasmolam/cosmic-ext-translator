@@ -2,10 +2,10 @@ pub mod debouncer;
 pub mod phash;
 pub mod preprocess;
 
+use image::DynamicImage;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use image::DynamicImage;
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info};
 
@@ -137,9 +137,9 @@ pub fn spawn_recognition_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
     use crate::ocr::MockOcrBackend;
     use image::{Rgba, RgbaImage};
+    use std::time::Duration;
 
     fn make_frame_with_blocks(num_blocks: u32) -> CapturedFrame {
         let mut img = RgbaImage::from_pixel(100, 50, Rgba([0, 0, 0, 255]));
@@ -162,11 +162,8 @@ mod tests {
     #[tokio::test]
     async fn test_end_to_end_pipeline() {
         let (frame_sender, frame_receiver) = watch::channel(None);
-        let debouncer = FrameDebouncer::new(
-            2,
-            Duration::from_millis(50),
-            Duration::from_millis(500),
-        );
+        let debouncer =
+            FrameDebouncer::new(2, Duration::from_millis(50), Duration::from_millis(500));
         let ocr_backend = Arc::new(MockOcrBackend::new("Test Dialogue"));
 
         let (mut handle, mut event_receiver) = spawn_recognition_pipeline(
@@ -191,7 +188,10 @@ mod tests {
 
         // 5. Check if event was received
         let event = tokio::time::timeout(Duration::from_millis(500), event_receiver.recv()).await;
-        assert!(event.is_ok(), "Pipeline should emit recognized event within timeout");
+        assert!(
+            event.is_ok(),
+            "Pipeline should emit recognized event within timeout"
+        );
         let recognized = event.unwrap().unwrap();
         assert_eq!(recognized.text, "Test Dialogue");
 

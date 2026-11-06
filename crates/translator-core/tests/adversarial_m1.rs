@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use image::{Rgba, RgbaImage};
+use std::time::{Duration, Instant};
 use translator_core::capture::roi::Roi;
 use translator_core::pipeline::debouncer::{TextDiffAction, TextGate};
 
@@ -76,7 +76,10 @@ fn test_adversarial_typewriter_variable_pauses_and_duplicates() {
     let t0 = Instant::now();
 
     // Character typing with variable pauses
-    assert_eq!(gate.evaluate_at("Hold", t0), TextDiffAction::EmitTranslation);
+    assert_eq!(
+        gate.evaluate_at("Hold", t0),
+        TextDiffAction::EmitTranslation
+    );
 
     // Quick typing (15ms)
     assert_eq!(
@@ -111,10 +114,7 @@ fn test_adversarial_typewriter_variable_pauses_and_duplicates() {
     );
 
     // Settle timeout passed: flushed
-    assert_eq!(
-        gate.flush_pending(),
-        Some("Hold on, wait!".to_string())
-    );
+    assert_eq!(gate.flush_pending(), Some("Hold on, wait!".to_string()));
 }
 
 #[test]
@@ -140,7 +140,10 @@ fn test_adversarial_typewriter_japanese_multibyte_stream() {
     ];
 
     // Initial character
-    assert_eq!(gate.evaluate_at(japanese_steps[0], t0), TextDiffAction::EmitTranslation);
+    assert_eq!(
+        gate.evaluate_at(japanese_steps[0], t0),
+        TextDiffAction::EmitTranslation
+    );
 
     // All subsequent characters must be TypewriterWait
     for (idx, step) in japanese_steps[1..].iter().enumerate() {
@@ -392,7 +395,10 @@ fn test_adversarial_mask_region_extreme_bounds_and_overflow() {
                 }
             }
         }
-        assert_eq!(masked_count, 50, "Expected exactly 50 masked pixels for 1x50 strip");
+        assert_eq!(
+            masked_count, 50,
+            "Expected exactly 50 masked pixels for 1x50 strip"
+        );
 
         // 1-pixel horizontal strip at y = 125
         let ignore_horiz = Roi::new(100, 125, 50, 1);
@@ -408,7 +414,10 @@ fn test_adversarial_mask_region_extreme_bounds_and_overflow() {
                 }
             }
         }
-        assert_eq!(masked_horiz_count, 50, "Expected exactly 50 masked pixels for 50x1 strip");
+        assert_eq!(
+            masked_horiz_count, 50,
+            "Expected exactly 50 masked pixels for 50x1 strip"
+        );
 
         // 1-pixel single pixel at (115, 115)
         let ignore_single = Roi::new(115, 115, 1, 1);
@@ -499,7 +508,9 @@ fn test_adversarial_mask_region_random_fuzzing() {
     // Pseudo-random linear congruential generator for reproducible deterministic fuzzing
     let mut state: u64 = 0xDEADBEEFCAFEBABE;
     let mut next_u32 = || -> u32 {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (state >> 32) as u32
     };
 
@@ -604,15 +615,24 @@ fn test_adversarial_typewriter_resume_after_flush() {
     let t0 = Instant::now();
 
     // Turn 1 starts typing
-    assert_eq!(gate.evaluate_at("First sentence part 1", t0), TextDiffAction::EmitTranslation);
     assert_eq!(
-        gate.evaluate_at("First sentence part 1 and part 2", t0 + Duration::from_millis(50)),
+        gate.evaluate_at("First sentence part 1", t0),
+        TextDiffAction::EmitTranslation
+    );
+    assert_eq!(
+        gate.evaluate_at(
+            "First sentence part 1 and part 2",
+            t0 + Duration::from_millis(50)
+        ),
         TextDiffAction::TypewriterWait
     );
 
     // Settle timeout expires, flushed to HUD
     let flushed = gate.flush_pending();
-    assert_eq!(flushed, Some("First sentence part 1 and part 2".to_string()));
+    assert_eq!(
+        flushed,
+        Some("First sentence part 1 and part 2".to_string())
+    );
     assert_eq!(gate.last_emitted_text(), "First sentence part 1 and part 2");
 
     // Game appends more text to the SAME dialogue without clearing:
@@ -627,4 +647,3 @@ fn test_adversarial_typewriter_resume_after_flush() {
 
     assert_eq!(gate.flush_pending(), Some(extended.to_string()));
 }
-

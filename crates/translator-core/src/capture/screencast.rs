@@ -1,11 +1,11 @@
-use std::os::fd::OwnedFd;
+use crate::error::{CaptureError, Result};
 use ashpd::desktop::screencast::{
     CursorMode, OpenPipeWireRemoteOptions, Screencast, SelectSourcesOptions, SourceType,
     StartCastOptions, Stream,
 };
 use ashpd::desktop::CreateSessionOptions;
 use ashpd::desktop::{PersistMode, Session};
-use crate::error::{CaptureError, Result};
+use std::os::fd::OwnedFd;
 
 pub struct ScreencastStreamInfo {
     pub node_id: u32,

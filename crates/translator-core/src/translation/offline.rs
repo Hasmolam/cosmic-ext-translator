@@ -1,6 +1,6 @@
+use crate::translation::{apply_glossary, BoxFuture, TranslationBackend, TranslationContext};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use crate::translation::{apply_glossary, BoxFuture, TranslationBackend, TranslationContext};
 
 /// Returns the default directory for offline translation models following XDG Base Directory specification.
 pub fn default_offline_model_dir() -> PathBuf {
@@ -77,8 +77,14 @@ impl OfflineTranslationBackend {
     pub fn is_model_available(&self) -> bool {
         let path = self.model_path();
         path.exists()
-            || self.model_dir.join(format!("{}.bin", self.model_name)).exists()
-            || self.model_dir.join(format!("{}.onnx", self.model_name)).exists()
+            || self
+                .model_dir
+                .join(format!("{}.bin", self.model_name))
+                .exists()
+            || self
+                .model_dir
+                .join(format!("{}.onnx", self.model_name))
+                .exists()
     }
 
     /// Registers a custom phrase or sentence translation rule.
@@ -151,7 +157,10 @@ mod tests {
         assert_eq!(res1, "Merhaba");
 
         // Substring rule and glossary replacement
-        let res2 = backend.translate("Hero says Hello!", "en", "tr", &ctx).await.unwrap();
+        let res2 = backend
+            .translate("Hero says Hello!", "en", "tr", &ctx)
+            .await
+            .unwrap();
         assert!(res2.contains("Kahraman"));
         assert!(res2.contains("Merhaba"));
     }
@@ -160,7 +169,10 @@ mod tests {
     fn test_offline_model_path_resolution() {
         let backend = OfflineTranslationBackend::new("marian-ja-en")
             .with_model_dir("/opt/models/translation");
-        assert_eq!(backend.model_path(), PathBuf::from("/opt/models/translation/marian-ja-en"));
+        assert_eq!(
+            backend.model_path(),
+            PathBuf::from("/opt/models/translation/marian-ja-en")
+        );
         assert!(!backend.is_model_available());
     }
 }

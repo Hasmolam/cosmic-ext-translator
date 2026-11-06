@@ -1,7 +1,9 @@
-use std::sync::Arc;
 use image::{DynamicImage, Rgba, RgbaImage};
+use std::sync::Arc;
 use translator_core::ocr::{MockOcrBackend, OcrBackend, OcrsBackend};
-use translator_core::pipeline::preprocess::{compute_otsu_threshold, preprocess_for_ocr, PreprocessConfig};
+use translator_core::pipeline::preprocess::{
+    compute_otsu_threshold, preprocess_for_ocr, PreprocessConfig,
+};
 
 /// Computes Character Error Rate (CER) using Levenshtein distance normalized by ground truth length.
 fn compute_cer(ground_truth: &str, predicted: &str) -> f64 {
@@ -136,9 +138,15 @@ fn test_cer_and_wer_metrics() {
     assert_eq!(compute_wer(gt, pred_exact), 0.0);
 
     let cer_minor = compute_cer(gt, pred_minor);
-    assert!(cer_minor > 0.0 && cer_minor < 0.05, "CER for 1 char: {cer_minor}");
+    assert!(
+        cer_minor > 0.0 && cer_minor < 0.05,
+        "CER for 1 char: {cer_minor}"
+    );
     let wer_minor = compute_wer(gt, pred_minor);
-    assert!(wer_minor > 0.0 && wer_minor <= 0.2, "WER for 1 word: {wer_minor}");
+    assert!(
+        wer_minor > 0.0 && wer_minor <= 0.2,
+        "WER for 1 word: {wer_minor}"
+    );
 
     let cer_major = compute_cer(gt, pred_major);
     assert!(cer_major > 0.4, "CER for major divergence: {cer_major}");
@@ -229,7 +237,14 @@ async fn test_real_ocrs_engine_execution() {
     };
 
     // A clean synthetic white image should yield empty recognized text cleanly
-    let blank = DynamicImage::ImageRgba8(RgbaImage::from_pixel(120, 60, Rgba([255, 255, 255, 255])));
-    let result = backend.recognize(&blank).await.expect("Inference should not panic on blank input");
-    assert!(result.is_empty(), "Blank image should produce empty OCR text");
+    let blank =
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(120, 60, Rgba([255, 255, 255, 255])));
+    let result = backend
+        .recognize(&blank)
+        .await
+        .expect("Inference should not panic on blank input");
+    assert!(
+        result.is_empty(),
+        "Blank image should produce empty OCR text"
+    );
 }

@@ -13,8 +13,7 @@ fn main() -> cosmic::iced::Result {
     if std::env::args().any(|arg| arg == "--applet") {
         cosmic::applet::run::<app::AppModel>(())
     } else {
-        let settings = cosmic::app::Settings::default()
-            .size(cosmic::iced::Size::new(900.0, 700.0));
+        let settings = cosmic::app::Settings::default().size(cosmic::iced::Size::new(900.0, 700.0));
         cosmic::app::run::<app::AppModel>(settings, ())
     }
 }

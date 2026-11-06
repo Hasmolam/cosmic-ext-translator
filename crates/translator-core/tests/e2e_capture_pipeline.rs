@@ -1,6 +1,6 @@
+use image::{Rgba, RgbaImage};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use image::{Rgba, RgbaImage};
 use tokio::sync::watch;
 use translator_core::capture::pipewire_thread::CapturedFrame;
 use translator_core::capture::roi::{CaptureRegion, Roi, RoiPreset};
@@ -114,7 +114,8 @@ async fn test_capture_region_presets_computation() {
     assert_eq!(b25_roi.height, 270);
 
     // Custom preset
-    let custom_preset = CaptureRegion::new(RoiPreset::Custom, Some(Roi::new(50, 60, 400, 200)), None);
+    let custom_preset =
+        CaptureRegion::new(RoiPreset::Custom, Some(Roi::new(50, 60, 400, 200)), None);
     let custom_roi = custom_preset.compute(screen_w, screen_h).unwrap();
     assert_eq!(custom_roi.x, 50);
     assert_eq!(custom_roi.y, 60);
@@ -127,11 +128,7 @@ async fn test_end_to_end_capture_to_hud_dispatch() {
     // 1. Set up watch channel simulating PipeWire frame stream
     let (frame_tx, frame_rx) = watch::channel(None);
 
-    let debouncer = FrameDebouncer::new(
-        2,
-        Duration::from_millis(50),
-        Duration::from_millis(1000),
-    );
+    let debouncer = FrameDebouncer::new(2, Duration::from_millis(50), Duration::from_millis(1000));
 
     let ocr_backend = Arc::new(MockOcrBackend::new("Enemy spotted ahead!"));
     let translation_backend = Arc::new(MockTranslationBackend::new("TEST_TR"));
@@ -191,7 +188,11 @@ async fn test_end_to_end_capture_to_hud_dispatch() {
         .expect("Channel closed");
 
     match event3 {
-        OrchestratorEvent::TranslationReady { original, translated, cached } => {
+        OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            cached,
+        } => {
             assert_eq!(original, "Enemy spotted ahead!");
             assert!(translated.contains("Enemy spotted ahead!"));
             assert!(!cached);

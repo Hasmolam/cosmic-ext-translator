@@ -1,8 +1,8 @@
-use std::time::Duration;
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     Anchor, KeyboardInteractivity, Layer,
 };
 use cosmic_translator_overlay::hud::SubtitleHudState;
+use std::time::Duration;
 use translator_core::ipc::{HudIpcClient, HudIpcServer, HudMessage};
 
 #[test]
@@ -14,10 +14,7 @@ fn test_hud_layer_shell_clickthrough_contract() {
     assert_eq!(settings.layer, Layer::Overlay);
 
     // 2. Must NEVER request keyboard focus (prevents focus stealing from games)
-    assert_eq!(
-        settings.keyboard_interactivity,
-        KeyboardInteractivity::None
-    );
+    assert_eq!(settings.keyboard_interactivity, KeyboardInteractivity::None);
 
     // 3. CRITICAL: input_zone must be Some(vec![])
     // In zwlr_layer_shell_v1, an empty region explicitly tells the compositor
@@ -40,7 +37,8 @@ fn test_hud_layer_shell_clickthrough_contract() {
 
 #[tokio::test]
 async fn test_hud_ipc_high_throughput_stress() {
-    let socket_path = std::env::temp_dir().join(format!("test-hud-stress-{}.sock", std::process::id()));
+    let socket_path =
+        std::env::temp_dir().join(format!("test-hud-stress-{}.sock", std::process::id()));
     let server = HudIpcServer::new(&socket_path);
     let mut server_rx = server.start().await.expect("IPC server should start");
 
@@ -73,7 +71,9 @@ async fn test_hud_ipc_high_throughput_stress() {
     let start = std::time::Instant::now();
 
     while received_count < total_messages && start.elapsed() < timeout {
-        if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(100), server_rx.recv()).await {
+        if let Ok(Some(msg)) =
+            tokio::time::timeout(Duration::from_millis(100), server_rx.recv()).await
+        {
             match msg {
                 HudMessage::ShowSubtitle { text, .. } => {
                     assert!(text.starts_with("Subtitle payload #"));
@@ -131,7 +131,8 @@ async fn test_hud_subtitle_sequence_race_condition() {
 
 #[tokio::test]
 async fn test_hud_styling_and_control_messages() {
-    let socket_path = std::env::temp_dir().join(format!("test-hud-ctrl-{}.sock", std::process::id()));
+    let socket_path =
+        std::env::temp_dir().join(format!("test-hud-ctrl-{}.sock", std::process::id()));
     let server = HudIpcServer::new(&socket_path);
     let mut server_rx = server.start().await.expect("Server must start");
     let client = HudIpcClient::new(&socket_path);
@@ -192,7 +193,10 @@ fn test_hud_status_badge_coexistence_with_subtitles() {
 
     // 2. Set status badge active
     hud.status_badge = Some("⏳ Rate Limited (HTTP 429): 20s remaining".to_string());
-    assert_eq!(hud.current_text, "Active dialogue text", "current_text must NOT be overwritten");
+    assert_eq!(
+        hud.current_text, "Active dialogue text",
+        "current_text must NOT be overwritten"
+    );
     assert_eq!(
         hud.status_badge.as_deref(),
         Some("⏳ Rate Limited (HTTP 429): 20s remaining")
@@ -203,7 +207,10 @@ fn test_hud_status_badge_coexistence_with_subtitles() {
 
     // 4. Deactivate status badge
     hud.status_badge = None;
-    assert_eq!(hud.current_text, "Active dialogue text", "current_text must remain intact when badge cleared");
+    assert_eq!(
+        hud.current_text, "Active dialogue text",
+        "current_text must remain intact when badge cleared"
+    );
     assert!(hud.status_badge.is_none());
 
     // 5. Render view with text only
@@ -214,4 +221,3 @@ fn test_hud_status_badge_coexistence_with_subtitles() {
     hud.status_badge = Some("Status only".to_string());
     let _ = hud.view(|_| ());
 }
-

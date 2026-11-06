@@ -118,6 +118,9 @@ mod tests {
         let h1 = dhash_64(&img1);
         let h2 = dhash_64(&img2);
         let dist = hamming_distance_64(h1, h2);
-        assert!(dist > 5, "Inverted patterns should have high distance: {dist}");
+        assert!(
+            dist > 5,
+            "Inverted patterns should have high distance: {dist}"
+        );
     }
 }

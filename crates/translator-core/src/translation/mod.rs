@@ -16,10 +16,10 @@ pub use openai::OpenAiTranslationBackend;
 pub use rate_limit::RateLimitManager;
 pub use speaker::{parse_speaker_tags, BracketStyle, ParsedDialogueLine};
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use serde::{Deserialize, Serialize};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 

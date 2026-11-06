@@ -159,7 +159,8 @@ impl SettingsState {
 
         if config.ignore_roi.is_some() {
             ignore_row = ignore_row.push(
-                button::destructive(fl!("clear-ignore-area")).on_press(SettingsMessage::ClearIgnoreRoi),
+                button::destructive(fl!("clear-ignore-area"))
+                    .on_press(SettingsMessage::ClearIgnoreRoi),
             );
         }
 
@@ -173,31 +174,28 @@ impl SettingsState {
                 fl!("custom-coords"),
                 row![
                     text(custom_coords),
-                    button::standard(fl!("draw-new-area")).on_press(SettingsMessage::SelectCustomRoi),
+                    button::standard(fl!("draw-new-area"))
+                        .on_press(SettingsMessage::SelectCustomRoi),
                 ]
                 .spacing(10)
                 .align_y(Alignment::Center),
             ))
-            .add(widget::settings::item(
-                fl!("ignore-roi"),
-                ignore_row,
-            ))
+            .add(widget::settings::item(fl!("ignore-roi"), ignore_row))
             .add(widget::settings::item(
                 fl!("otsu-binarization"),
                 widget::toggler(config.binarize).on_toggle(SettingsMessage::BinarizeToggled),
             ))
             .add(widget::settings::item(
                 fl!("blur-subtraction"),
-                widget::toggler(config.blur_subtraction).on_toggle(SettingsMessage::BlurSubtractionToggled),
+                widget::toggler(config.blur_subtraction)
+                    .on_toggle(SettingsMessage::BlurSubtractionToggled),
             ))
             .add(widget::settings::item(
                 fl!("settle-threshold"),
                 row![
-                    widget::slider(
-                        100..=1000,
-                        config.settle_duration_ms as u32,
-                        |val| SettingsMessage::SettleDurationChanged(val as u64),
-                    )
+                    widget::slider(100..=1000, config.settle_duration_ms as u32, |val| {
+                        SettingsMessage::SettleDurationChanged(val as u64)
+                    },)
                     .width(180),
                     text(format!("{} ms", config.settle_duration_ms)).size(14),
                 ]
@@ -404,8 +402,12 @@ impl SettingsState {
             .add(widget::settings::item(
                 fl!("hud-vertical-offset"),
                 row![
-                    widget::slider(0..=300, config.hud_offset_y, SettingsMessage::HudOffsetYChanged)
-                        .width(180),
+                    widget::slider(
+                        0..=300,
+                        config.hud_offset_y,
+                        SettingsMessage::HudOffsetYChanged
+                    )
+                    .width(180),
                     text(format!("{} px", config.hud_offset_y)).size(14),
                 ]
                 .spacing(10)
@@ -424,8 +426,12 @@ impl SettingsState {
             .add(widget::settings::item(
                 fl!("background-opacity"),
                 row![
-                    widget::slider(20..=100, config.hud_opacity, SettingsMessage::OpacityChanged)
-                        .width(180),
+                    widget::slider(
+                        20..=100,
+                        config.hud_opacity,
+                        SettingsMessage::OpacityChanged
+                    )
+                    .width(180),
                     text(format!("{} %", config.hud_opacity)).size(14),
                 ]
                 .spacing(10)
@@ -433,21 +439,28 @@ impl SettingsState {
             ))
             .add(widget::settings::item(
                 fl!("hud-persistent"),
-                widget::toggler(config.hud_persistent).on_toggle(SettingsMessage::HudPersistentToggled),
+                widget::toggler(config.hud_persistent)
+                    .on_toggle(SettingsMessage::HudPersistentToggled),
             ));
 
         if !config.hud_persistent {
-            let dur = if config.hud_duration_ms == 0 { 6000 } else { config.hud_duration_ms };
+            let dur = if config.hud_duration_ms == 0 {
+                6000
+            } else {
+                config.hud_duration_ms
+            };
             section = section.add(widget::settings::item(
                 fl!("hud-auto-hide-time"),
                 row![
-                    widget::slider(
-                        2000..=15000,
-                        dur as u32,
-                        |val| SettingsMessage::DurationChanged(val as u64),
-                    )
+                    widget::slider(2000..=15000, dur as u32, |val| {
+                        SettingsMessage::DurationChanged(val as u64)
+                    },)
                     .width(180),
-                    text(fl!("duration-seconds", sec = format!("{:.1}", dur as f32 / 1000.0))).size(14),
+                    text(fl!(
+                        "duration-seconds",
+                        sec = format!("{:.1}", dur as f32 / 1000.0)
+                    ))
+                    .size(14),
                 ]
                 .spacing(10)
                 .align_y(Alignment::Center),
@@ -471,12 +484,18 @@ impl SettingsState {
 
     fn view_glossary<'a>(&'a self, config: &'a Config) -> Element<'a, SettingsMessage> {
         let add_row = row![
-            widget::text_input(fl!("glossary-source-placeholder"), &self.new_glossary_source)
-                .on_input(SettingsMessage::GlossarySourceChanged)
-                .width(180),
-            widget::text_input(fl!("glossary-target-placeholder"), &self.new_glossary_target)
-                .on_input(SettingsMessage::GlossaryTargetChanged)
-                .width(180),
+            widget::text_input(
+                fl!("glossary-source-placeholder"),
+                &self.new_glossary_source
+            )
+            .on_input(SettingsMessage::GlossarySourceChanged)
+            .width(180),
+            widget::text_input(
+                fl!("glossary-target-placeholder"),
+                &self.new_glossary_target
+            )
+            .on_input(SettingsMessage::GlossaryTargetChanged)
+            .width(180),
             button::suggested(fl!("add-button")).on_press(SettingsMessage::AddGlossaryTerm),
         ]
         .spacing(8)
@@ -498,10 +517,7 @@ impl SettingsState {
 
         let section = widget::settings::section()
             .title(fl!("glossary-title"))
-            .add(widget::settings::item(
-                fl!("add-new-term"),
-                add_row,
-            ));
+            .add(widget::settings::item(fl!("add-new-term"), add_row));
 
         column![
             section,
@@ -549,7 +565,9 @@ impl SettingsState {
                     let speaker_badge = widget::container(text(speaker).size(12))
                         .padding(cosmic::iced::Padding::from([2, 8]))
                         .style(|_theme| widget::container::Style {
-                            background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.2, 0.5, 0.8, 0.25))),
+                            background: Some(cosmic::iced::Background::Color(
+                                cosmic::iced::Color::from_rgba(0.2, 0.5, 0.8, 0.25),
+                            )),
                             border: cosmic::iced::Border {
                                 color: cosmic::iced::Color::from_rgba(0.3, 0.6, 0.9, 0.5),
                                 width: 1.0,

@@ -1,9 +1,8 @@
 use image::{DynamicImage, GrayImage, RgbaImage};
 use translator_core::capture::roi::Roi;
 use translator_core::ocr::{
-    detect_dominant_orientation, filter_furigana, is_cjk_text,
-    join_cjk_or_latin_tokens, sort_cjk_reading_order, DetectedTextBox, MockOcrBackend,
-    OcrBackend, TextOrientation,
+    detect_dominant_orientation, filter_furigana, is_cjk_text, join_cjk_or_latin_tokens,
+    sort_cjk_reading_order, DetectedTextBox, MockOcrBackend, OcrBackend, TextOrientation,
 };
 use translator_core::subtract_blur;
 
@@ -20,7 +19,10 @@ fn test_aspect_ratio_boundary_and_zero_dimensions() {
 
     // H=15, W=10 -> H/W = 1.5 > 1.4 (strictly vertical candidate)
     let b15 = DetectedTextBox::new(Roi::new(0, 0, 10, 15), "1.5", 0.9);
-    assert_eq!(detect_dominant_orientation(&[b15]), TextOrientation::Vertical);
+    assert_eq!(
+        detect_dominant_orientation(&[b15]),
+        TextOrientation::Vertical
+    );
 
     // H=8, W=10 -> H/W = 0.8 (not strictly < 0.8, treated as neutral)
     let b08 = DetectedTextBox::new(Roi::new(0, 0, 10, 8), "0.8", 0.9);
@@ -28,7 +30,10 @@ fn test_aspect_ratio_boundary_and_zero_dimensions() {
 
     // H=7, W=10 -> H/W = 0.7 < 0.8 (strictly horizontal candidate)
     let b07 = DetectedTextBox::new(Roi::new(0, 0, 10, 7), "0.7", 0.9);
-    assert_eq!(detect_dominant_orientation(&[b07]), TextOrientation::Horizontal);
+    assert_eq!(
+        detect_dominant_orientation(&[b07]),
+        TextOrientation::Horizontal
+    );
 }
 
 #[test]
@@ -67,11 +72,7 @@ fn test_complex_multi_column_vertical_reading_order() {
 
     assert_eq!(
         texts,
-        vec![
-            "C1_Top", "C1_Mid", "C1_Bot",
-            "C2_Top", "C2_Bot",
-            "C3_1", "C3_2", "C3_3", "C3_4",
-        ]
+        vec!["C1_Top", "C1_Mid", "C1_Bot", "C2_Top", "C2_Bot", "C3_1", "C3_2", "C3_3", "C3_4",]
     );
 }
 
@@ -108,11 +109,7 @@ fn test_complex_multi_line_horizontal_reading_order() {
 
     assert_eq!(
         texts,
-        vec![
-            "L1_W1", "L1_W2", "L1_W3",
-            "L2_W1", "L2_W2",
-            "L3_W1", "L3_W2", "L3_W3",
-        ]
+        vec!["L1_W1", "L1_W2", "L1_W3", "L2_W1", "L2_W2", "L3_W1", "L3_W2", "L3_W3",]
     );
 }
 
@@ -125,7 +122,8 @@ fn test_all_protected_punctuation_characters_in_furigana() {
         // Small box with punctuation inside ruby lane
         let p_box = DetectedTextBox::new(Roi::new(92, 60, 8, 8), p, 0.90);
 
-        let filtered = filter_furigana(vec![main.clone(), p_box.clone()], TextOrientation::Vertical);
+        let filtered =
+            filter_furigana(vec![main.clone(), p_box.clone()], TextOrientation::Vertical);
         assert_eq!(
             filtered.len(),
             2,
@@ -159,7 +157,11 @@ fn test_uniform_small_boxes_no_pruning() {
     let b3 = DetectedTextBox::new(Roi::new(40, 10, 10, 10), "c", 0.9);
 
     let filtered = filter_furigana(vec![b1, b2, b3], TextOrientation::Horizontal);
-    assert_eq!(filtered.len(), 3, "Uniform small boxes must all be preserved");
+    assert_eq!(
+        filtered.len(),
+        3,
+        "Uniform small boxes must all be preserved"
+    );
 }
 
 #[test]
@@ -289,10 +291,19 @@ fn test_adversarial_furigana_ruby_positions_vertical() {
     // Only ruby_right ("かんじ") should be pruned. All other small elements must be preserved.
     assert_eq!(
         texts,
-        vec!["漢字一", "漢字二", "漢字三", "漢字四", "漢字五", "左注釈", "遠右記号", "上話者", "下話者"]
+        vec![
+            "漢字一",
+            "漢字二",
+            "漢字三",
+            "漢字四",
+            "漢字五",
+            "左注釈",
+            "遠右記号",
+            "上話者",
+            "下話者"
+        ]
     );
 }
-
 
 #[test]
 fn test_adversarial_furigana_ruby_positions_horizontal() {
@@ -359,10 +370,11 @@ fn test_adversarial_furigana_ruby_positions_horizontal() {
     );
 }
 
-
 #[test]
 fn test_adversarial_furigana_all_punctuation_exhaustive_and_tiny_boxes() {
-    let punct_marks = ["。", "、", "！", "？", "…", "・", ".", ",", "!", "?", "！？", "？！", "……", "  。  "];
+    let punct_marks = [
+        "。", "、", "！", "？", "…", "・", ".", ",", "!", "?", "！？", "？！", "……", "  。  ",
+    ];
 
     for orientation in [TextOrientation::Vertical, TextOrientation::Horizontal] {
         for &p in &punct_marks {
@@ -413,7 +425,11 @@ fn test_adversarial_furigana_non_ruby_isolated_standalone_numbers_and_icons() {
     ];
 
     let filtered = filter_furigana(boxes, TextOrientation::Vertical);
-    assert_eq!(filtered.len(), 5, "All isolated small non-ruby elements must be preserved");
+    assert_eq!(
+        filtered.len(),
+        5,
+        "All isolated small non-ruby elements must be preserved"
+    );
 
     let texts: Vec<&str> = filtered.iter().map(|b| b.text.as_str()).collect();
     assert!(texts.contains(&"99"));
@@ -442,11 +458,17 @@ fn test_adversarial_furigana_majority_ruby_boxes_heuristic_behavior() {
 #[test]
 fn test_adversarial_furigana_empty_and_zero_area_inputs() {
     // 0 boxes
-    assert_eq!(filter_furigana(vec![], TextOrientation::Horizontal).len(), 0);
+    assert_eq!(
+        filter_furigana(vec![], TextOrientation::Horizontal).len(),
+        0
+    );
 
     // 1 box
     let single = DetectedTextBox::new(Roi::new(10, 10, 50, 50), "一", 0.9);
-    assert_eq!(filter_furigana(vec![single.clone()], TextOrientation::Vertical).len(), 1);
+    assert_eq!(
+        filter_furigana(vec![single.clone()], TextOrientation::Vertical).len(),
+        1
+    );
 
     // Zero-width / zero-height boxes should not panic
     let zero_w = DetectedTextBox::new(Roi::new(10, 10, 0, 50), "zw", 0.9);
@@ -459,16 +481,8 @@ fn test_adversarial_furigana_empty_and_zero_area_inputs() {
 fn test_adversarial_furigana_integer_overflow_panic_near_u32_max_vertical() {
     // Primary box placed near u32::MAX on X axis
     // When calculating p_right = p_rect.x.saturating_add(p_rect.width), execution completes without panic
-    let p_box = DetectedTextBox::new(
-        Roi::new(u32::MAX - 8, 100, 10, 100),
-        "主テキスト",
-        0.95,
-    );
-    let small_box = DetectedTextBox::new(
-        Roi::new(u32::MAX - 2, 110, 2, 20),
-        "ふりがな",
-        0.90,
-    );
+    let p_box = DetectedTextBox::new(Roi::new(u32::MAX - 8, 100, 10, 100), "主テキスト", 0.95);
+    let small_box = DetectedTextBox::new(Roi::new(u32::MAX - 2, 110, 2, 20), "ふりがな", 0.90);
 
     // Clean execution without panicking; ruby annotation is pruned
     let res = filter_furigana(vec![p_box, small_box], TextOrientation::Vertical);
@@ -480,16 +494,8 @@ fn test_adversarial_furigana_integer_overflow_panic_near_u32_max_vertical() {
 fn test_adversarial_furigana_integer_overflow_panic_near_u32_max_horizontal() {
     // Candidate box placed near u32::MAX on Y axis
     // When calculating b_bottom = (b.rect.y.saturating_add(b.rect.height)) as i64, execution completes without panic
-    let p_box = DetectedTextBox::new(
-        Roi::new(100, u32::MAX - 2, 1000, 2),
-        "主テキスト",
-        0.95,
-    );
-    let small_box = DetectedTextBox::new(
-        Roi::new(100, u32::MAX - 8, 10, 10),
-        "ふりがな",
-        0.90,
-    );
+    let p_box = DetectedTextBox::new(Roi::new(100, u32::MAX - 2, 1000, 2), "主テキスト", 0.95);
+    let small_box = DetectedTextBox::new(Roi::new(100, u32::MAX - 8, 10, 10), "ふりがな", 0.90);
 
     // Clean execution without panicking
     let res = filter_furigana(vec![p_box, small_box], TextOrientation::Horizontal);
@@ -515,7 +521,10 @@ fn test_adversarial_cjk_western_token_transition_defect_demonstration() {
     // Expected typographic output: "Level 10へ".
     let mixed_tokens = vec!["Level", "10", "へ"];
     let is_cjk = mixed_tokens.iter().any(|t| is_cjk_text(t));
-    assert!(is_cjk, "Token 'へ' is CJK text, so is_cjk evaluates to true in OCR pipeline");
+    assert!(
+        is_cjk,
+        "Token 'へ' is CJK text, so is_cjk evaluates to true in OCR pipeline"
+    );
 
     let actual_joined = join_cjk_or_latin_tokens(&mixed_tokens, is_cjk);
 
@@ -526,6 +535,3 @@ fn test_adversarial_cjk_western_token_transition_defect_demonstration() {
         "Western words retain spaces even when is_cjk=true"
     );
 }
-
-
-

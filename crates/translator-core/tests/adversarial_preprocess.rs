@@ -9,7 +9,10 @@ fn variance(img: &GrayImage) -> f64 {
         return 0.0;
     }
     let mean = img.pixels().map(|p| p[0] as f64).sum::<f64>() / n;
-    img.pixels().map(|p| (p[0] as f64 - mean).powi(2)).sum::<f64>() / n
+    img.pixels()
+        .map(|p| (p[0] as f64 - mean).powi(2))
+        .sum::<f64>()
+        / n
 }
 
 #[test]
@@ -20,7 +23,10 @@ fn test_extreme_all_black() {
     assert_eq!(result.width(), 100);
     assert_eq!(result.height(), 100);
     for p in result.pixels() {
-        assert_eq!(p[0], 128, "All-black image after blur subtraction must be neutral gray 128");
+        assert_eq!(
+            p[0], 128,
+            "All-black image after blur subtraction must be neutral gray 128"
+        );
     }
 }
 
@@ -32,7 +38,10 @@ fn test_extreme_all_white() {
     assert_eq!(result.width(), 100);
     assert_eq!(result.height(), 100);
     for p in result.pixels() {
-        assert_eq!(p[0], 128, "All-white image after blur subtraction must be neutral gray 128");
+        assert_eq!(
+            p[0], 128,
+            "All-white image after blur subtraction must be neutral gray 128"
+        );
     }
 }
 
@@ -68,7 +77,10 @@ fn test_high_frequency_checkerboards() {
     // Output should retain high alternating contrast.
     let p0 = result.get_pixel(10, 10)[0];
     let p1 = result.get_pixel(11, 10)[0];
-    assert!((p0 as i32 - p1 as i32).abs() > 200, "1x1 checkerboard contrast must be preserved");
+    assert!(
+        (p0 as i32 - p1 as i32).abs() > 200,
+        "1x1 checkerboard contrast must be preserved"
+    );
 
     // 2x2 checkerboard
     let mut img2 = GrayImage::new(64, 64);
@@ -81,7 +93,10 @@ fn test_high_frequency_checkerboards() {
     let result2 = subtract_blur(&img2, 2.5);
     let q0 = result2.get_pixel(10, 10)[0];
     let q1 = result2.get_pixel(12, 10)[0];
-    assert!((q0 as i32 - q1 as i32).abs() > 100, "2x2 checkerboard contrast must be preserved");
+    assert!(
+        (q0 as i32 - q1 as i32).abs() > 100,
+        "2x2 checkerboard contrast must be preserved"
+    );
 }
 
 #[test]
@@ -92,7 +107,10 @@ fn test_single_pixel_noise() {
 
     let res_black = subtract_blur(&black_spike, 2.5);
     let spike_val = res_black.get_pixel(32, 32)[0];
-    assert!(spike_val > 200, "Spike must be strongly positive relative to 128: {spike_val}");
+    assert!(
+        spike_val > 200,
+        "Spike must be strongly positive relative to 128: {spike_val}"
+    );
     // Background far away must be 128
     assert_eq!(res_black.get_pixel(0, 0)[0], 128);
 
@@ -102,7 +120,10 @@ fn test_single_pixel_noise() {
 
     let res_white = subtract_blur(&white_dip, 2.5);
     let dip_val = res_white.get_pixel(32, 32)[0];
-    assert!(dip_val < 50, "Dip must be strongly negative relative to 128: {dip_val}");
+    assert!(
+        dip_val < 50,
+        "Dip must be strongly negative relative to 128: {dip_val}"
+    );
     assert_eq!(res_white.get_pixel(0, 0)[0], 128);
 }
 
@@ -270,18 +291,31 @@ fn test_interaction_dark_bg_white_text() {
     let gray_scaled = image::imageops::grayscale(&rgba);
     let gray_hp = subtract_blur(&gray_scaled, 2.5);
     let th = compute_otsu_threshold(&gray_hp);
-    println!("Thin stroke test: stroke_hp={}, bg_hp={}, th={}", 
+    println!(
+        "Thin stroke test: stroke_hp={}, bg_hp={}, th={}",
         gray_hp.get_pixel(50, 25)[0],
         gray_hp.get_pixel(5, 5)[0],
         th
     );
 
     let processed = preprocess_for_ocr(&rgba, &config);
-    println!("Processed: bg={}, stroke={}", processed.get_pixel(5, 5)[0], processed.get_pixel(50, 25)[0]);
+    println!(
+        "Processed: bg={}, stroke={}",
+        processed.get_pixel(5, 5)[0],
+        processed.get_pixel(50, 25)[0]
+    );
     // Background must be white (255)
-    assert_eq!(processed.get_pixel(5, 5)[0], 255, "Dark background must be converted to white (255)");
+    assert_eq!(
+        processed.get_pixel(5, 5)[0],
+        255,
+        "Dark background must be converted to white (255)"
+    );
     // Text must be black (0)
-    assert_eq!(processed.get_pixel(50, 25)[0], 0, "White text must be converted to black (0)");
+    assert_eq!(
+        processed.get_pixel(50, 25)[0],
+        0,
+        "White text must be converted to black (0)"
+    );
 }
 
 #[test]
@@ -306,18 +340,31 @@ fn test_interaction_bright_bg_dark_text() {
     let gray_scaled = image::imageops::grayscale(&rgba);
     let gray_hp = subtract_blur(&gray_scaled, 2.5);
     let th = compute_otsu_threshold(&gray_hp);
-    println!("Bright bg test: stroke_hp={}, bg_hp={}, th={}", 
+    println!(
+        "Bright bg test: stroke_hp={}, bg_hp={}, th={}",
         gray_hp.get_pixel(50, 25)[0],
         gray_hp.get_pixel(5, 5)[0],
         th
     );
 
     let processed = preprocess_for_ocr(&rgba, &config);
-    println!("Bright bg processed: bg={}, stroke={}", processed.get_pixel(5, 5)[0], processed.get_pixel(50, 25)[0]);
+    println!(
+        "Bright bg processed: bg={}, stroke={}",
+        processed.get_pixel(5, 5)[0],
+        processed.get_pixel(50, 25)[0]
+    );
     // Background must be white (255)
-    assert_eq!(processed.get_pixel(5, 5)[0], 255, "Bright background must remain white (255)");
+    assert_eq!(
+        processed.get_pixel(5, 5)[0],
+        255,
+        "Bright background must remain white (255)"
+    );
     // Text must be black (0)
-    assert_eq!(processed.get_pixel(50, 25)[0], 0, "Dark text must remain black (0)");
+    assert_eq!(
+        processed.get_pixel(50, 25)[0],
+        0,
+        "Dark text must remain black (0)"
+    );
 }
 
 #[test]
@@ -339,9 +386,21 @@ fn test_interaction_neutral_backgrounds() {
         blur_sigma: 2.5,
     };
     let proc_a = preprocess_for_ocr(&rgba_a, &config);
-    println!("Neutral-dark processed: bg={}, stroke={}", proc_a.get_pixel(5, 5)[0], proc_a.get_pixel(50, 25)[0]);
-    assert_eq!(proc_a.get_pixel(5, 5)[0], 255, "Neutral-dark bg must produce white bg");
-    assert_eq!(proc_a.get_pixel(50, 25)[0], 0, "White text on neutral-dark must produce black text");
+    println!(
+        "Neutral-dark processed: bg={}, stroke={}",
+        proc_a.get_pixel(5, 5)[0],
+        proc_a.get_pixel(50, 25)[0]
+    );
+    assert_eq!(
+        proc_a.get_pixel(5, 5)[0],
+        255,
+        "Neutral-dark bg must produce white bg"
+    );
+    assert_eq!(
+        proc_a.get_pixel(50, 25)[0],
+        0,
+        "White text on neutral-dark must produce black text"
+    );
 
     // Subcase B: Neutral bright (135) with dark text (20) - 2px stroke
     let mut rgba_b = RgbaImage::from_pixel(w, h, Rgba([135, 135, 135, 255]));
@@ -350,30 +409,51 @@ fn test_interaction_neutral_backgrounds() {
         rgba_b.put_pixel(51, y, Rgba([20, 20, 20, 255]));
     }
     let proc_b = preprocess_for_ocr(&rgba_b, &config);
-    println!("Neutral-bright processed: bg={}, stroke={}", proc_b.get_pixel(5, 5)[0], proc_b.get_pixel(50, 25)[0]);
-    assert_eq!(proc_b.get_pixel(5, 5)[0], 255, "Neutral-bright bg must produce white bg");
-    assert_eq!(proc_b.get_pixel(50, 25)[0], 0, "Dark text on neutral-bright must produce black text");
+    println!(
+        "Neutral-bright processed: bg={}, stroke={}",
+        proc_b.get_pixel(5, 5)[0],
+        proc_b.get_pixel(50, 25)[0]
+    );
+    assert_eq!(
+        proc_b.get_pixel(5, 5)[0],
+        255,
+        "Neutral-bright bg must produce white bg"
+    );
+    assert_eq!(
+        proc_b.get_pixel(50, 25)[0],
+        0,
+        "Dark text on neutral-bright must produce black text"
+    );
 }
 
 #[test]
 fn test_otsu_threshold_on_uniform_images() {
     let black = GrayImage::from_pixel(50, 50, Luma([0]));
     let th_b = compute_otsu_threshold(&black);
-    assert_eq!(th_b, 128, "Uniform black image should yield default threshold 128");
+    assert_eq!(
+        th_b, 128,
+        "Uniform black image should yield default threshold 128"
+    );
 
     let white = GrayImage::from_pixel(50, 50, Luma([255]));
     let th_w = compute_otsu_threshold(&white);
-    assert_eq!(th_w, 128, "Uniform white image should yield default threshold 128");
+    assert_eq!(
+        th_w, 128,
+        "Uniform white image should yield default threshold 128"
+    );
 
     let gray = GrayImage::from_pixel(50, 50, Luma([128]));
     let th_g = compute_otsu_threshold(&gray);
-    assert_eq!(th_g, 128, "Uniform gray image should yield default threshold 128");
+    assert_eq!(
+        th_g, 128,
+        "Uniform gray image should yield default threshold 128"
+    );
 }
 
 #[test]
 fn test_sigma_extremes() {
     let img = GrayImage::from_pixel(30, 30, Luma([150]));
-    
+
     // Very small sigma
     let res_small = subtract_blur(&img, 0.01);
     assert_eq!(res_small.get_pixel(15, 15)[0], 128);
@@ -417,10 +497,22 @@ fn test_steep_bright_gradient_dark_text() {
     let processed = preprocess_for_ocr(&rgba, &config);
 
     // Background must be white (255) on both sides
-    assert_eq!(processed.get_pixel(10, 10)[0], 255, "Left bright background must be white");
-    assert_eq!(processed.get_pixel(180, 10)[0], 255, "Right bright background must be white");
+    assert_eq!(
+        processed.get_pixel(10, 10)[0],
+        255,
+        "Left bright background must be white"
+    );
+    assert_eq!(
+        processed.get_pixel(180, 10)[0],
+        255,
+        "Right bright background must be white"
+    );
     // Text stroke must be black (0)
-    assert_eq!(processed.get_pixel(100, 30)[0], 0, "Dark text stroke must be black (0)");
+    assert_eq!(
+        processed.get_pixel(100, 30)[0],
+        0,
+        "Dark text stroke must be black (0)"
+    );
 }
 
 #[test]
@@ -453,10 +545,22 @@ fn test_steep_dark_gradient_white_text() {
     let processed = preprocess_for_ocr(&rgba, &config);
 
     // Background must be white (255) on both sides
-    assert_eq!(processed.get_pixel(10, 10)[0], 255, "Left dark background must be inverted to white");
-    assert_eq!(processed.get_pixel(180, 10)[0], 255, "Right dark background must be inverted to white");
+    assert_eq!(
+        processed.get_pixel(10, 10)[0],
+        255,
+        "Left dark background must be inverted to white"
+    );
+    assert_eq!(
+        processed.get_pixel(180, 10)[0],
+        255,
+        "Right dark background must be inverted to white"
+    );
     // Text stroke must be black (0)
-    assert_eq!(processed.get_pixel(100, 30)[0], 0, "White text stroke must be inverted to black (0)");
+    assert_eq!(
+        processed.get_pixel(100, 30)[0],
+        0,
+        "White text stroke must be inverted to black (0)"
+    );
 }
 
 fn render_synthetic_glyph(text: &str, dark_bg: bool) -> RgbaImage {
@@ -511,13 +615,20 @@ fn test_rendered_banner_ocr_polarity_and_scaling() {
         let dark_banner = render_synthetic_glyph("HH", true);
         let proc_dark = preprocess_for_ocr(&dark_banner, &config);
         // Corners must be white background
-        assert_eq!(proc_dark.get_pixel(2, 2)[0], 255, "Dark banner background must be white (scale={scale})");
+        assert_eq!(
+            proc_dark.get_pixel(2, 2)[0],
+            255,
+            "Dark banner background must be white (scale={scale})"
+        );
 
         // Bright background scene with dark text
         let light_banner = render_synthetic_glyph("HH", false);
         let proc_light = preprocess_for_ocr(&light_banner, &config);
         // Corners must be white background
-        assert_eq!(proc_light.get_pixel(2, 2)[0], 255, "Light banner background must be white (scale={scale})");
+        assert_eq!(
+            proc_light.get_pixel(2, 2)[0],
+            255,
+            "Light banner background must be white (scale={scale})"
+        );
     }
 }
-

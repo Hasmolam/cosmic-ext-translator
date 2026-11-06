@@ -186,10 +186,8 @@ mod tests {
 
         // OCR jitter: missing period
         let jittered = "Press the button to initiate warp jump sequence";
-        let score = normalized_levenshtein(
-            "Press the button to initiate warp jump sequence.",
-            jittered,
-        );
+        let score =
+            normalized_levenshtein("Press the button to initiate warp jump sequence.", jittered);
         assert!(score >= 0.95);
 
         let hit = cache.get(jittered);

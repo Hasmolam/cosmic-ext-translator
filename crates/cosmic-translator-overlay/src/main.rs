@@ -1,6 +1,3 @@
-use std::env;
-use std::io::Write;
-use std::time::Duration;
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings;
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity, Layer,
@@ -11,6 +8,9 @@ use cosmic::widget;
 use cosmic::Element;
 use cosmic_translator_overlay::hud::{HudUiMessage, SubtitleHudState};
 use cosmic_translator_overlay::selector::{SelectorMessage, SelectorProgram};
+use std::env;
+use std::io::Write;
+use std::time::Duration;
 use translator_core::ipc::{default_socket_path, HudIpcServer, HudMessage};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,10 +42,10 @@ pub enum Message {
 
 fn hud_ipc_subscription() -> cosmic::iced::Subscription<Message> {
     struct HudIpcSub;
-    cosmic::iced::Subscription::run_with(
-        std::any::TypeId::of::<HudIpcSub>(),
-        |_| {
-            cosmic::iced::stream::channel(16, |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| async move {
+    cosmic::iced::Subscription::run_with(std::any::TypeId::of::<HudIpcSub>(), |_| {
+        cosmic::iced::stream::channel(
+            16,
+            |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| async move {
                 use cosmic::iced::futures::SinkExt;
                 let server = HudIpcServer::default_server();
                 if let Ok(mut server_rx) = server.start().await {
@@ -55,9 +55,9 @@ fn hud_ipc_subscription() -> cosmic::iced::Subscription<Message> {
                         }
                     }
                 }
-            })
-        },
-    )
+            },
+        )
+    })
 }
 
 impl cosmic::Application for OverlayApp {
@@ -123,10 +123,10 @@ impl cosmic::Application for OverlayApp {
                 let mut settings = app.hud.layer_settings();
                 settings.id = hud_id;
                 let layer_task = get_layer_surface(settings);
-                let clear_task = Task::perform(
-                    tokio::time::sleep(Duration::from_millis(3000)),
-                    move |_| cosmic::Action::from(Message::ClearSubtitle(subtitle_seq)),
-                );
+                let clear_task =
+                    Task::perform(tokio::time::sleep(Duration::from_millis(3000)), move |_| {
+                        cosmic::Action::from(Message::ClearSubtitle(subtitle_seq))
+                    });
                 Task::batch([layer_task, clear_task])
             }
         };
@@ -145,7 +145,11 @@ impl cosmic::Application for OverlayApp {
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         tracing::debug!("OverlayApp::update received: {:?}", message);
         match message {
-            Message::Selector(SelectorMessage::Selected { roi, surface_width, surface_height }) => {
+            Message::Selector(SelectorMessage::Selected {
+                roi,
+                surface_width,
+                surface_height,
+            }) => {
                 let _ = writeln!(
                     std::io::stdout(),
                     "ROI_SELECTED:{{\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"surface_width\":{},\"surface_height\":{}}}",
@@ -175,8 +179,14 @@ impl cosmic::Application for OverlayApp {
                 )
             }
 
-            Message::Hud(HudMessage::ShowSubtitle { text, duration_ms, .. }) => {
-                tracing::debug!("HUD updating text to: '{}' (duration_ms={})", text, duration_ms);
+            Message::Hud(HudMessage::ShowSubtitle {
+                text, duration_ms, ..
+            }) => {
+                tracing::debug!(
+                    "HUD updating text to: '{}' (duration_ms={})",
+                    text,
+                    duration_ms
+                );
                 self.subtitle_seq = self.subtitle_seq.wrapping_add(1);
                 let seq = self.subtitle_seq;
                 self.hud.current_text = text;
@@ -228,7 +238,13 @@ impl cosmic::Application for OverlayApp {
                 Task::none()
             }
 
-            Message::Hud(HudMessage::UpdateStyle { font_size, opacity, duration_ms, position, offset_y }) => {
+            Message::Hud(HudMessage::UpdateStyle {
+                font_size,
+                opacity,
+                duration_ms,
+                position,
+                offset_y,
+            }) => {
                 tracing::debug!(
                     "HUD style updated: font_size={}, opacity={}, duration_ms={}, position={:?}, offset_y={}",
                     font_size,
@@ -254,7 +270,11 @@ impl cosmic::Application for OverlayApp {
             }
 
             Message::Hud(HudMessage::SetPosition { position, offset_y }) => {
-                tracing::debug!("HUD position updated: {:?}, offset_y={}", position, offset_y);
+                tracing::debug!(
+                    "HUD position updated: {:?}, offset_y={}",
+                    position,
+                    offset_y
+                );
                 self.hud.position = position;
                 self.hud.offset_y = offset_y;
                 let mut settings = self.hud.layer_settings();
@@ -274,7 +294,11 @@ impl cosmic::Application for OverlayApp {
             }
 
             Message::HudUi(HudUiMessage::LockPosition) => {
-                tracing::info!("Locking HUD position at: {:?}, offset={}", self.hud.position, self.hud.offset_y);
+                tracing::info!(
+                    "Locking HUD position at: {:?}, offset={}",
+                    self.hud.position,
+                    self.hud.offset_y
+                );
                 self.hud.edit_mode = false;
                 let mut settings = self.hud.layer_settings();
                 settings.id = self.hud_id;
@@ -330,7 +354,10 @@ impl cosmic::Application for OverlayApp {
                 .height(Length::Fill);
             Element::from(canvas_widget).map(Message::Selector)
         } else if id == self.hud_id {
-            tracing::debug!("Rendering HUD element with text: '{}'", self.hud.current_text);
+            tracing::debug!(
+                "Rendering HUD element with text: '{}'",
+                self.hud.current_text
+            );
             self.hud.view(Message::HudUi)
         } else {
             widget::text("").into()
@@ -364,8 +391,5 @@ fn main() -> cosmic::iced::Result {
         }
     }
 
-    cosmic::app::run::<OverlayApp>(
-        cosmic::app::Settings::default().no_main_window(true),
-        mode,
-    )
+    cosmic::app::run::<OverlayApp>(cosmic::app::Settings::default().no_main_window(true), mode)
 }

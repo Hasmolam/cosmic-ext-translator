@@ -111,7 +111,10 @@ fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
 
     // Case 1: 49% overlap (< 50%) -> Must NOT cluster into the same column
     let box_49 = DetectedTextBox::new(Roi::new(151, 40, 100, 20), "Box_49", 0.9);
-    let sorted_49 = sort_cjk_reading_order(vec![base.clone(), box_49.clone()], TextOrientation::Vertical);
+    let sorted_49 = sort_cjk_reading_order(
+        vec![base.clone(), box_49.clone()],
+        TextOrientation::Vertical,
+    );
     let texts_49: Vec<&str> = sorted_49.iter().map(|b| b.text.as_str()).collect();
     assert_eq!(
         texts_49,
@@ -121,7 +124,10 @@ fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
 
     // Case 2: 50% overlap (exact threshold >= 50%) -> MUST cluster into the same column
     let box_50 = DetectedTextBox::new(Roi::new(150, 40, 100, 20), "Box_50", 0.9);
-    let sorted_50 = sort_cjk_reading_order(vec![base.clone(), box_50.clone()], TextOrientation::Vertical);
+    let sorted_50 = sort_cjk_reading_order(
+        vec![base.clone(), box_50.clone()],
+        TextOrientation::Vertical,
+    );
     let texts_50: Vec<&str> = sorted_50.iter().map(|b| b.text.as_str()).collect();
     assert_eq!(
         texts_50,
@@ -131,7 +137,10 @@ fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
 
     // Case 3: 51% overlap (> 50%) -> MUST cluster into the same column
     let box_51 = DetectedTextBox::new(Roi::new(149, 40, 100, 20), "Box_51", 0.9);
-    let sorted_51 = sort_cjk_reading_order(vec![base.clone(), box_51.clone()], TextOrientation::Vertical);
+    let sorted_51 = sort_cjk_reading_order(
+        vec![base.clone(), box_51.clone()],
+        TextOrientation::Vertical,
+    );
     let texts_51: Vec<&str> = sorted_51.iter().map(|b| b.text.as_str()).collect();
     assert_eq!(
         texts_51,
@@ -146,7 +155,10 @@ fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
 
     // Case 1: 49% overlap (< 50%) -> Must NOT cluster into the same line
     let box_49 = DetectedTextBox::new(Roi::new(40, 151, 20, 100), "Box_49", 0.9);
-    let sorted_49 = sort_cjk_reading_order(vec![base.clone(), box_49.clone()], TextOrientation::Horizontal);
+    let sorted_49 = sort_cjk_reading_order(
+        vec![base.clone(), box_49.clone()],
+        TextOrientation::Horizontal,
+    );
     let texts_49: Vec<&str> = sorted_49.iter().map(|b| b.text.as_str()).collect();
     assert_eq!(
         texts_49,
@@ -156,7 +168,10 @@ fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
 
     // Case 2: 50% overlap (exact threshold >= 50%) -> MUST cluster into same line
     let box_50 = DetectedTextBox::new(Roi::new(40, 150, 20, 100), "Box_50", 0.9);
-    let sorted_50 = sort_cjk_reading_order(vec![base.clone(), box_50.clone()], TextOrientation::Horizontal);
+    let sorted_50 = sort_cjk_reading_order(
+        vec![base.clone(), box_50.clone()],
+        TextOrientation::Horizontal,
+    );
     let texts_50: Vec<&str> = sorted_50.iter().map(|b| b.text.as_str()).collect();
     assert_eq!(
         texts_50,
@@ -166,7 +181,10 @@ fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
 
     // Case 3: 51% overlap (> 50%) -> MUST cluster into same line
     let box_51 = DetectedTextBox::new(Roi::new(40, 149, 20, 100), "Box_51", 0.9);
-    let sorted_51 = sort_cjk_reading_order(vec![base.clone(), box_51.clone()], TextOrientation::Horizontal);
+    let sorted_51 = sort_cjk_reading_order(
+        vec![base.clone(), box_51.clone()],
+        TextOrientation::Horizontal,
+    );
     let texts_51: Vec<&str> = sorted_51.iter().map(|b| b.text.as_str()).collect();
     assert_eq!(
         texts_51,
@@ -187,7 +205,10 @@ fn test_adversarial_layout_mixed_orientations_voting() {
     let v_col3 = DetectedTextBox::new(Roi::new(150, 50, 30, 200), "V3", 0.95);
 
     let boxes = vec![title, v_col1, v_col2, v_col3];
-    assert_eq!(detect_dominant_orientation(&boxes), TextOrientation::Vertical);
+    assert_eq!(
+        detect_dominant_orientation(&boxes),
+        TextOrientation::Vertical
+    );
 
     let h1 = DetectedTextBox::new(Roi::new(50, 10, 300, 25), "H1", 0.95);
     let h2 = DetectedTextBox::new(Roi::new(50, 50, 300, 25), "H2", 0.95);
@@ -195,7 +216,10 @@ fn test_adversarial_layout_mixed_orientations_voting() {
     let v_sidebar = DetectedTextBox::new(Roi::new(400, 10, 30, 200), "VSide", 0.95);
 
     let boxes_h = vec![h1, h2, h3, v_sidebar];
-    assert_eq!(detect_dominant_orientation(&boxes_h), TextOrientation::Horizontal);
+    assert_eq!(
+        detect_dominant_orientation(&boxes_h),
+        TextOrientation::Horizontal
+    );
 }
 
 #[test]
@@ -239,7 +263,11 @@ fn test_adversarial_layout_integer_overflow_panic_near_u32_max() {
     let b2 = DetectedTextBox::new(Roi::new(u32::MAX - 10, 10, 20, 20), "Panic2", 0.9);
 
     let sorted = sort_cjk_reading_order(vec![b1, b2], TextOrientation::Vertical);
-    assert_eq!(sorted.len(), 2, "Layout sorting near u32::MAX must succeed without overflow panic");
+    assert_eq!(
+        sorted.len(),
+        2,
+        "Layout sorting near u32::MAX must succeed without overflow panic"
+    );
 }
 
 #[test]
@@ -258,10 +286,7 @@ fn test_adversarial_layout_vertical_sorting_non_idempotence_flaw() {
     let names1: Vec<&str> = pass1.iter().map(|b| b.text.as_str()).collect();
     let names2: Vec<&str> = pass2.iter().map(|b| b.text.as_str()).collect();
 
-    assert_eq!(
-        names1, names2,
-        "Sorting must be strictly idempotent"
-    );
+    assert_eq!(names1, names2, "Sorting must be strictly idempotent");
 }
 
 // ============================================================================
@@ -270,8 +295,14 @@ fn test_adversarial_layout_vertical_sorting_non_idempotence_flaw() {
 
 #[test]
 fn test_adversarial_layout_empty_and_single_box_invariants() {
-    assert_eq!(sort_cjk_reading_order(vec![], TextOrientation::Horizontal), vec![]);
-    assert_eq!(sort_cjk_reading_order(vec![], TextOrientation::Vertical), vec![]);
+    assert_eq!(
+        sort_cjk_reading_order(vec![], TextOrientation::Horizontal),
+        vec![]
+    );
+    assert_eq!(
+        sort_cjk_reading_order(vec![], TextOrientation::Vertical),
+        vec![]
+    );
 
     let single = DetectedTextBox::new(Roi::new(50, 50, 100, 25), "only", 0.99);
     assert_eq!(
@@ -303,7 +334,8 @@ fn test_adversarial_layout_identical_and_fully_overlapping_boxes() {
     let b1 = DetectedTextBox::new(Roi::new(100, 100, 50, 50), "same_1", 0.9);
     let b2 = DetectedTextBox::new(Roi::new(100, 100, 50, 50), "same_2", 0.9);
 
-    let sorted_h = sort_cjk_reading_order(vec![b1.clone(), b2.clone()], TextOrientation::Horizontal);
+    let sorted_h =
+        sort_cjk_reading_order(vec![b1.clone(), b2.clone()], TextOrientation::Horizontal);
     assert_eq!(sorted_h.len(), 2);
 
     let sorted_v = sort_cjk_reading_order(vec![b1, b2], TextOrientation::Vertical);
@@ -327,11 +359,7 @@ fn test_adversarial_layout_extreme_boundary_coordinates_no_panic() {
         "Extreme2",
         0.9,
     );
-    let b3 = DetectedTextBox::new(
-        Roi::new(100, 200, 50, 50),
-        "Normal",
-        0.9,
-    );
+    let b3 = DetectedTextBox::new(Roi::new(100, 200, 50, 50), "Normal", 0.9);
 
     // Horizontal mode verification
     let sorted_h = sort_cjk_reading_order(
@@ -340,16 +368,19 @@ fn test_adversarial_layout_extreme_boundary_coordinates_no_panic() {
     );
     assert_eq!(sorted_h.len(), 3);
     let resorted_h = sort_cjk_reading_order(sorted_h.clone(), TextOrientation::Horizontal);
-    assert_eq!(sorted_h, resorted_h, "Horizontal extreme coordinate sorting must be idempotent");
+    assert_eq!(
+        sorted_h, resorted_h,
+        "Horizontal extreme coordinate sorting must be idempotent"
+    );
 
     // Vertical mode verification
-    let sorted_v = sort_cjk_reading_order(
-        vec![b1, b2, b3],
-        TextOrientation::Vertical,
-    );
+    let sorted_v = sort_cjk_reading_order(vec![b1, b2, b3], TextOrientation::Vertical);
     assert_eq!(sorted_v.len(), 3);
     let resorted_v = sort_cjk_reading_order(sorted_v.clone(), TextOrientation::Vertical);
-    assert_eq!(sorted_v, resorted_v, "Vertical extreme coordinate sorting must be idempotent");
+    assert_eq!(
+        sorted_v, resorted_v,
+        "Vertical extreme coordinate sorting must be idempotent"
+    );
 }
 
 #[test]
@@ -390,7 +421,18 @@ fn test_adversarial_layout_randomized_fuzzing_1000_permutations_idempotence() {
     }
 
     let mut rng = Rng(0xdeadbeef_cafebabe);
-    let sample_texts = ["A", "B", "C", "D", "E", "Same", "Same", "日本語", "テスト", ""];
+    let sample_texts = [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "Same",
+        "Same",
+        "日本語",
+        "テスト",
+        "",
+    ];
 
     for iteration in 0..1200 {
         let box_count = rng.gen_range(2, 20) as usize;

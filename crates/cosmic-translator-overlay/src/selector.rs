@@ -33,7 +33,8 @@ impl SelectorProgram {
                 if let Ok(reader) = image::ImageReader::open(path) {
                     if let Ok(img) = reader.decode() {
                         let size = (img.width(), img.height());
-                        let handle = cosmic::iced::core::image::Handle::from_path(path.to_path_buf());
+                        let handle =
+                            cosmic::iced::core::image::Handle::from_path(path.to_path_buf());
                         return Self {
                             preview_image: Some(handle),
                             image_size: Some(size),
@@ -67,7 +68,8 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
 
             Event::Mouse(mouse::Event::CursorMoved { .. }) if state.start.is_some() => {
                 if let Some(curr) = state.current {
-                    if (curr.x - cursor_pos.x).abs() >= 1.0 || (curr.y - cursor_pos.y).abs() >= 1.0 {
+                    if (curr.x - cursor_pos.x).abs() >= 1.0 || (curr.y - cursor_pos.y).abs() >= 1.0
+                    {
                         state.current = Some(cursor_pos);
                         return Some(Action::request_redraw());
                     }
@@ -86,29 +88,36 @@ impl canvas::Program<SelectorMessage, cosmic::Theme, cosmic::Renderer> for Selec
                     let height = (curr.y - start.y).abs();
 
                     if width >= 10.0 && height >= 10.0 {
-                        let (roi_x, roi_y, roi_w, roi_h) = if let Some((img_w, img_h)) = self.image_size {
-                            let scale_x = img_w as f32 / bounds.width.max(1.0);
-                            let scale_y = img_h as f32 / bounds.height.max(1.0);
-                            (
-                                ((min_x * scale_x).round() as u32).min(img_w),
-                                ((min_y * scale_y).round() as u32).min(img_h),
-                                ((width * scale_x).round() as u32).min(img_w),
-                                ((height * scale_y).round() as u32).min(img_h),
-                            )
-                        } else {
-                            (
-                                min_x.max(0.0) as u32,
-                                min_y.max(0.0) as u32,
-                                width as u32,
-                                height as u32,
-                            )
-                        };
+                        let (roi_x, roi_y, roi_w, roi_h) =
+                            if let Some((img_w, img_h)) = self.image_size {
+                                let scale_x = img_w as f32 / bounds.width.max(1.0);
+                                let scale_y = img_h as f32 / bounds.height.max(1.0);
+                                (
+                                    ((min_x * scale_x).round() as u32).min(img_w),
+                                    ((min_y * scale_y).round() as u32).min(img_h),
+                                    ((width * scale_x).round() as u32).min(img_w),
+                                    ((height * scale_y).round() as u32).min(img_h),
+                                )
+                            } else {
+                                (
+                                    min_x.max(0.0) as u32,
+                                    min_y.max(0.0) as u32,
+                                    width as u32,
+                                    height as u32,
+                                )
+                            };
 
                         let roi = Roi::new(roi_x, roi_y, roi_w, roi_h);
                         Some(Action::publish(SelectorMessage::Selected {
                             roi,
-                            surface_width: self.image_size.map(|(w, _)| w).unwrap_or(bounds.width.max(1.0) as u32),
-                            surface_height: self.image_size.map(|(_, h)| h).unwrap_or(bounds.height.max(1.0) as u32),
+                            surface_width: self
+                                .image_size
+                                .map(|(w, _)| w)
+                                .unwrap_or(bounds.width.max(1.0) as u32),
+                            surface_height: self
+                                .image_size
+                                .map(|(_, h)| h)
+                                .unwrap_or(bounds.height.max(1.0) as u32),
                         }))
                     } else {
                         Some(Action::request_redraw())

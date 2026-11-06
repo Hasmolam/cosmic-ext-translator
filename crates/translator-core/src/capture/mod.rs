@@ -1,11 +1,11 @@
+pub mod pipewire_thread;
 pub mod roi;
 pub mod screencast;
-pub mod pipewire_thread;
 
+use crate::error::Result;
+use pipewire_thread::{spawn_pipewire_capture_thread, CapturedFrame, PipewireCaptureHandle};
 use roi::{CaptureRegion, Roi};
 use screencast::{ScreencastManager, ScreencastStreamInfo};
-use pipewire_thread::{spawn_pipewire_capture_thread, CapturedFrame, PipewireCaptureHandle};
-use crate::error::Result;
 
 pub struct CaptureSession {
     pub stream_info: ScreencastStreamInfo,
@@ -26,7 +26,10 @@ impl CaptureSession {
         let region = initial_region.into();
         let stream_info = ScreencastManager::create_stream(restore_token, persist).await?;
         let (capture_handle, frame_receiver) = spawn_pipewire_capture_thread(
-            stream_info.pipewire_fd.try_clone().map_err(|e| crate::error::CaptureError::PipeWire(e.to_string()))?,
+            stream_info
+                .pipewire_fd
+                .try_clone()
+                .map_err(|e| crate::error::CaptureError::PipeWire(e.to_string()))?,
             stream_info.node_id,
             region,
         )?;

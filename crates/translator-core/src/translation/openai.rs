@@ -115,7 +115,11 @@ impl TranslationBackend for OpenAiTranslationBackend {
 
             let resp = req.send().await?;
             if !resp.status().is_success() {
-                anyhow::bail!("OpenAI API error HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default());
+                anyhow::bail!(
+                    "OpenAI API error HTTP {}: {}",
+                    resp.status(),
+                    resp.text().await.unwrap_or_default()
+                );
             }
 
             let chat_resp: OpenAiChatResponse = resp.json().await?;

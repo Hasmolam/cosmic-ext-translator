@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 
 /// A single dialogue turn recorded in the sliding context history.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -125,7 +125,10 @@ impl TranslationContext {
             prompt.push_str("\n[Previous Dialogue Turns (Oldest to Newest)]:\n");
             for turn in self.history.iter().rev() {
                 let spk = turn.speaker.as_deref().unwrap_or("Dialogue");
-                prompt.push_str(&format!("{spk}: \"{}\" => \"{}\"\n", turn.source, turn.target));
+                prompt.push_str(&format!(
+                    "{spk}: \"{}\" => \"{}\"\n",
+                    turn.source, turn.target
+                ));
             }
         }
 

@@ -11,8 +11,8 @@ use translator_core::ocr::MockOcrBackend;
 use translator_core::orchestrator::{spawn_orchestrator, OrchestratorConfig, OrchestratorEvent};
 use translator_core::pipeline::debouncer::FrameDebouncer;
 use translator_core::translation::{
-    parse_speaker_tags, BoxFuture, BracketStyle, OfflineTranslationBackend,
-    ParsedDialogueLine, RateLimitManager, TranslationBackend, TranslationContext,
+    parse_speaker_tags, BoxFuture, BracketStyle, OfflineTranslationBackend, ParsedDialogueLine,
+    RateLimitManager, TranslationBackend, TranslationContext,
 };
 
 // -----------------------------------------------------------------------------
@@ -31,14 +31,62 @@ fn test_all_bracket_styles_wrap_and_parse() {
     glossary.insert("グレース".to_string(), "Grace".to_string());
 
     let cases = [
-        (BracketStyle::Lenticular, "【アリス】 気をつけてね。", "アリス", "Alice", "気をつけてね。"),
-        (BracketStyle::TortoiseShell, "〔ボブ〕 急ごう！", "ボブ", "Bob", "急ごう！"),
-        (BracketStyle::CornerBracket, "「キャロル」 行きましょう。", "キャロル", "Carol", "行きましょう。"),
-        (BracketStyle::SquareBracket, "[デイブ] 了解した。", "デイブ", "Dave", "了解した。"),
-        (BracketStyle::FullwidthSquare, "［イブ］ 準備完了。", "イブ", "Eve", "準備完了。"),
-        (BracketStyle::WhiteLenticular, "〖フランク〗 これを見ろ。", "フランク", "Frank", "これを見ろ。"),
-        (BracketStyle::ColonNameplate, "グレース: 敵が現れた！", "グレース", "Grace", "敵が現れた！"),
-        (BracketStyle::ColonNameplate, "グレース： 敵が現れた！", "グレース", "Grace", "敵が現れた！"),
+        (
+            BracketStyle::Lenticular,
+            "【アリス】 気をつけてね。",
+            "アリス",
+            "Alice",
+            "気をつけてね。",
+        ),
+        (
+            BracketStyle::TortoiseShell,
+            "〔ボブ〕 急ごう！",
+            "ボブ",
+            "Bob",
+            "急ごう！",
+        ),
+        (
+            BracketStyle::CornerBracket,
+            "「キャロル」 行きましょう。",
+            "キャロル",
+            "Carol",
+            "行きましょう。",
+        ),
+        (
+            BracketStyle::SquareBracket,
+            "[デイブ] 了解した。",
+            "デイブ",
+            "Dave",
+            "了解した。",
+        ),
+        (
+            BracketStyle::FullwidthSquare,
+            "［イブ］ 準備完了。",
+            "イブ",
+            "Eve",
+            "準備完了。",
+        ),
+        (
+            BracketStyle::WhiteLenticular,
+            "〖フランク〗 これを見ろ。",
+            "フランク",
+            "Frank",
+            "これを見ろ。",
+        ),
+        (
+            BracketStyle::ColonNameplate,
+            "グレース: 敵が現れた！",
+            "グレース",
+            "Grace",
+            "敵が現れた！",
+        ),
+        (
+            BracketStyle::ColonNameplate,
+            "グレース： 敵が現れた！",
+            "グレース",
+            "Grace",
+            "敵が現れた！",
+        ),
     ];
 
     for (expected_style, raw_text, expected_raw, expected_resolved, expected_dialogue) in cases {
@@ -295,12 +343,7 @@ fn test_japanese_dictionary_greedy_longest_match_and_pos() {
         vec!["magician".to_string(), "wizard".to_string()],
     );
     dict.insert("剣", "つるぎ", "Noun", vec!["sword".to_string()]);
-    dict.insert(
-        "聖剣",
-        "せいけん",
-        "Noun",
-        vec!["holy sword".to_string()],
-    );
+    dict.insert("聖剣", "せいけん", "Noun", vec!["holy sword".to_string()]);
     dict.insert(
         "装備",
         "そうび",
@@ -428,11 +471,7 @@ async fn test_orchestrator_speaker_tag_preservation_and_turn_recording() {
         should_fail_429: false,
     });
 
-    let debouncer = FrameDebouncer::new(
-        2,
-        Duration::from_millis(40),
-        Duration::from_millis(400),
-    );
+    let debouncer = FrameDebouncer::new(2, Duration::from_millis(40), Duration::from_millis(400));
 
     let mut glossary = HashMap::new();
     glossary.insert("アリス".to_string(), "Alice".to_string());
@@ -465,8 +504,11 @@ async fn test_orchestrator_speaker_tag_preservation_and_turn_recording() {
     // Expect translation event
     let mut got_translation = false;
     for _ in 0..10 {
-        if let Ok(Some(OrchestratorEvent::TranslationReady { original, translated, cached })) =
-            tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
+        if let Ok(Some(OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            cached,
+        })) = tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
         {
             assert_eq!(original, "【アリス】 気をつけてね。");
             // Check that output preserved the speaker tag with glossary replacement
@@ -483,7 +525,10 @@ async fn test_orchestrator_speaker_tag_preservation_and_turn_recording() {
             break;
         }
     }
-    assert!(got_translation, "Expected TranslationReady event with speaker preservation");
+    assert!(
+        got_translation,
+        "Expected TranslationReady event with speaker preservation"
+    );
     assert_eq!(call_count.load(Ordering::SeqCst), 1);
 
     handle.stop();
@@ -499,11 +544,7 @@ async fn test_orchestrator_rate_limit_backoff_blocks_further_dispatches() {
         should_fail_429: true,
     });
 
-    let debouncer = FrameDebouncer::new(
-        2,
-        Duration::from_millis(40),
-        Duration::from_millis(400),
-    );
+    let debouncer = FrameDebouncer::new(2, Duration::from_millis(40), Duration::from_millis(400));
 
     let config = OrchestratorConfig {
         forward_to_hud: false,
@@ -597,7 +638,10 @@ fn test_speaker_parsing_nested_and_adjacent_brackets() {
 
     // 5. Fullwidth colon with extra fullwidth/halfwidth spaces: "Alice　：　Hello"
     let p_fw_spaces = parse_speaker_tags("Alice　：　Hello", &glossary);
-    assert_eq!(p_fw_spaces.bracket_style, Some(BracketStyle::ColonNameplate));
+    assert_eq!(
+        p_fw_spaces.bracket_style,
+        Some(BracketStyle::ColonNameplate)
+    );
     assert_eq!(p_fw_spaces.raw_speaker.as_deref(), Some("Alice"));
     assert_eq!(p_fw_spaces.resolved_speaker.as_deref(), Some("Aliye"));
     assert_eq!(p_fw_spaces.dialogue, "Hello");
@@ -657,7 +701,11 @@ fn test_dialogue_context_boundary_capacities() {
     let mut ctx_zero = TranslationContext::new(0);
     assert_eq!(ctx_zero.history().len(), 0);
     for i in 0..10 {
-        ctx_zero.add_turn_with_speaker(Some("Speaker"), format!("Source {i}"), format!("Target {i}"));
+        ctx_zero.add_turn_with_speaker(
+            Some("Speaker"),
+            format!("Source {i}"),
+            format!("Target {i}"),
+        );
     }
     assert_eq!(ctx_zero.history().len(), 0);
     let prompt_zero = ctx_zero.build_system_prompt_with_speaker("ja", "en", Some("CurrentSpeaker"));
@@ -703,7 +751,10 @@ fn test_dialogue_context_boundary_capacities() {
     // Verify chronological ordering in prompt
     let pos_150 = prompt_large.find("Question 150").unwrap();
     let pos_249 = prompt_large.find("Question 249").unwrap();
-    assert!(pos_150 < pos_249, "Chronological order violation in system prompt");
+    assert!(
+        pos_150 < pos_249,
+        "Chronological order violation in system prompt"
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -723,13 +774,19 @@ fn test_glossary_interception_case_sensitivity_and_special_keys() {
     assert_eq!(p_hero.resolved_speaker.as_deref(), Some("Kahraman"));
 
     let p_hero_caps = parse_speaker_tags("【HERO】 ATTACK!", &glossary);
-    assert_eq!(p_hero_caps.resolved_speaker.as_deref(), Some("BÜYÜK KAHRAMAN"));
+    assert_eq!(
+        p_hero_caps.resolved_speaker.as_deref(),
+        Some("BÜYÜK KAHRAMAN")
+    );
 
     let p_hero_lower = parse_speaker_tags("【hero】 attack!", &glossary);
     assert_eq!(p_hero_lower.resolved_speaker.as_deref(), Some("hero")); // not in glossary, falls back to raw
 
     // Speaker with punctuation
-    let p_doc = parse_speaker_tags("Dr. Stone: This is ten billion percent exciting!", &glossary);
+    let p_doc = parse_speaker_tags(
+        "Dr. Stone: This is ten billion percent exciting!",
+        &glossary,
+    );
     assert_eq!(p_doc.resolved_speaker.as_deref(), Some("Taş Doktoru"));
     assert_eq!(p_doc.dialogue, "This is ten billion percent exciting!");
 
@@ -742,7 +799,10 @@ fn test_glossary_interception_case_sensitivity_and_special_keys() {
     let pos_000 = prompt.find("Term_000").unwrap();
     let pos_050 = prompt.find("Term_050").unwrap();
     let pos_099 = prompt.find("Term_099").unwrap();
-    assert!(pos_000 < pos_050 && pos_050 < pos_099, "Glossary entries must be sorted alphabetically");
+    assert!(
+        pos_000 < pos_050 && pos_050 < pos_099,
+        "Glossary entries must be sorted alphabetically"
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -781,8 +841,18 @@ fn test_japanese_dictionary_stress_and_longest_prefix() {
     let mut dict = JapaneseDictionary::empty();
     dict.insert("超", "ちょう", "Prefix", vec!["super".to_string()]);
     dict.insert("魔法", "まほう", "Noun", vec!["magic".to_string()]);
-    dict.insert("大魔法", "だいまほう", "Noun", vec!["great magic".to_string()]);
-    dict.insert("超大魔法", "ちょうだいまほう", "Noun", vec!["super great magic".to_string()]);
+    dict.insert(
+        "大魔法",
+        "だいまほう",
+        "Noun",
+        vec!["great magic".to_string()],
+    );
+    dict.insert(
+        "超大魔法",
+        "ちょうだいまほう",
+        "Noun",
+        vec!["super great magic".to_string()],
+    );
 
     // Longest match: "超大魔法" should be chosen over "超", "大魔法", "魔法"
     let cards = dict.analyze("超大魔法を発動した！");
@@ -798,7 +868,11 @@ fn test_japanese_dictionary_stress_and_longest_prefix() {
     let elapsed = start.elapsed();
 
     assert!(!analyzed.is_empty());
-    assert!(elapsed < Duration::from_millis(500), "Dictionary analysis took too long: {:?}", elapsed);
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "Dictionary analysis took too long: {:?}",
+        elapsed
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -819,9 +893,7 @@ impl TranslationBackend for CountingMultiSpeakerBackend {
     ) -> BoxFuture<'a, anyhow::Result<String>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let text = text.to_string();
-        Box::pin(async move {
-            Ok(format!("TR:{text}"))
-        })
+        Box::pin(async move { Ok(format!("TR:{text}")) })
     }
 }
 
@@ -878,11 +950,7 @@ async fn test_orchestrator_multi_speaker_cache_decoupling() {
         calls: Arc::clone(&calls),
     });
 
-    let debouncer = FrameDebouncer::new(
-        2,
-        Duration::from_millis(40),
-        Duration::from_millis(400),
-    );
+    let debouncer = FrameDebouncer::new(2, Duration::from_millis(40), Duration::from_millis(400));
 
     let mut glossary = HashMap::new();
     glossary.insert("Alice".to_string(), "Aliye".to_string());
@@ -914,8 +982,11 @@ async fn test_orchestrator_multi_speaker_cache_decoupling() {
 
     let mut got_alice = false;
     for _ in 0..10 {
-        if let Ok(Some(OrchestratorEvent::TranslationReady { original, translated, cached })) =
-            tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
+        if let Ok(Some(OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            cached,
+        })) = tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
         {
             assert_eq!(original, "【Alice】 Good morning!");
             assert_eq!(translated, "【Aliye】 TR:Good morning!");
@@ -934,8 +1005,11 @@ async fn test_orchestrator_multi_speaker_cache_decoupling() {
 
     let mut got_bob = false;
     for _ in 0..10 {
-        if let Ok(Some(OrchestratorEvent::TranslationReady { original, translated, cached })) =
-            tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
+        if let Ok(Some(OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            cached,
+        })) = tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
         {
             assert_eq!(original, "【Bob】 Good morning!");
             assert_eq!(translated, "【Bora】 TR:Good morning!");
@@ -955,8 +1029,11 @@ async fn test_orchestrator_multi_speaker_cache_decoupling() {
 
     let mut got_narrator = false;
     for _ in 0..10 {
-        if let Ok(Some(OrchestratorEvent::TranslationReady { original, translated, cached })) =
-            tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
+        if let Ok(Some(OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            cached,
+        })) = tokio::time::timeout(Duration::from_millis(300), handle.next_event()).await
         {
             assert_eq!(original, "Good morning!");
             assert_eq!(translated, "TR:Good morning!");
@@ -971,7 +1048,6 @@ async fn test_orchestrator_multi_speaker_cache_decoupling() {
 
     handle.stop();
 }
-
 
 // -----------------------------------------------------------------------------
 // Test 9: Adversarial RateLimitManager exponential progression (k = 0..=20) and recovery
@@ -1014,7 +1090,9 @@ fn test_adversarial_rate_limit_exponential_overflow_and_recovery() {
 
         // 4. Assert throttling status
         assert!(rlm.is_throttled());
-        let remaining = rlm.remaining_pause().expect("Expected active remaining pause");
+        let remaining = rlm
+            .remaining_pause()
+            .expect("Expected active remaining pause");
         assert!(remaining <= expected_duration);
     }
 
@@ -1032,9 +1110,19 @@ fn test_adversarial_rate_limit_exponential_overflow_and_recovery() {
 
     // Recovery test: record_success must reset error count to 0 and clear pause
     rlm.record_success();
-    assert!(!rlm.is_throttled(), "Must not be throttled after record_success");
-    assert_eq!(rlm.consecutive_errors(), 0, "consecutive_errors must be 0 after record_success");
-    assert!(rlm.remaining_pause().is_none(), "remaining_pause must be None after record_success");
+    assert!(
+        !rlm.is_throttled(),
+        "Must not be throttled after record_success"
+    );
+    assert_eq!(
+        rlm.consecutive_errors(),
+        0,
+        "consecutive_errors must be 0 after record_success"
+    );
+    assert!(
+        rlm.remaining_pause().is_none(),
+        "remaining_pause must be None after record_success"
+    );
 
     // Immediately trigger rate limit again -> must restart at base pause 30s (30 * 2^0)
     let fresh_pause = rlm.record_rate_limit();
@@ -1120,7 +1208,11 @@ fn test_adversarial_rate_limit_edge_configurations() {
     }
     let truncated_pause = rlm_32.record_rate_limit();
     // Multiplier truncates to 0, producing Duration::ZERO
-    assert_eq!(truncated_pause, Duration::ZERO, "Confirmed u32 truncation to 0 when exponent >= 32");
+    assert_eq!(
+        truncated_pause,
+        Duration::ZERO,
+        "Confirmed u32 truncation to 0 when exponent >= 32"
+    );
 
     // 4. In debug mode, max_exponent >= 64 triggers shift overflow panic on 1u64 << 64
     let panic_result = std::panic::catch_unwind(|| {
@@ -1130,7 +1222,10 @@ fn test_adversarial_rate_limit_edge_configurations() {
         }
         rlm_64.record_rate_limit();
     });
-    assert!(panic_result.is_err(), "Confirmed shift overflow panic when max_exponent >= 64");
+    assert!(
+        panic_result.is_err(),
+        "Confirmed shift overflow panic when max_exponent >= 64"
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -1142,8 +1237,14 @@ fn test_adversarial_japanese_dictionary_boundaries_and_collisions() {
     let mut dict = JapaneseDictionary::new();
 
     // 1. Empty string, whitespace, tabs, newlines
-    assert!(dict.analyze("").is_empty(), "Empty string must return empty Vec");
-    assert!(dict.analyze("   \n\t  \r\n").is_empty(), "Whitespace must return empty Vec");
+    assert!(
+        dict.analyze("").is_empty(),
+        "Empty string must return empty Vec"
+    );
+    assert!(
+        dict.analyze("   \n\t  \r\n").is_empty(),
+        "Whitespace must return empty Vec"
+    );
 
     // 2. Single characters
     // 2a. Non-Japanese ASCII
@@ -1180,8 +1281,12 @@ fn test_adversarial_japanese_dictionary_boundaries_and_collisions() {
     assert_eq!(res_tate[0].reading, "たて");
 
     // 3. Non-Japanese text
-    assert!(dict.analyze("The quick brown fox jumps over the lazy dog.").is_empty());
-    assert!(dict.analyze("1234567890 !?@#$%^&*()_+-=[]{}|;':\",./<>?").is_empty());
+    assert!(dict
+        .analyze("The quick brown fox jumps over the lazy dog.")
+        .is_empty());
+    assert!(dict
+        .analyze("1234567890 !?@#$%^&*()_+-=[]{}|;':\",./<>?")
+        .is_empty());
     assert!(dict.analyze("🚀🎮🔥✨ Привет мир 안녕하세요").is_empty());
 
     // Mixed non-Japanese with Japanese core vocabulary
@@ -1190,13 +1295,20 @@ fn test_adversarial_japanese_dictionary_boundaries_and_collisions() {
     assert_eq!(mixed_surfaces, vec!["勇者", "魔法", "敵"]);
 
     // 4. Unknown kanji
-    assert!(dict.analyze("魑魅魍魎跋扈").is_empty(), "Unknown kanji must return empty Vec");
+    assert!(
+        dict.analyze("魑魅魍魎跋扈").is_empty(),
+        "Unknown kanji must return empty Vec"
+    );
     assert!(dict.analyze("麒麟と鳳凰").is_empty());
 
     // Unknown kanji adjoining known vocabulary
     let adjoining = dict.analyze("大勇者が魔神を討伐する");
     let adjoining_surfaces: Vec<&str> = adjoining.iter().map(|c| c.surface.as_str()).collect();
-    assert_eq!(adjoining_surfaces, vec!["勇者"], "Must isolate known words despite unknown kanji prefixes/suffixes");
+    assert_eq!(
+        adjoining_surfaces,
+        vec!["勇者"],
+        "Must isolate known words despite unknown kanji prefixes/suffixes"
+    );
 
     // 5. Overlapping dictionary entries / prefix collisions
     // Add "魔法使い" (4 chars) to overlap with "魔法" (2 chars)
@@ -1226,7 +1338,12 @@ fn test_adversarial_japanese_dictionary_boundaries_and_collisions() {
     // 5d. Multi-level nested prefixes
     dict.insert("東", "ひがし", "Noun", vec!["East".to_string()]);
     dict.insert("東京", "とうきょう", "Noun", vec!["Tokyo".to_string()]);
-    dict.insert("東京都", "とうきょうと", "Noun", vec!["Tokyo Metropolis".to_string()]);
+    dict.insert(
+        "東京都",
+        "とうきょうと",
+        "Noun",
+        vec!["Tokyo Metropolis".to_string()],
+    );
     dict.insert(
         "東京都知事",
         "とうきょうとちじ",
@@ -1265,7 +1382,11 @@ fn test_adversarial_japanese_dictionary_boundaries_and_collisions() {
     let stress_cards = dict.analyze(&repeated);
     let elapsed = start.elapsed();
     assert_eq!(stress_cards.len(), 500 * 4); // 4 words per sentence ("勇者", "魔法", "攻撃", "防御")
-    assert!(elapsed < Duration::from_millis(500), "10k char analysis took {:?}", elapsed);
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "10k char analysis took {:?}",
+        elapsed
+    );
 
     // 7. 16-character sliding window limitation boundary test
     let entry_16 = "一二三四五六七八九十一二三四五六"; // 16 chars
@@ -1281,5 +1402,8 @@ fn test_adversarial_japanese_dictionary_boundaries_and_collisions() {
     // 17-character morpheme cannot be matched as a whole because analyze caps window at 16 chars!
     // Instead it matches the 16-character prefix entry_16!
     assert_eq!(res_17.len(), 1);
-    assert_eq!(res_17[0].surface, entry_16, "17-char word falls back to 16-char prefix due to min(16) window cap");
+    assert_eq!(
+        res_17[0].surface, entry_16,
+        "17-char word falls back to 16-char prefix due to min(16) window cap"
+    );
 }

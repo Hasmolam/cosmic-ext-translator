@@ -48,8 +48,16 @@ impl TranslationBackend for GoogleTranslateBackend {
                 }
             }
 
-            let sl = if src_lang.is_empty() || src_lang == "auto" { "auto" } else { src_lang };
-            let tl = if target_lang.is_empty() { "tr" } else { target_lang };
+            let sl = if src_lang.is_empty() || src_lang == "auto" {
+                "auto"
+            } else {
+                src_lang
+            };
+            let tl = if target_lang.is_empty() {
+                "tr"
+            } else {
+                target_lang
+            };
 
             let url = "https://clients5.google.com/translate_a/t";
             let resp = self

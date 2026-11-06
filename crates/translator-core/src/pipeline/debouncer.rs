@@ -132,7 +132,8 @@ impl FrameDebouncer {
                     self.animation_start_time = None;
 
                     let final_frame = self.latest_frame.take()?;
-                    let compact_hash = current_hash[0] ^ current_hash[1] ^ current_hash[2] ^ current_hash[3];
+                    let compact_hash =
+                        current_hash[0] ^ current_hash[1] ^ current_hash[2] ^ current_hash[3];
                     let settled = SettledFrame {
                         frame: final_frame,
                         hash: compact_hash,
@@ -303,8 +304,7 @@ impl TextGate {
     /// If `last_candidate_text` has expanded beyond `last_emitted_text`, commits
     /// it to `last_emitted_text` and returns `Some(text)`.
     pub fn flush_pending(&mut self) -> Option<String> {
-        if self.last_candidate_text.is_empty()
-            || self.last_candidate_text == self.last_emitted_text
+        if self.last_candidate_text.is_empty() || self.last_candidate_text == self.last_emitted_text
         {
             None
         } else {
@@ -316,8 +316,7 @@ impl TextGate {
     /// Checks if there is a pending typewriter expansion awaiting settle timeout.
     #[must_use]
     pub fn has_pending_expansion(&self) -> bool {
-        !self.last_candidate_text.is_empty()
-            && self.last_candidate_text != self.last_emitted_text
+        !self.last_candidate_text.is_empty() && self.last_candidate_text != self.last_emitted_text
     }
 
     /// Resets the internal state (useful when switching game windows or changing ROI).
@@ -363,11 +362,8 @@ mod tests {
 
     #[test]
     fn test_debouncer_typewriter_simulation() {
-        let mut debouncer = FrameDebouncer::new(
-            2,
-            Duration::from_millis(50),
-            Duration::from_millis(500),
-        );
+        let mut debouncer =
+            FrameDebouncer::new(2, Duration::from_millis(50), Duration::from_millis(500));
 
         // Frame 0: Baseline empty box
         assert!(debouncer.process_frame(make_frame_with_blocks(0)).is_none());
@@ -386,7 +382,10 @@ mod tests {
 
         // Next frame with same image: should trigger Settled and return Some!
         let settled = debouncer.process_frame(make_frame_with_blocks(2));
-        assert!(settled.is_some(), "Debouncer should emit settled frame after stability window");
+        assert!(
+            settled.is_some(),
+            "Debouncer should emit settled frame after stability window"
+        );
         assert_eq!(debouncer.state(), DebounceState::Idle);
     }
 
@@ -434,7 +433,10 @@ mod tests {
         let t0 = Instant::now();
 
         // 1. Initial word appears
-        assert_eq!(gate.evaluate_at("Wait", t0), TextDiffAction::EmitTranslation);
+        assert_eq!(
+            gate.evaluate_at("Wait", t0),
+            TextDiffAction::EmitTranslation
+        );
         assert_eq!(gate.last_emitted_text(), "Wait");
         assert_eq!(gate.last_candidate_text(), "Wait");
 
@@ -456,14 +458,20 @@ mod tests {
 
         // 4. Progressive typewriter expansion 3 (final sentence text)
         assert_eq!(
-            gate.evaluate_at("Wait, don't open that door!", t0 + Duration::from_millis(150)),
+            gate.evaluate_at(
+                "Wait, don't open that door!",
+                t0 + Duration::from_millis(150)
+            ),
             TextDiffAction::TypewriterWait
         );
         assert_eq!(gate.last_candidate_text(), "Wait, don't open that door!");
 
         // 5. Duplicate candidate while waiting (game finished typing, screen idle)
         assert_eq!(
-            gate.evaluate_at("Wait, don't open that door!", t0 + Duration::from_millis(200)),
+            gate.evaluate_at(
+                "Wait, don't open that door!",
+                t0 + Duration::from_millis(200)
+            ),
             TextDiffAction::SuppressJitter
         );
 
@@ -515,15 +523,30 @@ mod tests {
         let mut gate = TextGate::default();
 
         // Japanese dialogue prefix expansion
-        assert_eq!(gate.evaluate("「こんにちは"), TextDiffAction::EmitTranslation);
-        assert_eq!(gate.evaluate("「こんにちは、世界」"), TextDiffAction::TypewriterWait);
-        assert_eq!(gate.flush_pending(), Some("「こんにちは、世界」".to_string()));
+        assert_eq!(
+            gate.evaluate("「こんにちは"),
+            TextDiffAction::EmitTranslation
+        );
+        assert_eq!(
+            gate.evaluate("「こんにちは、世界」"),
+            TextDiffAction::TypewriterWait
+        );
+        assert_eq!(
+            gate.flush_pending(),
+            Some("「こんにちは、世界」".to_string())
+        );
 
         // Jitter on settled Japanese string
-        assert_eq!(gate.evaluate("「こんにちは、世界」"), TextDiffAction::SuppressJitter);
+        assert_eq!(
+            gate.evaluate("「こんにちは、世界」"),
+            TextDiffAction::SuppressJitter
+        );
 
         // Dialogue turn change
-        assert_eq!(gate.evaluate("【勇者】魔王を倒す時が来た！"), TextDiffAction::EmitTranslation);
+        assert_eq!(
+            gate.evaluate("【勇者】魔王を倒す時が来た！"),
+            TextDiffAction::EmitTranslation
+        );
     }
 
     #[test]
@@ -535,7 +558,10 @@ mod tests {
         // Tesseract spacing differs between frames; normalisation makes them prefixes.
         let frames = ["私 は", "私は 学生", "私 は 学生 です 。"];
         let first = normalize_cjk_text(frames[0]);
-        assert_eq!(gate.evaluate_at(&first, t0), TextDiffAction::EmitTranslation);
+        assert_eq!(
+            gate.evaluate_at(&first, t0),
+            TextDiffAction::EmitTranslation
+        );
         for (i, raw) in frames.iter().enumerate().skip(1) {
             let text = normalize_cjk_text(raw);
             assert_eq!(
@@ -546,5 +572,4 @@ mod tests {
         }
         assert_eq!(gate.flush_pending().as_deref(), Some("私は学生です。"));
     }
-
 }

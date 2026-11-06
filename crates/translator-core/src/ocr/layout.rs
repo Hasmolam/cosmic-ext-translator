@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::capture::roi::Roi;
+use serde::{Deserialize, Serialize};
 
 /// Represents text layout orientation (horizontal or vertical CJK).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -253,8 +253,16 @@ fn sort_vertical_reading_order(mut boxes: Vec<DetectedTextBox>) -> Vec<DetectedT
 
     // Sort columns right-to-left (X_right desc)
     columns.sort_by(|col_a, col_b| {
-        let a_right = col_a.iter().map(|b| b.rect.x.saturating_add(b.rect.width)).max().unwrap_or(0);
-        let b_right = col_b.iter().map(|b| b.rect.x.saturating_add(b.rect.width)).max().unwrap_or(0);
+        let a_right = col_a
+            .iter()
+            .map(|b| b.rect.x.saturating_add(b.rect.width))
+            .max()
+            .unwrap_or(0);
+        let b_right = col_b
+            .iter()
+            .map(|b| b.rect.x.saturating_add(b.rect.width))
+            .max()
+            .unwrap_or(0);
         b_right.cmp(&a_right).then_with(|| {
             let a_top = col_a.iter().map(|b| b.rect.y).min().unwrap_or(0);
             let b_top = col_b.iter().map(|b| b.rect.y).min().unwrap_or(0);
@@ -309,7 +317,10 @@ mod tests {
             DetectedTextBox::new(Roi::new(60, 20, 20, 100), "列二", 0.9),
             DetectedTextBox::new(Roi::new(10, 200, 50, 15), "横", 0.9),
         ];
-        assert_eq!(detect_dominant_orientation(&boxes), TextOrientation::Vertical);
+        assert_eq!(
+            detect_dominant_orientation(&boxes),
+            TextOrientation::Vertical
+        );
 
         // 3 wide horizontal lines
         let boxes_horiz = vec![
@@ -317,10 +328,16 @@ mod tests {
             DetectedTextBox::new(Roi::new(10, 50, 120, 25), "Line 2", 0.9),
             DetectedTextBox::new(Roi::new(10, 80, 120, 25), "Line 3", 0.9),
         ];
-        assert_eq!(detect_dominant_orientation(&boxes_horiz), TextOrientation::Horizontal);
+        assert_eq!(
+            detect_dominant_orientation(&boxes_horiz),
+            TextOrientation::Horizontal
+        );
 
         // Empty boxes default to horizontal
-        assert_eq!(detect_dominant_orientation(&[]), TextOrientation::Horizontal);
+        assert_eq!(
+            detect_dominant_orientation(&[]),
+            TextOrientation::Horizontal
+        );
     }
 
     #[test]
@@ -335,7 +352,10 @@ mod tests {
 
         let sorted = sort_cjk_reading_order(boxes, TextOrientation::Horizontal);
         let texts: Vec<&str> = sorted.iter().map(|b| b.text.as_str()).collect();
-        assert_eq!(texts, vec!["line1_word1", "line1_word2", "line2_word1", "line2_word2"]);
+        assert_eq!(
+            texts,
+            vec!["line1_word1", "line1_word2", "line2_word1", "line2_word2"]
+        );
     }
 
     #[test]

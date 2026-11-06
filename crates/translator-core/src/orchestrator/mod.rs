@@ -94,12 +94,8 @@ pub fn spawn_orchestrator(
     let (stop_tx, mut stop_rx) = watch::channel(false);
     let (event_tx, event_rx) = mpsc::channel(64);
 
-    let (mut pipeline_handle, mut recognized_rx) = spawn_recognition_pipeline(
-        frame_rx,
-        debouncer,
-        config.preprocess.clone(),
-        ocr_backend,
-    );
+    let (mut pipeline_handle, mut recognized_rx) =
+        spawn_recognition_pipeline(frame_rx, debouncer, config.preprocess.clone(), ocr_backend);
 
     tokio::spawn(async move {
         let _ = event_tx.send(OrchestratorEvent::Started).await;
@@ -119,11 +115,7 @@ pub fn spawn_orchestrator(
             None
         };
 
-        let mut text_gate = TextGate::new(
-            config.typewriter_settle_duration,
-            0.92,
-            0.60,
-        );
+        let mut text_gate = TextGate::new(config.typewriter_settle_duration, 0.92, 0.60);
         let mut typewriter_deadline: Option<tokio::time::Instant> = None;
 
         loop {
@@ -222,10 +214,7 @@ struct OrchestratorSessionState<'a> {
     event_tx: &'a mpsc::Sender<OrchestratorEvent>,
 }
 
-async fn dispatch_translation(
-    text: String,
-    state: &mut OrchestratorSessionState<'_>,
-) {
+async fn dispatch_translation(text: String, state: &mut OrchestratorSessionState<'_>) {
     // If rate-limited, notify HUD and throttle request dispatch
     if let Some(remaining) = state.rate_limit_manager.remaining_pause() {
         let secs = remaining.as_secs().max(1);
@@ -240,9 +229,10 @@ async fn dispatch_translation(
         return;
     }
 
-    let _ = state.event_tx.send(OrchestratorEvent::TextDetected {
-        raw: text.clone(),
-    }).await;
+    let _ = state
+        .event_tx
+        .send(OrchestratorEvent::TextDetected { raw: text.clone() })
+        .await;
 
     // Parse speaker tag if present to translate dialogue body cleanly
     let parsed = parse_speaker_tags(&text, state.context.glossary());
@@ -256,12 +246,16 @@ async fn dispatch_translation(
     let (translated, cached) = if let Some(hit) = state.cache.get(text_to_translate) {
         (hit, true)
     } else {
-        match state.translation_backend.translate(
-            text_to_translate,
-            &state.config.src_lang,
-            &state.config.target_lang,
-            state.context,
-        ).await {
+        match state
+            .translation_backend
+            .translate(
+                text_to_translate,
+                &state.config.src_lang,
+                &state.config.target_lang,
+                state.context,
+            )
+            .await
+        {
             Ok(tr) => {
                 let tr_clean = tr.trim().to_string();
                 state.cache.insert(text_to_translate, &tr_clean);
@@ -310,11 +304,14 @@ async fn dispatch_translation(
         &final_translated,
     );
 
-    let _ = state.event_tx.send(OrchestratorEvent::TranslationReady {
-        original: text.clone(),
-        translated: final_translated.clone(),
-        cached,
-    }).await;
+    let _ = state
+        .event_tx
+        .send(OrchestratorEvent::TranslationReady {
+            original: text.clone(),
+            translated: final_translated.clone(),
+            cached,
+        })
+        .await;
 
     // Forward to HUD overlay if configured
     if let Some(client) = state.hud_client {
@@ -342,11 +339,11 @@ async fn set_hud_status(state: &mut OrchestratorSessionState<'_>, status: Option
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
     use crate::capture::pipewire_thread::CapturedFrame;
     use crate::ocr::MockOcrBackend;
     use crate::translation::MockTranslationBackend;
     use image::{Rgba, RgbaImage};
+    use std::time::Instant;
 
     use std::time::Duration;
 
@@ -373,11 +370,8 @@ mod tests {
         let (frame_tx, frame_rx) = watch::channel(None);
         let ocr_backend = Arc::new(MockOcrBackend::new("Victory Royale"));
         let translation_backend = Arc::new(MockTranslationBackend::new("TR"));
-        let debouncer = FrameDebouncer::new(
-            2,
-            Duration::from_millis(40),
-            Duration::from_millis(400),
-        );
+        let debouncer =
+            FrameDebouncer::new(2, Duration::from_millis(40), Duration::from_millis(400));
 
         let config = OrchestratorConfig {
             forward_to_hud: false, // Don't require running HUD socket in test

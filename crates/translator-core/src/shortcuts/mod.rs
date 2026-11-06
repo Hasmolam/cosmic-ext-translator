@@ -1,7 +1,7 @@
-use std::sync::Arc;
 use ashpd::desktop::global_shortcuts::{BindShortcutsOptions, GlobalShortcuts, NewShortcut};
 use ashpd::desktop::{CreateSessionOptions, Session};
 use futures_util::StreamExt;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info};
 
@@ -72,7 +72,10 @@ impl GlobalShortcutsManager {
 
         let shortcuts = custom_shortcuts.unwrap_or_else(Self::default_shortcuts);
 
-        info!("Binding {} global shortcuts via XDG portal", shortcuts.len());
+        info!(
+            "Binding {} global shortcuts via XDG portal",
+            shortcuts.len()
+        );
         proxy
             .bind_shortcuts(&session, &shortcuts, None, BindShortcutsOptions::default())
             .await?
@@ -108,12 +111,18 @@ mod tests {
 
     #[test]
     fn test_shortcut_action_mapping() {
-        assert_eq!(ShortcutAction::from_id("select_roi"), ShortcutAction::SelectRoi);
+        assert_eq!(
+            ShortcutAction::from_id("select_roi"),
+            ShortcutAction::SelectRoi
+        );
         assert_eq!(
             ShortcutAction::from_id("toggle_translation"),
             ShortcutAction::ToggleTranslation
         );
-        assert_eq!(ShortcutAction::from_id("toggle_hud"), ShortcutAction::ToggleHud);
+        assert_eq!(
+            ShortcutAction::from_id("toggle_hud"),
+            ShortcutAction::ToggleHud
+        );
         assert_eq!(
             ShortcutAction::from_id("custom_action"),
             ShortcutAction::Custom("custom_action".to_string())

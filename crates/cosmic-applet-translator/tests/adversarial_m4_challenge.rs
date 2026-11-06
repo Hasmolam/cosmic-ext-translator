@@ -1,4 +1,6 @@
-use cosmic_applet_translator::history::{DialogueBacklog, HistoryEntry, DEFAULT_MAX_HISTORY_ENTRIES};
+use cosmic_applet_translator::history::{
+    DialogueBacklog, HistoryEntry, DEFAULT_MAX_HISTORY_ENTRIES,
+};
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
@@ -27,9 +29,15 @@ fn test_stress_insertion_rapid_1500_entries_exact_500_fifo_bounds() {
 
         let current_len = backlog.entries().len();
         if i <= 500 {
-            assert_eq!(current_len, i, "Backlog length must equal insertion count prior to reaching capacity");
+            assert_eq!(
+                current_len, i,
+                "Backlog length must equal insertion count prior to reaching capacity"
+            );
         } else {
-            assert_eq!(current_len, 500, "Backlog length must be strictly capped at 500 once capacity is reached");
+            assert_eq!(
+                current_len, 500,
+                "Backlog length must be strictly capped at 500 once capacity is reached"
+            );
         }
     }
 
@@ -62,11 +70,7 @@ fn test_stress_insertion_rapid_1500_entries_exact_500_fifo_bounds() {
 
     // Push 500 more items (total 2,000 inserted)
     for i in 1501..=2000 {
-        backlog.push(
-            None,
-            format!("Narration #{i}"),
-            format!("Anlatı #{i}"),
-        );
+        backlog.push(None, format!("Narration #{i}"), format!("Anlatı #{i}"));
         assert_eq!(backlog.entries().len(), 500);
     }
 
@@ -92,11 +96,7 @@ fn test_backlog_edge_capacities_and_clear_cycle() {
     // 2. Capacity = 2: Double-entry sliding window
     let mut pair_backlog = DialogueBacklog::new(2);
     for i in 1..=200 {
-        pair_backlog.push(
-            None,
-            format!("Line_{i}"),
-            format!("Tr_{i}"),
-        );
+        pair_backlog.push(None, format!("Line_{i}"), format!("Tr_{i}"));
         if i == 1 {
             assert_eq!(pair_backlog.entries().len(), 1);
         } else {
@@ -441,10 +441,17 @@ fn test_speaker_parsing_empty_dialogue_and_corner_delimiters() {
     assert!(multi_res.raw_speaker.is_none());
 
     // Valid colon nameplate
-    let valid_colon = parse_speaker_tags("Narrator: Once upon a time in a distant land...", &glossary);
-    assert_eq!(valid_colon.bracket_style, Some(BracketStyle::ColonNameplate));
+    let valid_colon =
+        parse_speaker_tags("Narrator: Once upon a time in a distant land...", &glossary);
+    assert_eq!(
+        valid_colon.bracket_style,
+        Some(BracketStyle::ColonNameplate)
+    );
     assert_eq!(valid_colon.raw_speaker.as_deref(), Some("Narrator"));
-    assert_eq!(valid_colon.dialogue, "Once upon a time in a distant land...");
+    assert_eq!(
+        valid_colon.dialogue,
+        "Once upon a time in a distant land..."
+    );
 }
 
 // =============================================================================
@@ -492,7 +499,11 @@ async fn test_orchestrator_channel_rapid_dispatch_500_events_no_deadlock() {
                         assert!(raw.starts_with("Detected frame text #"));
                         detected_count += 1;
                     }
-                    OrchestratorEvent::TranslationReady { original, translated, .. } => {
+                    OrchestratorEvent::TranslationReady {
+                        original,
+                        translated,
+                        ..
+                    } => {
                         assert!(original.starts_with("Source dialogue #"));
                         assert!(translated.starts_with("Çeviri metni #"));
                         translated_count += 1;
@@ -515,9 +526,15 @@ async fn test_orchestrator_channel_rapid_dispatch_500_events_no_deadlock() {
     })
     .await;
 
-    assert!(timeout_result.is_ok(), "Rapid 600-event dispatch must finish well within 5s deadline without deadlock");
+    assert!(
+        timeout_result.is_ok(),
+        "Rapid 600-event dispatch must finish well within 5s deadline without deadlock"
+    );
     let (total_received, detected, translated) = timeout_result.unwrap();
-    assert_eq!(total_received, 600, "Must successfully receive exactly 600 events through 64-capacity channel");
+    assert_eq!(
+        total_received, 600,
+        "Must successfully receive exactly 600 events through 64-capacity channel"
+    );
     assert_eq!(detected, 300);
     assert_eq!(translated, 300);
 }
@@ -537,7 +554,9 @@ async fn test_orchestrator_channel_concurrent_multi_producers_1000_events_deadlo
                 let event = OrchestratorEvent::TextDetected {
                     raw: format!("Producer_{p_id}_event_{i}"),
                 };
-                tx.send(event).await.expect("Concurrent send must not fail or deadlock");
+                tx.send(event)
+                    .await
+                    .expect("Concurrent send must not fail or deadlock");
             }
         }));
     }
@@ -564,10 +583,16 @@ async fn test_orchestrator_channel_concurrent_multi_producers_1000_events_deadlo
     })
     .await;
 
-    assert!(timeout_result.is_ok(), "1,000 concurrent events must drain without deadlock");
+    assert!(
+        timeout_result.is_ok(),
+        "1,000 concurrent events must drain without deadlock"
+    );
     let (received, backlog_len) = timeout_result.unwrap();
     assert_eq!(received, total_events);
-    assert_eq!(backlog_len, 500, "DialogueBacklog fed from channel must cap at exactly 500 entries");
+    assert_eq!(
+        backlog_len, 500,
+        "DialogueBacklog fed from channel must cap at exactly 500 entries"
+    );
 }
 
 #[tokio::test]
@@ -605,7 +630,10 @@ async fn test_broadcast_event_bus_overflow_resilience() {
     }
 
     // Next recv succeeds with the latest surviving buffered event
-    let next_event = bus_rx.recv().await.expect("Should receive next buffered message");
+    let next_event = bus_rx
+        .recv()
+        .await
+        .expect("Should receive next buffered message");
     if let OrchestratorEvent::TextDetected { raw } = next_event {
         assert!(raw.starts_with("Flood event #"));
     } else {
@@ -628,7 +656,8 @@ fn test_history_entry_serde_roundtrip_and_equality() {
     };
 
     let serialized = serde_json::to_string(&entry).expect("Serialization to JSON must succeed");
-    let deserialized: HistoryEntry = serde_json::from_str(&serialized).expect("Deserialization must succeed");
+    let deserialized: HistoryEntry =
+        serde_json::from_str(&serialized).expect("Deserialization must succeed");
 
     assert_eq!(entry, deserialized);
     assert_eq!(deserialized.id, 42);

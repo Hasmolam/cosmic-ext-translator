@@ -22,7 +22,11 @@ fn test_backlog_boundary_capacities_and_fifo() {
     let mut backlog500 = DialogueBacklog::new(500);
     for i in 1..=550 {
         backlog500.push(
-            if i % 2 == 0 { Some(format!("Hero {i}")) } else { None },
+            if i % 2 == 0 {
+                Some(format!("Hero {i}"))
+            } else {
+                None
+            },
             format!("Source line {i}"),
             format!("Hedef satır {i}"),
         );
@@ -42,11 +46,7 @@ fn test_backlog_cjk_and_multiline_support() {
         "我が城へようこそ。\n命を捨てに来たか？".into(),
         "Kaleme hoş geldin.\nCanını vermeye mi geldin?".into(),
     );
-    backlog.push(
-        Some("勇者".into()),
-        "覚悟しろ！".into(),
-        "Hazır ol!".into(),
-    );
+    backlog.push(Some("勇者".into()), "覚悟しろ！".into(), "Hazır ol!".into());
 
     assert_eq!(backlog.entries().len(), 2);
 
@@ -79,7 +79,11 @@ fn test_orchestrator_event_speaker_parsing_and_backlog_pipeline() {
     };
 
     match event1 {
-        OrchestratorEvent::TranslationReady { original, translated, .. } => {
+        OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            ..
+        } => {
             let parsed = parse_speaker_tags(&original, &glossary);
             let speaker = parsed.resolved_speaker.or(parsed.raw_speaker);
             let source_text = if !parsed.dialogue.is_empty() {
@@ -106,7 +110,11 @@ fn test_orchestrator_event_speaker_parsing_and_backlog_pipeline() {
     };
 
     match event2 {
-        OrchestratorEvent::TranslationReady { original, translated, .. } => {
+        OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            ..
+        } => {
             let parsed = parse_speaker_tags(&original, &glossary);
             let speaker = parsed.resolved_speaker.or(parsed.raw_speaker);
             let source_text = if !parsed.dialogue.is_empty() {
@@ -133,7 +141,11 @@ fn test_orchestrator_event_speaker_parsing_and_backlog_pipeline() {
     };
 
     match event3 {
-        OrchestratorEvent::TranslationReady { original, translated, .. } => {
+        OrchestratorEvent::TranslationReady {
+            original,
+            translated,
+            ..
+        } => {
             let parsed = parse_speaker_tags(&original, &glossary);
             let speaker = parsed.resolved_speaker.or(parsed.raw_speaker);
             let source_text = if !parsed.dialogue.is_empty() {
@@ -149,7 +161,10 @@ fn test_orchestrator_event_speaker_parsing_and_backlog_pipeline() {
     assert_eq!(backlog.entries().len(), 3);
     let entry3 = &backlog.entries()[0];
     assert!(entry3.speaker.is_none());
-    assert_eq!(entry3.source, "A thunderous roar echoed through the valley.");
+    assert_eq!(
+        entry3.source,
+        "A thunderous roar echoed through the valley."
+    );
 }
 
 #[tokio::test]
@@ -165,7 +180,10 @@ async fn test_orchestrator_channel_deadlock_prevention() {
                 raw: format!("Detected frame #{i}"),
             };
             // If the buffer stalls, this send will deadlock and time out
-            event_tx.send(event).await.expect("Channel must not deadlock");
+            event_tx
+                .send(event)
+                .await
+                .expect("Channel must not deadlock");
         }
     });
 
@@ -177,8 +195,13 @@ async fn test_orchestrator_channel_deadlock_prevention() {
         }
     }
 
-    producer.await.expect("Producer task completed successfully");
-    assert_eq!(received, total_events, "All 200 events successfully drained through 64-capacity channel");
+    producer
+        .await
+        .expect("Producer task completed successfully");
+    assert_eq!(
+        received, total_events,
+        "All 200 events successfully drained through 64-capacity channel"
+    );
 }
 
 #[test]

@@ -1,10 +1,10 @@
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
 use anyhow::Result;
 use image::DynamicImage;
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams, TextItem};
 use rten::Model;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use crate::error::OcrInitError;
 use crate::language::{normalize_source_code, script_for_code};
@@ -241,7 +241,12 @@ impl OcrsBackend {
     pub fn is_cjk_configured(&self) -> bool {
         self.lang
             .as_deref()
-            .map(|l| matches!(l.to_lowercase().as_str(), "ja" | "jpn" | "zh" | "chi" | "ko" | "kor"))
+            .map(|l| {
+                matches!(
+                    l.to_lowercase().as_str(),
+                    "ja" | "jpn" | "zh" | "chi" | "ko" | "kor"
+                )
+            })
             .unwrap_or(false)
     }
 

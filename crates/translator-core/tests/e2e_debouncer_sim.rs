@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use image::{Rgba, RgbaImage};
+use std::time::{Duration, Instant};
 use translator_core::capture::pipewire_thread::CapturedFrame;
 use translator_core::pipeline::debouncer::{DebounceState, FrameDebouncer, SettledFrame};
 
@@ -208,6 +208,9 @@ fn test_instant_dialogue_skip() {
 
     // Next identical frame must settle
     let settled = debouncer.process_frame(full);
-    assert!(settled.is_some(), "Instant dialogue change should settle after settle_duration");
+    assert!(
+        settled.is_some(),
+        "Instant dialogue change should settle after settle_duration"
+    );
     assert_eq!(debouncer.state(), DebounceState::Idle);
 }

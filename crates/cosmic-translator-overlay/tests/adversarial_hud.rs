@@ -1,8 +1,8 @@
-use std::time::Duration;
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     Anchor, KeyboardInteractivity, Layer,
 };
 use cosmic_translator_overlay::hud::SubtitleHudState;
+use std::time::Duration;
 use translator_core::ipc::{HudIpcClient, HudIpcServer, HudMessage, HudPosition, HudStatus};
 
 /// State machine matching the exact message handling logic in
@@ -88,7 +88,10 @@ fn test_status_badge_interleaving_never_corrupts_subtitle_text() {
         original: Some("勇者は古の剣を抜いた。".to_string()),
         duration_ms: 0,
     });
-    assert_eq!(sim.hud.current_text, "The hero unsheathed the ancient blade.");
+    assert_eq!(
+        sim.hud.current_text,
+        "The hero unsheathed the ancient blade."
+    );
     assert_eq!(sim.hud.status_badge, None);
     assert_eq!(sim.subtitle_seq, 1);
 
@@ -202,7 +205,9 @@ fn test_adversarial_randomized_interleaving_fuzzing_10k_steps() {
     // Pseudo-random linear congruential generator for reproducible fuzzing
     let mut seed: u64 = 0xDEADBEEFCAFE;
     let mut rng = move || {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         seed
     };
 
@@ -333,10 +338,7 @@ fn test_adversarial_randomized_interleaving_fuzzing_10k_steps() {
         // Verify layer settings invariants on every single step
         let settings = sim.hud.layer_settings();
         assert_eq!(settings.layer, Layer::Overlay);
-        assert_eq!(
-            settings.keyboard_interactivity,
-            KeyboardInteractivity::None
-        );
+        assert_eq!(settings.keyboard_interactivity, KeyboardInteractivity::None);
         assert!(settings.input_zone.is_some());
         assert!(settings.input_zone.as_ref().unwrap().is_empty());
         assert_eq!(settings.exclusive_zone, -1);
@@ -510,7 +512,8 @@ fn test_view_coexistence_and_extreme_content_rendering_zero_panics() {
     let _ = hud.view(|_| ());
 
     // 8. Control characters, null bytes, RTL, CJK, emojis
-    hud.current_text = "Hello\0World\x01\x02\r\nمرحبا بالعالم \u{202E}gnitselortnoc\u{202C} 🀄🐉🌸".to_string();
+    hud.current_text =
+        "Hello\0World\x01\x02\r\nمرحبا بالعالم \u{202E}gnitselortnoc\u{202C} 🀄🐉🌸".to_string();
     hud.status_badge = Some("Status\0Null\x1F🚨".to_string());
     let _ = hud.view(|_| ());
 
@@ -542,10 +545,8 @@ fn test_view_coexistence_and_extreme_content_rendering_zero_panics() {
 
 #[tokio::test]
 async fn test_ipc_interleaved_subtitle_and_status_message_stream() {
-    let socket_path = std::env::temp_dir().join(format!(
-        "test-hud-interleaved-{}.sock",
-        std::process::id()
-    ));
+    let socket_path =
+        std::env::temp_dir().join(format!("test-hud-interleaved-{}.sock", std::process::id()));
 
     let server = HudIpcServer::new(&socket_path);
     let mut server_rx = server.start().await.expect("HUD IPC server must start");
@@ -572,14 +573,20 @@ async fn test_ipc_interleaved_subtitle_and_status_message_stream() {
             original: Some(format!("Original #{i}")),
             duration_ms: 5000,
         };
-        client.send(&sub_msg).await.expect("Send subtitle must succeed");
+        client
+            .send(&sub_msg)
+            .await
+            .expect("Send subtitle must succeed");
         expected_messages.push(sub_msg);
 
         let status_msg = HudMessage::SetStatus {
             active: i % 2 == 0,
             text: format!("Status notification #{i}"),
         };
-        client.send(&status_msg).await.expect("Send status must succeed");
+        client
+            .send(&status_msg)
+            .await
+            .expect("Send status must succeed");
         expected_messages.push(status_msg);
     }
 
@@ -610,10 +617,7 @@ async fn test_ipc_interleaved_subtitle_and_status_message_stream() {
         .zip(expected_messages.into_iter())
         .enumerate()
     {
-        assert_eq!(
-            received, expected,
-            "Message mismatch at FIFO index {idx}"
-        );
+        assert_eq!(received, expected, "Message mismatch at FIFO index {idx}");
     }
 
     let _ = std::fs::remove_file(&socket_path);

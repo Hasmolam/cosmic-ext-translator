@@ -105,7 +105,8 @@ fn test_ui_config_persistence_and_ron_roundtrip() {
     assert!(!serialized.is_empty());
 
     // Deserialize back from RON
-    let deserialized: Config = ron::from_str(&serialized).expect("Config must deserialize from RON");
+    let deserialized: Config =
+        ron::from_str(&serialized).expect("Config must deserialize from RON");
     assert_eq!(cfg, deserialized);
 }
 
@@ -141,7 +142,10 @@ fn test_ui_glossary_term_management() {
 
     // Add to config
     config.glossary.insert(src.clone(), trg.clone());
-    assert_eq!(config.glossary.get("Phoenix Down"), Some(&"Anka Kuşu Tüyü".to_string()));
+    assert_eq!(
+        config.glossary.get("Phoenix Down"),
+        Some(&"Anka Kuşu Tüyü".to_string())
+    );
 
     // 3. Remove term
     config.glossary.remove(&src);
@@ -213,37 +217,76 @@ fn test_i18n_fallback_and_language_selection() {
     assert_eq!(cosmic_applet_translator::fl!("status"), "Status");
     assert_eq!(cosmic_applet_translator::fl!("active"), "Active");
     assert_eq!(cosmic_applet_translator::fl!("paused"), "Paused");
-    assert_eq!(cosmic_applet_translator::fl!("tab-capture"), "Capture & Area");
-    assert_eq!(cosmic_applet_translator::fl!("tab-engine"), "Translation Engine");
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-capture"),
+        "Capture & Area"
+    );
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-engine"),
+        "Translation Engine"
+    );
     assert_eq!(cosmic_applet_translator::fl!("tab-display"), "Subtitle HUD");
-    assert_eq!(cosmic_applet_translator::fl!("tab-glossary"), "Game Glossary");
-    assert_eq!(cosmic_applet_translator::fl!("tab-history"), "Dialogue History");
-    assert_eq!(cosmic_applet_translator::fl!("ignore-roi"), "Ignore ROI (Bust/Portrait)");
-    assert_eq!(cosmic_applet_translator::fl!("blur-subtraction"), "High-Pass Blur Subtraction");
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-glossary"),
+        "Game Glossary"
+    );
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-history"),
+        "Dialogue History"
+    );
+    assert_eq!(
+        cosmic_applet_translator::fl!("ignore-roi"),
+        "Ignore ROI (Bust/Portrait)"
+    );
+    assert_eq!(
+        cosmic_applet_translator::fl!("blur-subtraction"),
+        "High-Pass Blur Subtraction"
+    );
 
     // 2. Select Turkish language
-    let tr_lang: i18n_embed::unic_langid::LanguageIdentifier = "tr".parse().expect("Valid Turkish langid");
+    let tr_lang: i18n_embed::unic_langid::LanguageIdentifier =
+        "tr".parse().expect("Valid Turkish langid");
     cosmic_applet_translator::i18n::init(&[tr_lang]);
     assert_eq!(cosmic_applet_translator::fl!("status"), "Durum");
     assert_eq!(cosmic_applet_translator::fl!("active"), "Aktif");
     assert_eq!(cosmic_applet_translator::fl!("paused"), "Duraklatıldı");
-    assert_eq!(cosmic_applet_translator::fl!("tab-capture"), "Yakalama & Alan");
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-capture"),
+        "Yakalama & Alan"
+    );
     assert_eq!(cosmic_applet_translator::fl!("tab-engine"), "Çeviri Motoru");
     assert_eq!(cosmic_applet_translator::fl!("tab-display"), "Altyazı HUD");
-    assert_eq!(cosmic_applet_translator::fl!("tab-glossary"), "Oyun Sözlüğü");
-    assert_eq!(cosmic_applet_translator::fl!("tab-history"), "Diyalog Geçmişi");
-    assert_eq!(cosmic_applet_translator::fl!("ignore-roi"), "Hariç Tutulacak Alan (Portre/Bust)");
-    assert_eq!(cosmic_applet_translator::fl!("blur-subtraction"), "Yüksek Geçiren Bulanıklık Filtresi");
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-glossary"),
+        "Oyun Sözlüğü"
+    );
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-history"),
+        "Diyalog Geçmişi"
+    );
+    assert_eq!(
+        cosmic_applet_translator::fl!("ignore-roi"),
+        "Hariç Tutulacak Alan (Portre/Bust)"
+    );
+    assert_eq!(
+        cosmic_applet_translator::fl!("blur-subtraction"),
+        "Yüksek Geçiren Bulanıklık Filtresi"
+    );
 
     // 3. Fallback on unknown language (e.g. "xx-YY")
-    let unknown_lang: i18n_embed::unic_langid::LanguageIdentifier = "xx-YY".parse().expect("Valid fallback langid");
+    let unknown_lang: i18n_embed::unic_langid::LanguageIdentifier =
+        "xx-YY".parse().expect("Valid fallback langid");
     cosmic_applet_translator::i18n::init(&[unknown_lang]);
     // Should fallback cleanly without panic
     assert_eq!(cosmic_applet_translator::fl!("status"), "Status");
-    assert_eq!(cosmic_applet_translator::fl!("tab-history"), "Dialogue History");
+    assert_eq!(
+        cosmic_applet_translator::fl!("tab-history"),
+        "Dialogue History"
+    );
 
     // 4. Reset to en
-    let en_lang: i18n_embed::unic_langid::LanguageIdentifier = "en".parse().expect("Valid English langid");
+    let en_lang: i18n_embed::unic_langid::LanguageIdentifier =
+        "en".parse().expect("Valid English langid");
     cosmic_applet_translator::i18n::init(&[en_lang]);
     assert_eq!(cosmic_applet_translator::fl!("status"), "Status");
 }
@@ -338,9 +381,9 @@ fn test_overlay_stdout_communication_protocol() {
                 parsed = true;
             }
         }
-        assert!(!parsed, "Malformed case '{malformed}' should not parse successfully");
+        assert!(
+            !parsed,
+            "Malformed case '{malformed}' should not parse successfully"
+        );
     }
 }
-
-
-

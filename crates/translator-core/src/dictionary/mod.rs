@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Represents a morphological token card with lemma, reading, POS, and definitions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,13 +140,38 @@ impl JapaneseDictionary {
             ("剣", "つるぎ", "Noun", &["sword", "blade"]),
             ("盾", "たて", "Noun", &["shield"]),
             ("敵", "てき", "Noun", &["enemy", "opponent"]),
-            ("回復", "かいふく", "Noun, Suru Verb", &["recovery", "healing", "restoration"]),
-            ("気をつけて", "きをつけて", "Expression", &["take care", "be careful", "watch out"]),
+            (
+                "回復",
+                "かいふく",
+                "Noun, Suru Verb",
+                &["recovery", "healing", "restoration"],
+            ),
+            (
+                "気をつけて",
+                "きをつけて",
+                "Expression",
+                &["take care", "be careful", "watch out"],
+            ),
             ("ありがとう", "ありがとう", "Expression", &["thank you"]),
-            ("さようなら", "さようなら", "Expression", &["goodbye", "farewell"]),
-            ("大丈夫", "だいじょうぶ", "Adjective", &["all right", "okay", "fine"]),
+            (
+                "さようなら",
+                "さようなら",
+                "Expression",
+                &["goodbye", "farewell"],
+            ),
+            (
+                "大丈夫",
+                "だいじょうぶ",
+                "Adjective",
+                &["all right", "okay", "fine"],
+            ),
             ("攻撃", "こうげき", "Noun, Suru Verb", &["attack", "strike"]),
-            ("防御", "ぼうぎょ", "Noun, Suru Verb", &["defense", "protection"]),
+            (
+                "防御",
+                "ぼうぎょ",
+                "Noun, Suru Verb",
+                &["defense", "protection"],
+            ),
         ];
 
         for (surf, reading, pos, defs) in core_entries {
@@ -168,7 +193,12 @@ mod tests {
     fn test_dictionary_longest_match() {
         let mut dict = JapaneseDictionary::empty();
         dict.insert("勇者", "ゆうしゃ", "Noun", vec!["hero".to_string()]);
-        dict.insert("勇者様", "ゆうしゃさま", "Noun", vec!["Lord Hero".to_string()]);
+        dict.insert(
+            "勇者様",
+            "ゆうしゃさま",
+            "Noun",
+            vec!["Lord Hero".to_string()],
+        );
 
         let cards = dict.analyze("勇者様が来た");
         assert_eq!(cards.len(), 1);

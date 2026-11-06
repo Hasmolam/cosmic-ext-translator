@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use image::RgbaImage;
 use crate::error::CaptureError;
+use image::RgbaImage;
+use serde::{Deserialize, Serialize};
 
 /// Defines a rectangular Region of Interest on the captured screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -14,7 +14,12 @@ pub struct Roi {
 impl Roi {
     #[must_use]
     pub const fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     #[must_use]
@@ -49,7 +54,13 @@ impl Roi {
     /// PipeWire physical buffer dimensions, ensuring pixel-perfect alignment
     /// across HiDPI and fractional scaling displays (%125, %150, %200).
     #[must_use]
-    pub fn scale_to_frame(&self, surface_w: u32, surface_h: u32, frame_w: u32, frame_h: u32) -> Self {
+    pub fn scale_to_frame(
+        &self,
+        surface_w: u32,
+        surface_h: u32,
+        frame_w: u32,
+        frame_h: u32,
+    ) -> Self {
         if surface_w == 0 || surface_h == 0 || frame_w == 0 || frame_h == 0 {
             return *self;
         }
@@ -110,10 +121,10 @@ impl Roi {
                 for chunk_idx in 0..roi_width {
                     let s_i = chunk_idx * 4;
                     let d_i = chunk_idx * 4;
-                    dst_row[d_i] = src_row[s_i + 2];     // R
+                    dst_row[d_i] = src_row[s_i + 2]; // R
                     dst_row[d_i + 1] = src_row[s_i + 1]; // G
-                    dst_row[d_i + 2] = src_row[s_i];     // B
-                    dst_row[d_i + 3] = 255;              // A
+                    dst_row[d_i + 2] = src_row[s_i]; // B
+                    dst_row[d_i + 3] = 255; // A
                 }
             } else {
                 dst_row.copy_from_slice(src_row);
@@ -212,7 +223,12 @@ pub enum RoiPreset {
 }
 
 impl RoiPreset {
-    pub const ALL: [Self; 4] = [Self::Bottom25, Self::Bottom33, Self::FullScreen, Self::Custom];
+    pub const ALL: [Self; 4] = [
+        Self::Bottom25,
+        Self::Bottom33,
+        Self::FullScreen,
+        Self::Custom,
+    ];
 
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -243,7 +259,12 @@ impl RoiPreset {
 
     /// Computes the pixel ROI dynamically scaled for the given frame dimensions.
     /// Eliminates resolution mismatches (e.g. 1080p -> 1440p -> 4K).
-    pub fn compute_for_frame(&self, frame_w: u32, frame_h: u32, custom: Option<Roi>) -> Option<Roi> {
+    pub fn compute_for_frame(
+        &self,
+        frame_w: u32,
+        frame_h: u32,
+        custom: Option<Roi>,
+    ) -> Option<Roi> {
         if frame_w == 0 || frame_h == 0 {
             return None;
         }
@@ -373,7 +394,9 @@ mod tests {
         buffer[idx + 3] = 255;
 
         let roi = Roi::new(2, 3, 2, 2);
-        let cropped = roi.crop_to_rgba(&buffer, width as u32, height as u32, stride, false).unwrap();
+        let cropped = roi
+            .crop_to_rgba(&buffer, width as u32, height as u32, stride, false)
+            .unwrap();
         assert_eq!(cropped.width(), 2);
         assert_eq!(cropped.height(), 2);
 
@@ -402,24 +425,32 @@ mod tests {
     #[test]
     fn test_roi_preset_dynamic_scaling() {
         // 1080p (1920x1080) Bottom 25%
-        let roi_1080p = RoiPreset::Bottom25.compute_for_frame(1920, 1080, None).unwrap();
+        let roi_1080p = RoiPreset::Bottom25
+            .compute_for_frame(1920, 1080, None)
+            .unwrap();
         assert_eq!(roi_1080p.height, 270); // 1080 * 0.25
-        assert_eq!(roi_1080p.y, 810);      // 1080 - 270
-        assert_eq!(roi_1080p.x, 96);       // 1920 * 0.05
-        assert_eq!(roi_1080p.width, 1728);  // 1920 - (96 * 2)
+        assert_eq!(roi_1080p.y, 810); // 1080 - 270
+        assert_eq!(roi_1080p.x, 96); // 1920 * 0.05
+        assert_eq!(roi_1080p.width, 1728); // 1920 - (96 * 2)
 
         // 720p (1280x720) Bottom 25%
-        let roi_720p = RoiPreset::Bottom25.compute_for_frame(1280, 720, None).unwrap();
+        let roi_720p = RoiPreset::Bottom25
+            .compute_for_frame(1280, 720, None)
+            .unwrap();
         assert_eq!(roi_720p.height, 180);
         assert_eq!(roi_720p.y, 540);
 
         // Visual Novel Bottom 33%
-        let roi_vn = RoiPreset::Bottom33.compute_for_frame(1920, 1080, None).unwrap();
+        let roi_vn = RoiPreset::Bottom33
+            .compute_for_frame(1920, 1080, None)
+            .unwrap();
         assert_eq!(roi_vn.height, 356); // 1080 * 0.33 rounded
         assert_eq!(roi_vn.y, 724);
 
         // Fullscreen
-        let roi_fs = RoiPreset::FullScreen.compute_for_frame(1920, 1080, None).unwrap();
+        let roi_fs = RoiPreset::FullScreen
+            .compute_for_frame(1920, 1080, None)
+            .unwrap();
         assert_eq!(roi_fs, Roi::new(0, 0, 1920, 1080));
     }
 
@@ -481,11 +512,11 @@ mod tests {
         let white = image::Rgba([255, 255, 255, 255]);
 
         let non_intersecting_cases = [
-            Roi::new(10, 100, 50, 50),   // Left of target (right edge 60 < 100)
-            Roi::new(220, 100, 50, 50),  // Right of target (left edge 220 >= 200)
-            Roi::new(100, 20, 50, 50),   // Above target (bottom edge 70 < 100)
-            Roi::new(100, 220, 50, 50),  // Below target (top edge 220 >= 200)
-            Roi::new(200, 100, 50, 50),  // Touching right edge (no area overlap)
+            Roi::new(10, 100, 50, 50),  // Left of target (right edge 60 < 100)
+            Roi::new(220, 100, 50, 50), // Right of target (left edge 220 >= 200)
+            Roi::new(100, 20, 50, 50),  // Above target (bottom edge 70 < 100)
+            Roi::new(100, 220, 50, 50), // Below target (top edge 220 >= 200)
+            Roi::new(200, 100, 50, 50), // Touching right edge (no area overlap)
         ];
 
         for (idx, ignore) in non_intersecting_cases.iter().enumerate() {
