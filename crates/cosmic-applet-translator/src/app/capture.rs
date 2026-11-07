@@ -2,11 +2,11 @@
 
 use cosmic::iced::Task;
 use tracing::{error, info, warn};
-use translator_core::ipc::{HudMessage, SelectorOutput};
 use translator_core::pipeline::preprocess::preprocess_for_ocr;
-use translator_core::region::{CaptureRegion, RoiPreset};
 use translator_core::translation::TranslationContext;
 use translator_core::{normalize_source_code, CaptureSession, Roi};
+use translator_protocol::{CaptureRegion, RoiPreset};
+use translator_protocol::{HudMessage, SelectorOutput};
 
 use super::translation::{preprocess_config, translation_backend};
 use super::{AppModel, Message};

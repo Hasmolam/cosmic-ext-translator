@@ -1,5 +1,6 @@
 use image::{Rgba, RgbaImage};
-use translator_core::region::{CaptureRegion, Roi, RoiPreset};
+use translator_core::capture::RoiPixels;
+use translator_core::{CaptureRegion, Roi, RoiPreset};
 
 #[test]
 fn test_adversarial_mask_region_extreme_bounds_and_overflow() {

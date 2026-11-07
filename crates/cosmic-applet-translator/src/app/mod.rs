@@ -17,12 +17,12 @@ use cosmic::iced::{window::Id, Task};
 use cosmic::prelude::*;
 use cosmic::widget;
 use tracing::warn;
-use translator_core::ipc::{HudMessage, SelectorOutput};
 use translator_core::ocr::OcrBackend;
 use translator_core::orchestrator::{OrchestratorEvent, OrchestratorHandle};
-use translator_core::region::RoiPreset;
 use translator_core::shortcuts::ShortcutAction;
 use translator_core::CaptureSession;
+use translator_protocol::RoiPreset;
+use translator_protocol::{HudMessage, SelectorOutput};
 
 pub use changes::ConfigDelta;
 pub use dashboard::PreviewMode;
@@ -185,7 +185,7 @@ impl AppModel {
                 .wrapping(cosmic::iced::widget::text::Wrapping::Word),
         ]
         .spacing(2);
-        if let Some(dir) = translator_core::logging::log_dir() {
+        if let Some(dir) = translator_protocol::logging::log_dir() {
             let dir = dir.display().to_string();
             column = column.push(widget::text(fl!("see-logs", path = dir)).size(12));
         }

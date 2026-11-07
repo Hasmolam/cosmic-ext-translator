@@ -1,5 +1,5 @@
 use crate::ocr::layout::{horizontal_overlap, vertical_overlap, DetectedTextBox, TextOrientation};
-use crate::region::Roi;
+use translator_protocol::Roi;
 
 /// Returns true if a character is a recognized punctuation symbol that must be protected
 /// from furigana / ruby text pruning.
@@ -133,7 +133,7 @@ pub fn filter_furigana(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::region::Roi;
+    use translator_protocol::Roi;
 
     #[test]
     fn test_punctuation_protection() {

@@ -9,6 +9,7 @@ repository.workspace = true
 xdgen = "0.1"
 
 [dependencies]
+translator-protocol = { workspace = true, features = ["ipc", "logging"] }
 translator-core = { path = "../translator-core" }
 i18n-embed-fl = "0.10"
 rust-embed = "8.11"

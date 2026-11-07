@@ -5,7 +5,6 @@ use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::capture::pipewire_thread::CapturedFrame;
-use crate::ipc::{HudIpcClient, HudMessage, HudStatus};
 use crate::ocr::OcrBackend;
 use crate::pipeline::debouncer::{FrameDebouncer, TextDiffAction, TextGate};
 use crate::pipeline::preprocess::PreprocessConfig;
@@ -14,6 +13,7 @@ use crate::translation::{
     parse_speaker_tags, FuzzyLruCache, RateLimitManager, TranslationBackend, TranslationContext,
     DEFAULT_CACHE_CAPACITY, DEFAULT_SIMILARITY_THRESHOLD,
 };
+use translator_protocol::{HudIpcClient, HudMessage, HudStatus};
 
 /// Events emitted by the orchestrator for UI display and status monitoring.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,5 +1,5 @@
-use crate::region::Roi;
 use serde::{Deserialize, Serialize};
+use translator_protocol::Roi;
 
 /// Represents text layout orientation (horizontal or vertical CJK).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

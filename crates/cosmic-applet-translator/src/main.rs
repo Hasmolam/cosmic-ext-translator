@@ -5,7 +5,7 @@ fn main() -> cosmic::iced::Result {
     // Panel applet and settings window run as separate processes; separate files keep
     // their lines apart.
     if let Some(path) =
-        translator_core::logging::init(if is_applet { "applet" } else { "settings" })
+        translator_protocol::logging::init(if is_applet { "applet" } else { "settings" })
     {
         tracing::info!("Logging to {}", path.display());
     }

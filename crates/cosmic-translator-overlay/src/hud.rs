@@ -9,7 +9,7 @@ use cosmic::iced::window::Id;
 use cosmic::iced::{Alignment, Background, Border, Color, Length, Padding};
 use cosmic::widget;
 use cosmic::Element;
-use translator_core::ipc::{HudPosition, HudStatus, APPLET_CONFIG_ID, APPLET_CONFIG_VERSION};
+use translator_protocol::{HudPosition, HudStatus, APPLET_CONFIG_ID, APPLET_CONFIG_VERSION};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HudUiMessage {

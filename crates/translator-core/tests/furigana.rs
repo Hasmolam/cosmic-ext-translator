@@ -1,5 +1,5 @@
 use translator_core::ocr::{filter_furigana, DetectedTextBox, TextOrientation};
-use translator_core::region::Roi;
+use translator_core::Roi;
 
 #[test]
 fn test_all_protected_punctuation_characters_in_furigana() {

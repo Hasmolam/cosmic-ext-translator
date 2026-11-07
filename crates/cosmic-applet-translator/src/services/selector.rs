@@ -2,7 +2,7 @@
 
 use tracing::{debug, warn};
 use translator_core::capture::pipewire_thread::SnapshotRequester;
-use translator_core::ipc::SelectorOutput;
+use translator_protocol::SelectorOutput;
 
 use crate::services::process::overlay_binary_path;
 

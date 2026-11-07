@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use cosmic::iced::Task;
 use tracing::{debug, warn};
-use translator_core::ipc::{HudIpcClient, HudMessage, HudPosition};
+use translator_protocol::{HudIpcClient, HudMessage, HudPosition};
 
 use crate::config::Config;
 use crate::services::process::{overlay_binary_path, spawn_detached};

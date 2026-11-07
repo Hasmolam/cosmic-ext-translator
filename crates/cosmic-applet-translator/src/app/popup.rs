@@ -4,7 +4,7 @@ use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_p
 use cosmic::iced::{window::Id, Length, Limits, Task};
 use cosmic::widget::{self, button, row};
 use cosmic::Element;
-use translator_core::region::RoiPreset;
+use translator_protocol::RoiPreset;
 
 use super::ocr::OcrStatus;
 use super::{AppModel, Message};

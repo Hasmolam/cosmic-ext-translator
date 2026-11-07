@@ -1118,6 +1118,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "translator-core",
+ "translator-protocol",
  "xdgen",
 ]
 
@@ -1268,7 +1269,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "translator-core",
+ "translator-protocol",
 ]
 
 [[package]]
@@ -6241,6 +6242,19 @@ dependencies = [
  "serde_json",
  "sha2",
  "strsim",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "translator-protocol",
+]
+
+[[package]]
+name = "translator-protocol"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

@@ -3,7 +3,7 @@
 use cosmic::iced::Task;
 use cosmic::widget::{self, button, row};
 use cosmic::Element;
-use translator_core::ipc::HudMessage;
+use translator_protocol::HudMessage;
 
 use super::{choice_button, with_value_label, Update};
 use crate::config::Config;

@@ -1,12 +1,27 @@
 //! Pixel operations on captured frames for a [`Roi`].
 
 use crate::error::CaptureError;
-use crate::region::Roi;
 use image::RgbaImage;
+use translator_protocol::Roi;
 
-impl Roi {
+/// Pixel operations on [`Roi`]. A trait because `Roi` lives in `translator-protocol`,
+/// which has no image dependency.
+pub trait RoiPixels {
+    fn crop_to_rgba(
+        &self,
+        buffer: &[u8],
+        frame_width: u32,
+        frame_height: u32,
+        stride: usize,
+        is_bgr: bool,
+    ) -> Result<RgbaImage, CaptureError>;
+
+    fn mask_region(&self, image: &mut RgbaImage, ignore: &Roi);
+}
+
+impl RoiPixels for Roi {
     /// Efficiently crops and copies only the ROI pixels from a raw 32-bit RGBA/BGRA/RGBx frame.
-    pub fn crop_to_rgba(
+    fn crop_to_rgba(
         &self,
         buffer: &[u8],
         frame_width: u32,
@@ -81,7 +96,7 @@ impl Roi {
     /// If an overlap exists, coordinates are translated to local image coordinates
     /// $(x_{\text{local}} = x_{\text{inter}} - \text{self.x}, y_{\text{local}} = y_{\text{inter}} - \text{self.y})$,
     /// clamped to the image dimensions, and filled with solid black pixels `Rgba([0, 0, 0, 255])`.
-    pub fn mask_region(&self, image: &mut RgbaImage, ignore: &Roi) {
+    fn mask_region(&self, image: &mut RgbaImage, ignore: &Roi) {
         if self.is_empty() || ignore.is_empty() {
             return;
         }

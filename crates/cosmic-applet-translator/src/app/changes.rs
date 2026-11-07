@@ -91,7 +91,7 @@ impl AppModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use translator_core::Roi;
+    use translator_protocol::Roi;
 
     #[test]
     fn identical_configs_have_no_effect() {

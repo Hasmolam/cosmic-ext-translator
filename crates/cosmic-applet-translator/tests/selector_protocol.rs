@@ -1,5 +1,5 @@
-use translator_core::ipc::selector::{SelectorOutput, CANCELLED_LINE};
-use translator_core::region::Roi;
+use translator_protocol::selector::{SelectorOutput, CANCELLED_LINE};
+use translator_protocol::Roi;
 
 #[test]
 fn test_overlay_stdout_communication_protocol() {

@@ -3,7 +3,7 @@
 use cosmic::iced::Alignment;
 use cosmic::widget::{self, button, row, text};
 use cosmic::Element;
-use translator_core::region::{Roi, RoiPreset};
+use translator_protocol::{Roi, RoiPreset};
 
 use super::{choice_button, with_value_label, Request, Update};
 use crate::config::Config;

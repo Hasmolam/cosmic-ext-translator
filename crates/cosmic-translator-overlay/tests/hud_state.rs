@@ -2,7 +2,7 @@ use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     KeyboardInteractivity, Layer,
 };
 use cosmic_translator_overlay::hud::SubtitleHudState;
-use translator_core::ipc::{HudMessage, HudPosition, HudStatus};
+use translator_protocol::{HudMessage, HudPosition, HudStatus};
 
 /// State machine matching the exact message handling logic in
 /// `crates/cosmic-translator-overlay/src/main.rs:177–224`.

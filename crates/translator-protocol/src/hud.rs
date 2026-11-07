@@ -1,13 +1,11 @@
-pub mod selector;
-
-pub use selector::SelectorOutput;
+//! HUD messages, the socket they travel over, and the applet settings namespace the HUD
+//! writes to.
 
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use std::path::PathBuf;
+
+#[cfg(feature = "ipc")]
+pub use socket::{HudIpcClient, HudIpcServer, SendError};
 
 /// Default display duration for subtitles in milliseconds (6 seconds).
 pub const DEFAULT_SUBTITLE_DURATION_MS: u64 = 6000;
@@ -125,118 +123,141 @@ fn default_duration() -> u64 {
     0 // 0 means persistent / stay until next subtitle arrives
 }
 
-/// Server running in the HUD overlay, receiving messages from the translation pipeline.
-pub struct HudIpcServer {
-    socket_path: PathBuf,
-}
+/// Unix socket transport: one JSON-encoded `HudMessage` per line.
+#[cfg(feature = "ipc")]
+mod socket {
+    use std::path::{Path, PathBuf};
 
-impl HudIpcServer {
-    pub fn new(path: impl AsRef<Path>) -> Self {
-        Self {
-            socket_path: path.as_ref().to_path_buf(),
-        }
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::{UnixListener, UnixStream};
+    use tokio::sync::mpsc;
+    use tracing::{debug, error, info, warn};
+
+    use super::{default_socket_path, HudMessage};
+
+    /// Failure to deliver a message to the HUD.
+    #[derive(Debug, thiserror::Error)]
+    pub enum SendError {
+        #[error("HUD socket: {0}")]
+        Io(#[from] std::io::Error),
+        #[error("cannot encode HUD message: {0}")]
+        Encode(#[from] serde_json::Error),
     }
 
-    pub fn default_server() -> Self {
-        Self::new(default_socket_path())
+    /// Server running in the HUD overlay, receiving messages from the translation pipeline.
+    pub struct HudIpcServer {
+        socket_path: PathBuf,
     }
 
-    /// Starts the IPC server, returning a channel of incoming `HudMessage`s.
-    pub async fn start(&self) -> std::io::Result<mpsc::Receiver<HudMessage>> {
-        // Clean up stale socket file if it exists
-        if self.socket_path.exists() {
-            let _ = std::fs::remove_file(&self.socket_path);
+    impl HudIpcServer {
+        pub fn new(path: impl AsRef<Path>) -> Self {
+            Self {
+                socket_path: path.as_ref().to_path_buf(),
+            }
         }
 
-        let listener = UnixListener::bind(&self.socket_path)?;
-        info!("HUD IPC server listening on {:?}", self.socket_path);
+        pub fn default_server() -> Self {
+            Self::new(default_socket_path())
+        }
 
-        let (tx, rx) = mpsc::channel(32);
-        let path = self.socket_path.clone();
+        /// Starts the IPC server, returning a channel of incoming `HudMessage`s.
+        pub async fn start(&self) -> std::io::Result<mpsc::Receiver<HudMessage>> {
+            // Clean up stale socket file if it exists
+            if self.socket_path.exists() {
+                let _ = std::fs::remove_file(&self.socket_path);
+            }
 
-        tokio::spawn(async move {
-            loop {
-                match listener.accept().await {
-                    Ok((stream, _addr)) => {
-                        let tx_clone = tx.clone();
-                        tokio::spawn(async move {
-                            let (reader, _) = stream.into_split();
-                            let mut lines = BufReader::new(reader).lines();
-                            while let Ok(Some(line)) = lines.next_line().await {
-                                if line.trim().is_empty() {
-                                    continue;
-                                }
-                                match serde_json::from_str::<HudMessage>(&line) {
-                                    Ok(msg) => {
-                                        debug!("HUD IPC received message: {:?}", msg);
-                                        if tx_clone.send(msg).await.is_err() {
-                                            break;
+            let listener = UnixListener::bind(&self.socket_path)?;
+            info!("HUD IPC server listening on {:?}", self.socket_path);
+
+            let (tx, rx) = mpsc::channel(32);
+            let path = self.socket_path.clone();
+
+            tokio::spawn(async move {
+                loop {
+                    match listener.accept().await {
+                        Ok((stream, _addr)) => {
+                            let tx_clone = tx.clone();
+                            tokio::spawn(async move {
+                                let (reader, _) = stream.into_split();
+                                let mut lines = BufReader::new(reader).lines();
+                                while let Ok(Some(line)) = lines.next_line().await {
+                                    if line.trim().is_empty() {
+                                        continue;
+                                    }
+                                    match serde_json::from_str::<HudMessage>(&line) {
+                                        Ok(msg) => {
+                                            debug!("HUD IPC received message: {:?}", msg);
+                                            if tx_clone.send(msg).await.is_err() {
+                                                break;
+                                            }
+                                        }
+                                        Err(err) => {
+                                            warn!("Malformed HUD IPC payload: {err} | Raw: {line}");
                                         }
                                     }
-                                    Err(err) => {
-                                        warn!("Malformed HUD IPC payload: {err} | Raw: {line}");
-                                    }
                                 }
-                            }
-                        });
-                    }
-                    Err(err) => {
-                        error!("HUD IPC accept error: {err}");
-                        break;
+                            });
+                        }
+                        Err(err) => {
+                            error!("HUD IPC accept error: {err}");
+                            break;
+                        }
                     }
                 }
-            }
-            let _ = std::fs::remove_file(path);
-        });
+                let _ = std::fs::remove_file(path);
+            });
 
-        Ok(rx)
-    }
-}
-
-/// Client used by the translator applet/orchestrator to dispatch messages to the HUD.
-#[derive(Debug, Clone)]
-pub struct HudIpcClient {
-    socket_path: PathBuf,
-}
-
-impl HudIpcClient {
-    pub fn new(path: impl AsRef<Path>) -> Self {
-        Self {
-            socket_path: path.as_ref().to_path_buf(),
+            Ok(rx)
         }
     }
 
-    pub fn default_client() -> Self {
-        Self::new(default_socket_path())
+    /// Client used by the translator applet/orchestrator to dispatch messages to the HUD.
+    #[derive(Debug, Clone)]
+    pub struct HudIpcClient {
+        socket_path: PathBuf,
     }
 
-    /// Sends a `HudMessage` to the HUD overlay.
-    pub async fn send(&self, message: &HudMessage) -> anyhow::Result<()> {
-        let mut stream = UnixStream::connect(&self.socket_path).await?;
-        let mut payload = serde_json::to_vec(message)?;
-        payload.push(b'\n');
-        stream.write_all(&payload).await?;
-        stream.flush().await?;
-        Ok(())
-    }
-
-    /// Checks if a HUD overlay instance is actively listening on the socket.
-    pub async fn is_running(&self) -> bool {
-        if !self.socket_path.exists() {
-            return false;
-        }
-        match UnixStream::connect(&self.socket_path).await {
-            Ok(mut stream) => {
-                let msg = HudMessage::Ping;
-                if let Ok(mut payload) = serde_json::to_vec(&msg) {
-                    payload.push(b'\n');
-                    if stream.write_all(&payload).await.is_ok() && stream.flush().await.is_ok() {
-                        return true;
-                    }
-                }
-                false
+    impl HudIpcClient {
+        pub fn new(path: impl AsRef<Path>) -> Self {
+            Self {
+                socket_path: path.as_ref().to_path_buf(),
             }
-            Err(_) => false,
+        }
+
+        pub fn default_client() -> Self {
+            Self::new(default_socket_path())
+        }
+
+        /// Sends a `HudMessage` to the HUD overlay.
+        pub async fn send(&self, message: &HudMessage) -> Result<(), SendError> {
+            let mut stream = UnixStream::connect(&self.socket_path).await?;
+            let mut payload = serde_json::to_vec(message)?;
+            payload.push(b'\n');
+            stream.write_all(&payload).await?;
+            stream.flush().await?;
+            Ok(())
+        }
+
+        /// Checks if a HUD overlay instance is actively listening on the socket.
+        pub async fn is_running(&self) -> bool {
+            if !self.socket_path.exists() {
+                return false;
+            }
+            match UnixStream::connect(&self.socket_path).await {
+                Ok(mut stream) => {
+                    let msg = HudMessage::Ping;
+                    if let Ok(mut payload) = serde_json::to_vec(&msg) {
+                        payload.push(b'\n');
+                        if stream.write_all(&payload).await.is_ok() && stream.flush().await.is_ok()
+                        {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                Err(_) => false,
+            }
         }
     }
 }
@@ -245,6 +266,7 @@ impl HudIpcClient {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "ipc")]
     #[tokio::test]
     async fn test_ipc_roundtrip() {
         let temp_dir = std::env::temp_dir();
@@ -295,6 +317,7 @@ mod tests {
         assert_eq!(serde_json::from_str::<HudMessage>(&json).unwrap(), clear);
     }
 
+    #[cfg(feature = "ipc")]
     #[tokio::test]
     async fn test_ipc_is_not_running_when_no_server() {
         let temp_dir = std::env::temp_dir();

@@ -267,8 +267,9 @@ The version lives in `[workspace.package]` of `Cargo.toml`; `just version` print
 
 | Crate | Contents |
 | :--- | :--- |
-| `crates/translator-core` | Library without GUI: screen capture, debouncing, pre-processing, OCR, translation engines, cache, IPC, and the main loop. |
-| `crates/cosmic-translator-overlay` | `--hud`: subtitle overlay. `--selector`: region picker, prints `ROI_SELECTED:{"x":..,"y":..,"width":..,"height":..}` to stdout. |
+| `crates/translator-protocol` | Types shared by all processes: HUD messages and socket, selector output, regions, log setup. |
+| `crates/translator-core` | Library without GUI: screen capture, debouncing, pre-processing, OCR, translation engines, cache, and the main loop. |
+| `crates/cosmic-translator-overlay` | Depends only on `translator-protocol`. `--hud`: subtitle overlay. `--selector`: region picker, prints `ROI_SELECTED:{"x":..,"y":..,"width":..,"height":..}` to stdout. |
 | `crates/cosmic-applet-translator` | Panel applet and settings window. |
 
 UI strings are translated with Fluent (`i18n/en`, `i18n/tr` in each GUI crate).

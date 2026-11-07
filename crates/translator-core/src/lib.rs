@@ -1,19 +1,16 @@
 pub mod capture;
 pub mod error;
-pub mod ipc;
 pub mod language;
-pub mod logging;
 pub mod ocr;
 pub mod orchestrator;
 pub mod pipeline;
-pub mod region;
 pub mod shortcuts;
 pub mod translation;
 
 pub use capture::pipewire_thread::{CapturedFrame, PipewireCaptureHandle, PipewireCommand};
 pub use capture::screencast::{ScreencastManager, ScreencastStreamInfo};
 pub use capture::CaptureSession;
-pub use region::{CaptureRegion, Roi, RoiPreset};
+pub use translator_protocol::{CaptureRegion, Roi, RoiPreset};
 
 pub use pipeline::debouncer::{
     DebounceState, FrameDebouncer, FrameImage, SettledFrame, TextDiffAction, TextGate,
@@ -25,7 +22,6 @@ pub use pipeline::preprocess::{
 pub use pipeline::{spawn_recognition_pipeline, PipelineHandle, RecognizedEvent};
 
 pub use error::{CaptureError, OcrInitError, Result};
-pub use ipc::{default_socket_path, HudIpcClient, HudIpcServer, HudMessage, HudPosition};
 pub use language::{
     normalize_source_code, script_for_code, Script, SourceLanguage, TargetLanguage,
 };

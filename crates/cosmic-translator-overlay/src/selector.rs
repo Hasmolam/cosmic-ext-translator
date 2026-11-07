@@ -1,7 +1,7 @@
 use cosmic::iced::mouse;
 use cosmic::iced::widget::canvas::{self, Action, Event, Geometry, Path, Stroke};
 use cosmic::iced::{Color, Point, Rectangle, Size};
-use translator_core::Roi;
+use translator_protocol::Roi;
 
 const SELECTION_STROKE_WIDTH: f32 = 2.0;
 

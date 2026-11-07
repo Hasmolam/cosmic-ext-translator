@@ -1,6 +1,6 @@
 use cosmic_translator_overlay::hud::SubtitleHudState;
 use std::time::Duration;
-use translator_core::ipc::{HudIpcClient, HudIpcServer, HudMessage};
+use translator_protocol::{HudIpcClient, HudIpcServer, HudMessage};
 
 #[tokio::test]
 async fn test_ipc_interleaved_subtitle_and_status_message_stream() {
@@ -252,7 +252,7 @@ async fn test_hud_styling_and_control_messages() {
         font_size: 28,
         opacity: 0.85,
         duration_ms: 5000,
-        position: translator_core::ipc::HudPosition::Bottom,
+        position: translator_protocol::HudPosition::Bottom,
         offset_y: 40,
     };
     client.send(&style_msg).await.expect("Send style failed");

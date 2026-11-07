@@ -1,7 +1,7 @@
 //! Runs in its own process because it points `XDG_CONFIG_HOME` at a temporary directory.
 
 use cosmic_translator_overlay::hud::save_position;
-use translator_core::ipc::{HudPosition, APPLET_CONFIG_ID, APPLET_CONFIG_VERSION};
+use translator_protocol::{HudPosition, APPLET_CONFIG_ID, APPLET_CONFIG_VERSION};
 
 #[test]
 fn calibrated_position_is_written_to_applet_config() {

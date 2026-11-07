@@ -263,9 +263,26 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   `HudCleared`, `RoiSelected`, `IgnoreRoiSelected`, `SelectIgnoreRoiRequested`,
   `ClearIgnoreRoi`, `ClearHistory`, `CopyHistoryEntry`.
 
-**A4. Extract crates.**
-- First `translator-protocol`, then switch the overlay to depend only on it and measure
-  overlay build time and size.
+**A4. Extract crates.** In progress.
+- `translator-protocol` done. It holds `hud.rs` (messages, socket path, config ID),
+  `selector.rs`, `region.rs` (`Roi`, `RoiPreset`, `CaptureRegion`) and `logging.rs`.
+  The socket client/server is behind the `ipc` feature, log setup behind `logging`.
+  `HudIpcClient::send` returns a typed `SendError` instead of `anyhow::Error`.
+- The pixel methods on `Roi` (`crop_to_rgba`, `mask_region`) became the
+  `translator_core::capture::RoiPixels` trait, since `translator-core` can no longer add
+  inherent methods to a type from another crate.
+- The overlay depends only on `translator-protocol`. Measured with a clean
+  `cargo build --release --locked -p cosmic-translator-overlay` in a separate target
+  directory on an idle machine:
+
+  | | before | after |
+  |---|---|---|
+  | build time | 143 s | 112 s |
+  | binary size | 39.3 MB | 37.6 MB |
+  | crates in the normal dependency tree | 541 | 489 |
+
+  ocrs, rten, pipewire, ashpd and reqwest are no longer linked into the overlay. Most of
+  the remaining time and size is libcosmic.
 - Then `translator-capture`, `translator-ocr` (with features), `translator-translate`.
 - `translator-core` keeps the orchestrator and pipeline.
 

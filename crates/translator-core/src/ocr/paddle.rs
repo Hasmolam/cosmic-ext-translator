@@ -32,7 +32,7 @@ use super::{
 };
 use crate::error::OcrInitError;
 use crate::language::Script;
-use crate::region::Roi;
+use translator_protocol::Roi;
 
 /// Download URL of a file in the `models-v1` release of this project.
 macro_rules! release_url {

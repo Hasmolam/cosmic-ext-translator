@@ -2,8 +2,9 @@
 
 ## Architecture
 Multi-crate workspace under GPL-3.0-or-later:
+- `crates/translator-protocol`: Shared types: HUD messages and socket, selector output, `Roi`, `CaptureRegion`, log setup.
 - `crates/translator-core`: Core library (headless).
-  - `capture/`: Screencast portal (`ashpd`), restore token negotiation, PipeWire OS loop, `Roi`, `CaptureRegion` with `ignore_roi` masking.
+  - `capture/`: Screencast portal (`ashpd`), restore token negotiation, PipeWire OS loop, cropping and `ignore_roi` masking (`RoiPixels`).
   - `pipeline/`: Frame debouncer (`dhash_256`), high-pass blur subtraction, `preprocess.rs`, two-stage `TextGate`.
   - `ocr/`: `OcrBackend` trait, `layout.rs` (aspect ratio detection, vertical CJK topological sorter), `furigana.rs` (geometric ruby pruning), `OcrsBackend`, `TesseractBackend`, `MockOcrBackend`.
   - `translation/`: `TranslationBackend` trait, `context.rs` (sliding dialogue turns), `speaker.rs` (bracket parser & glossary), `rate_limit.rs` (HTTP 429 exponential backoff), remote backends.
@@ -48,15 +49,15 @@ Multi-crate workspace under GPL-3.0-or-later:
 | 5 | E2E Integration & Final Quality Pass | Feature 16: Complete headless verification (`cargo check`, `cargo clippy -- -D warnings`, `cargo test --workspace`), 100% pass of E2E test suite (Tiers 1-4), adversarial test hardening (Tier 5), zero unwrap/expect in production code. | M1, M2, M3, M4 | PLANNED |
 
 ## Interface Contracts
-### `crates/translator-core/src/region.rs`
+### `crates/translator-protocol/src/region.rs`, `crates/translator-core/src/capture/crop.rs`
 ```rust
 pub struct CaptureRegion {
     pub preset: RoiPreset,
     pub custom: Option<Roi>,
     pub ignore_roi: Option<Roi>,
 }
-impl Roi {
-    pub fn mask_region(&self, image: &mut image::RgbaImage, ignore: &Roi);
+pub trait RoiPixels { // translator-core
+    fn mask_region(&self, image: &mut image::RgbaImage, ignore: &Roi);
 }
 ```
 
@@ -139,13 +140,14 @@ pub struct RateLimitManager {
 ```
 
 ## Code Layout
+- `crates/translator-protocol`:
+  - `src/hud.rs`, `src/selector.rs`, `src/region.rs`, `src/logging.rs`
 - `crates/translator-core`:
-  - `src/region.rs`, `src/capture/crop.rs`, `src/capture/pipewire_thread.rs`, `src/capture/screencast.rs`
+  - `src/capture/crop.rs`, `src/capture/pipewire_thread.rs`, `src/capture/screencast.rs`
   - `src/pipeline/debouncer.rs`, `src/pipeline/preprocess.rs`, `src/pipeline/mod.rs`
   - `src/ocr/layout.rs`, `src/ocr/furigana.rs`, `src/ocr/mod.rs`
   - `src/translation/context.rs`, `src/translation/speaker.rs`, `src/translation/rate_limit.rs`, `src/translation/mod.rs`
   - `src/orchestrator/mod.rs`
-  - `src/ipc/mod.rs`
 - `crates/cosmic-translator-overlay`:
   - `src/main.rs`, `src/hud.rs`, `src/selector.rs`
 - `crates/cosmic-applet-translator`:

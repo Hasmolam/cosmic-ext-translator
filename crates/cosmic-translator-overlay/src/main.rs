@@ -12,7 +12,7 @@ use cosmic_translator_overlay::selector::{SelectorMessage, SelectorProgram};
 use std::env;
 use std::io::Write;
 use std::time::Duration;
-use translator_core::ipc::{
+use translator_protocol::{
     default_socket_path, selector, HudIpcServer, HudMessage, HudPosition, SelectorOutput,
 };
 
@@ -411,7 +411,7 @@ fn main() -> cosmic::iced::Result {
     } else {
         "hud"
     };
-    if let Some(path) = translator_core::logging::init(component) {
+    if let Some(path) = translator_protocol::logging::init(component) {
         tracing::info!("Logging to {}", path.display());
     }
     let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();

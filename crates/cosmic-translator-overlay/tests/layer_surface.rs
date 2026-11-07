@@ -2,7 +2,7 @@ use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     Anchor, KeyboardInteractivity, Layer,
 };
 use cosmic_translator_overlay::hud::SubtitleHudState;
-use translator_core::ipc::HudPosition;
+use translator_protocol::HudPosition;
 
 #[test]
 fn test_clickthrough_input_zone_is_strictly_empty_vec_in_normal_mode() {

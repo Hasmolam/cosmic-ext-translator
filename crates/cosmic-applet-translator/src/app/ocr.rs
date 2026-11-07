@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use cosmic::iced::Task;
 use tracing::{debug, error, info};
-use translator_core::ipc::{HudMessage, HudStatus};
 use translator_core::normalize_source_code;
 use translator_core::ocr::{create_ocr_backend, OcrBackend, OcrEngineChoice, OrientationMode};
+use translator_protocol::{HudMessage, HudStatus};
 
 use super::{AppModel, Message};
 use crate::config::Config;

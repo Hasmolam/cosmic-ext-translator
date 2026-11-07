@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
-use translator_core::Roi;
+use translator_protocol::Roi;
 
 /// Application ID: desktop entry, AppStream component and `cosmic-config` namespace.
-pub const APP_ID: &str = translator_core::ipc::APPLET_CONFIG_ID;
+pub const APP_ID: &str = translator_protocol::APPLET_CONFIG_ID;
 
 /// Application ID used up to 0.1.x. Settings stored under it are migrated once.
 pub const LEGACY_APP_ID: &str = "com.system76.CosmicExtTranslator";
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn hud_writes_to_this_config_version() {
-        assert_eq!(Config::VERSION, translator_core::ipc::APPLET_CONFIG_VERSION);
+        assert_eq!(Config::VERSION, translator_protocol::APPLET_CONFIG_VERSION);
     }
 
     fn temp_base(tag: &str) -> PathBuf {

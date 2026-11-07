@@ -1,3 +1,4 @@
+use super::RoiPixels;
 use image::RgbaImage;
 use pipewire as pw;
 use pw::spa;
@@ -9,7 +10,7 @@ use tracing::{debug, info, warn};
 
 use crate::error::{CaptureError, Result};
 use crate::pipeline::debouncer::FrameImage;
-use crate::region::{CaptureRegion, Roi, RoiPreset};
+use translator_protocol::{CaptureRegion, Roi, RoiPreset};
 
 #[derive(Clone, Debug)]
 pub struct CapturedFrame {

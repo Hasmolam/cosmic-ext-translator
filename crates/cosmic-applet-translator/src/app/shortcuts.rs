@@ -2,8 +2,8 @@
 
 use cosmic::iced::Task;
 use tracing::{debug, info};
-use translator_core::ipc::HudMessage;
 use translator_core::shortcuts::{GlobalShortcutsManager, ShortcutAction};
+use translator_protocol::HudMessage;
 
 use super::{AppModel, Message};
 use crate::services::RegionKind;

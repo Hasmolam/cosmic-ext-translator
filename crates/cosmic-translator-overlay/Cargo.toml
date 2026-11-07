@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-translator-core = { path = "../translator-core" }
+translator-protocol = { workspace = true, features = ["ipc", "logging"] }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tokio-stream = { workspace = true }
