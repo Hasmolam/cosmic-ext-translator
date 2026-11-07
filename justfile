@@ -76,8 +76,9 @@ uninstall:
     rm -f {{icon_dst}}
     rm -f {{destdir}}/share/applications/{{legacy_appid}}.desktop {{destdir}}/share/metainfo/{{legacy_appid}}.metainfo.xml {{destdir}}/share/icons/hicolor/scalable/apps/{{legacy_appid}}.svg
 
-# Install for current user only to ~/.local (no root required)
-install-user:
+# Build and install for the current user to ~/.local (no root required). Reloads the
+# running panel applet instead of restarting cosmic-panel.
+install-user: build-release
     install -Dm0755 target/release/cosmic-applet-translator {{home}}/.local/bin/cosmic-applet-translator
     install -Dm0755 target/release/cosmic-translator-overlay {{home}}/.local/bin/cosmic-translator-overlay
     install -Dm0644 crates/cosmic-applet-translator/target/xdgen/app.desktop {{home}}/.local/share/applications/{{appid}}.desktop
@@ -86,7 +87,7 @@ install-user:
     rm -f {{home}}/.local/share/applications/{{legacy_appid}}.desktop {{home}}/.local/share/metainfo/{{legacy_appid}}.metainfo.xml {{home}}/.local/share/icons/hicolor/scalable/apps/{{legacy_appid}}.svg
     bash packaging/migrate-panel-entry.sh {{legacy_appid}} {{appid}}
     update-desktop-database {{home}}/.local/share/applications 2>/dev/null || true
-    killall cosmic-panel 2>/dev/null || true
+    bash packaging/reload-applet.sh reload
 
 # Uninstall user-local installation
 uninstall-user:
@@ -97,7 +98,7 @@ uninstall-user:
     rm -f {{home}}/.local/share/icons/hicolor/scalable/apps/{{appid}}.svg
     rm -f {{home}}/.local/share/applications/{{legacy_appid}}.desktop {{home}}/.local/share/metainfo/{{legacy_appid}}.metainfo.xml {{home}}/.local/share/icons/hicolor/scalable/apps/{{legacy_appid}}.svg
     update-desktop-database {{home}}/.local/share/applications 2>/dev/null || true
-    killall cosmic-panel 2>/dev/null || true
+    bash packaging/reload-applet.sh stop
 
 # Run capture test utility
 test-capture:

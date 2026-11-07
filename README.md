@@ -91,7 +91,8 @@ git clone https://github.com/Hasmolam/cosmic-ext-translator.git
 cd cosmic-ext-translator
 just build-release
 
-# Install for current user only to ~/.local (no root required):
+# Install for current user only to ~/.local (no root required).
+# Builds first, then restarts the running panel applet; the panel itself keeps running.
 just install-user
 
 # Or system-wide installation (installs to /usr, requires sudo):

@@ -16,6 +16,11 @@ the section of the released version.
 
 ### Changed
 
+- `just install-user` builds the release binaries first and restarts only the panel
+  applet (SIGHUP, exit code 75, restarted by cosmic-panel) instead of killing
+  cosmic-panel. Repeated installs killed the panel often enough for cosmic-session to
+  delay its restart by minutes and leave it without the notifications connection.
+  `just uninstall-user` stops the applet and HUD instead of the panel.
 - The target language is chosen from a list of 15 languages that Google, DeepL and LLM
   engines all accept, instead of typing a code. A code outside the list that was set
   earlier is kept and shown as a separate entry.

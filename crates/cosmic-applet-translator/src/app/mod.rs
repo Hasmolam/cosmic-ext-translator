@@ -6,6 +6,7 @@ mod changes;
 mod dashboard;
 mod ocr;
 mod popup;
+mod reload;
 mod shortcuts;
 mod translation;
 
@@ -26,6 +27,7 @@ use translator_core::CaptureSession;
 pub use changes::ConfigDelta;
 pub use dashboard::PreviewMode;
 pub use ocr::OcrStatus;
+pub use reload::RELOAD_EXIT_CODE;
 
 use crate::config::Config;
 use crate::fl;
@@ -94,6 +96,8 @@ pub enum Message {
     CloseApp,
     OrchestratorEventReceived(OrchestratorEvent),
     PreviewUpdated(PreviewImages),
+    /// SIGHUP in the panel applet; see `reload`.
+    ReloadRequested,
 }
 
 // `CaptureSession` owns the PipeWire thread and cannot be cloned. iced only clones
@@ -132,6 +136,7 @@ impl Clone for Message {
             Self::CloseApp => Self::CloseApp,
             Self::OrchestratorEventReceived(e) => Self::OrchestratorEventReceived(e.clone()),
             Self::PreviewUpdated(p) => Self::PreviewUpdated(p.clone()),
+            Self::ReloadRequested => Self::ReloadRequested,
         }
     }
 }
@@ -297,8 +302,15 @@ impl cosmic::Application for AppModel {
             ),
             _ => cosmic::iced::Subscription::none(),
         };
+        // The standalone window is not managed by the panel; SIGHUP keeps its default.
+        let reload = if self.is_standalone() {
+            cosmic::iced::Subscription::none()
+        } else {
+            reload::subscription()
+        };
         cosmic::iced::Subscription::batch([
             preview,
+            reload,
             shortcuts::global_shortcuts_subscription(),
             translation::orchestrator_events_subscription(),
             self.core.watch_config::<Config>(Self::APP_ID).map(|u| {
@@ -373,6 +385,7 @@ impl cosmic::Application for AppModel {
             Message::OcrBackendLoaded { generation, result } => {
                 self.ocr_backend_loaded(generation, result)
             }
+            Message::ReloadRequested => self.reload(),
         }
     }
 
