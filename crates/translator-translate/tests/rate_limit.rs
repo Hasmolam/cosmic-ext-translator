@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use translator_core::translation::RateLimitManager;
+use translator_translate::RateLimitManager;
 
 // -----------------------------------------------------------------------------
 // Rate limit exponential backoff math and pause duration

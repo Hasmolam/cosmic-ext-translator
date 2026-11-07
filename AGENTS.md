@@ -5,7 +5,8 @@
 Multi-crate workspace under GPL-3.0-or-later:
 
 - `crates/translator-protocol`: Types shared by all processes: `HudMessage`/`HudStatus`/`HudPosition`, the HUD Unix socket client/server (feature `ipc`), `SelectorOutput`, `Roi`/`RoiPreset`/`CaptureRegion`, and log setup (feature `logging`). Depends only on `serde` plus optional `tokio`/`tracing-subscriber`; keep it that way, the overlay links nothing else from the workspace.
-- `crates/translator-core`: Core library (no GUI). Handles Screencast portal (`ashpd`), dedicated PipeWire loop (`pipewire`), ROI crop (`capture/crop.rs`, `RoiPixels`), dHash/typewriter debouncing (`debouncer.rs`), image pre-processing (`preprocess.rs`), pure-Rust OCR (`ocrs` + `rten`), translation engines (Google, Ollama), fuzzy LRU cache (`strsim`), and orchestrator loop.
+- `crates/translator-translate`: Translation engines (Google, DeepL, OpenAI-compatible, Ollama), dialogue context, speaker tags, fuzzy LRU cache (`strsim`), rate limiting. No tokio, image or OCR dependencies. `translator-core` re-exports it as `translator_core::translation`.
+- `crates/translator-core`: Core library (no GUI). Handles Screencast portal (`ashpd`), dedicated PipeWire loop (`pipewire`), ROI crop (`capture/crop.rs`, `RoiPixels`), dHash/typewriter debouncing (`debouncer.rs`), image pre-processing (`preprocess.rs`), pure-Rust OCR (`ocrs` + `rten`), and orchestrator loop.
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary (`cosmic-translator-overlay`). Depends on `translator-protocol` only, not on `translator-core`.
   - `--selector`: Interactive screen region picker (`Layer::Overlay`, `KeyboardInteractivity::Exclusive`). Emits `ROI_SELECTED:{"x":...,"y":...,"width":...,"height":...}` to stdout on release and exits 0.
   - `--hud`: Click-through subtitle overlay (`Layer::Overlay`, `input_zone: Some(vec![])`). Listens on Unix domain socket for `HudMessage` payloads.

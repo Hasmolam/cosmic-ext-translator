@@ -1,4 +1,4 @@
-use translator_core::translation::TranslationContext;
+use translator_translate::TranslationContext;
 
 // -----------------------------------------------------------------------------
 // Multi-turn sliding dialogue history and prompt generation

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use translator_core::translation::{
+use translator_translate::{
     parse_speaker_tags, BracketStyle, ParsedDialogueLine, TranslationContext,
 };
 

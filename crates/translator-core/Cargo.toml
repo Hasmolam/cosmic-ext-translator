@@ -7,6 +7,7 @@ repository.workspace = true
 
 [dependencies]
 translator-protocol = { workspace = true, features = ["ipc"] }
+translator-translate = { workspace = true }
 ashpd = { workspace = true }
 pipewire = { workspace = true }
 tokio = { workspace = true }
@@ -19,10 +20,8 @@ rten = "0.26"
 rten-tensor = "0.26"
 sha2 = "0.11"
 serde = { workspace = true }
-serde_json = { workspace = true }
 reqwest = { workspace = true }
 strsim = { workspace = true }
-regex = "1.11"
 futures-util = "0.3"
 
 [dev-dependencies]

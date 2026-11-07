@@ -5,7 +5,7 @@ pub mod ocr;
 pub mod orchestrator;
 pub mod pipeline;
 pub mod shortcuts;
-pub mod translation;
+pub use translator_translate as translation;
 
 pub use capture::pipewire_thread::{CapturedFrame, PipewireCaptureHandle, PipewireCommand};
 pub use capture::screencast::{ScreencastManager, ScreencastStreamInfo};

@@ -19,6 +19,9 @@ the section of the released version.
 - New crate `translator-protocol` with the HUD messages and socket, selector output,
   regions and log setup. The overlay depends only on it instead of `translator-core`:
   clean release build 143 s → 112 s, binary 39.3 MB → 37.6 MB.
+- New crate `translator-translate` with the translation engines, dialogue context,
+  speaker tags, fuzzy cache and rate limiter. `translator-core` re-exports it as
+  `translator_core::translation`, so existing paths keep working.
 - `just install-user` builds the release binaries first and restarts only the panel
   applet (SIGHUP, exit code 75, restarted by cosmic-panel) instead of killing
   cosmic-panel. Repeated installs killed the panel often enough for cosmic-session to

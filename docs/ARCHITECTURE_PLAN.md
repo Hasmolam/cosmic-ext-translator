@@ -283,7 +283,11 @@ incremental build after touching `app.rs`, test time, and binary sizes.
 
   ocrs, rten, pipewire, ashpd and reqwest are no longer linked into the overlay. Most of
   the remaining time and size is libcosmic.
-- Then `translator-capture`, `translator-ocr` (with features), `translator-translate`.
+- `translator-translate` done. It holds the former `translation/` module and its three
+  integration tests. Dependencies: anyhow, regex, reqwest, serde, serde_json, strsim;
+  tokio only for tests. `translator-core` re-exports it as `translation`, so callers did
+  not change, and dropped its own `regex` and `serde_json` dependencies.
+- Then `translator-capture`, `translator-ocr` (with features).
 - `translator-core` keeps the orchestrator and pipeline.
 
 **A5. Library crates.**

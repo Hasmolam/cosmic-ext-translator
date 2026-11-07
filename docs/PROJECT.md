@@ -3,13 +3,12 @@
 ## Architecture
 Multi-crate workspace under GPL-3.0-or-later:
 - `crates/translator-protocol`: Shared types: HUD messages and socket, selector output, `Roi`, `CaptureRegion`, log setup.
+- `crates/translator-translate`: `TranslationBackend` trait, `context.rs` (sliding dialogue turns), `speaker.rs` (bracket parser & glossary), `rate_limit.rs` (HTTP 429 exponential backoff), fuzzy cache, remote backends. Re-exported as `translator_core::translation`.
 - `crates/translator-core`: Core library (headless).
   - `capture/`: Screencast portal (`ashpd`), restore token negotiation, PipeWire OS loop, cropping and `ignore_roi` masking (`RoiPixels`).
   - `pipeline/`: Frame debouncer (`dhash_256`), high-pass blur subtraction, `preprocess.rs`, two-stage `TextGate`.
   - `ocr/`: `OcrBackend` trait, `layout.rs` (aspect ratio detection, vertical CJK topological sorter), `furigana.rs` (geometric ruby pruning), `OcrsBackend`, `TesseractBackend`, `MockOcrBackend`.
-  - `translation/`: `TranslationBackend` trait, `context.rs` (sliding dialogue turns), `speaker.rs` (bracket parser & glossary), `rate_limit.rs` (HTTP 429 exponential backoff), remote backends.
   - `orchestrator/`: Async main loop coordinating debouncer, text gate, OCR, speaker parsing, translation, rate limiting, and IPC.
-  - `ipc/`: Unix domain socket messages (`HudMessage`, status, subtitles).
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary.
   - `--selector`: Interactive screen region & ignore area picker.
   - `--hud`: Click-through subtitle overlay (`input_zone: Some(vec![])`), non-destructive status badge.
@@ -115,7 +114,7 @@ pub fn sort_cjk_reading_order(boxes: Vec<DetectedTextBox>, orientation: TextOrie
 pub fn filter_furigana(boxes: Vec<DetectedTextBox>, orientation: TextOrientation) -> Vec<DetectedTextBox>;
 ```
 
-### `crates/translator-core/src/translation/`
+### `crates/translator-translate/src/`
 ```rust
 pub struct ParsedDialogueLine {
     pub raw_speaker: Option<String>,
@@ -142,11 +141,12 @@ pub struct RateLimitManager {
 ## Code Layout
 - `crates/translator-protocol`:
   - `src/hud.rs`, `src/selector.rs`, `src/region.rs`, `src/logging.rs`
+- `crates/translator-translate`:
+  - `src/context.rs`, `src/speaker.rs`, `src/rate_limit.rs`, `src/fuzzy_cache.rs`, `src/lib.rs`
 - `crates/translator-core`:
   - `src/capture/crop.rs`, `src/capture/pipewire_thread.rs`, `src/capture/screencast.rs`
   - `src/pipeline/debouncer.rs`, `src/pipeline/preprocess.rs`, `src/pipeline/mod.rs`
   - `src/ocr/layout.rs`, `src/ocr/furigana.rs`, `src/ocr/mod.rs`
-  - `src/translation/context.rs`, `src/translation/speaker.rs`, `src/translation/rate_limit.rs`, `src/translation/mod.rs`
   - `src/orchestrator/mod.rs`
 - `crates/cosmic-translator-overlay`:
   - `src/main.rs`, `src/hud.rs`, `src/selector.rs`

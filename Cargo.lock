@@ -6234,12 +6234,10 @@ dependencies = [
  "image",
  "ocrs",
  "pipewire",
- "regex",
  "reqwest",
  "rten",
  "rten-tensor",
  "serde",
- "serde_json",
  "sha2",
  "strsim",
  "thiserror 2.0.21",
@@ -6247,6 +6245,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "translator-protocol",
+ "translator-translate",
 ]
 
 [[package]]
@@ -6259,6 +6258,19 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "translator-translate"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "strsim",
+ "tokio",
 ]
 
 [[package]]
