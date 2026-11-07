@@ -30,8 +30,8 @@ use super::{
     assemble_result, BoxFuture, DetectedTextBox, OcrBackend, OcrResult, OrientationMode,
     TextOrientation,
 };
-use crate::error::OcrInitError;
-use crate::language::Script;
+use crate::OcrInitError;
+use translator_protocol::language::Script;
 use translator_protocol::Roi;
 
 /// Download URL of a file in the `models-v1` release of this project.
@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn model_checksums_match_release_manifest() {
-        let manifest = include_str!("../../../../packaging/models/SHA256SUMS");
+        let manifest = include_str!("../../../packaging/models/SHA256SUMS");
         for source in [PPOCRV5_DET, PPOCRV5_REC, PPOCRV5_DICT] {
             let line = manifest
                 .lines()

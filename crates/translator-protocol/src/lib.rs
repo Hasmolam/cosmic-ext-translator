@@ -6,6 +6,7 @@
 //! socket behind the `ipc` feature, `tracing-subscriber` behind `logging`.
 
 pub mod hud;
+pub mod language;
 #[cfg(feature = "logging")]
 pub mod logging;
 pub mod region;

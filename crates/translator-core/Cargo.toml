@@ -8,21 +8,15 @@ repository.workspace = true
 [dependencies]
 translator-protocol = { workspace = true, features = ["ipc"] }
 translator-capture = { workspace = true }
+translator-ocr = { workspace = true }
 translator-translate = { workspace = true }
 ashpd = { workspace = true }
 tokio = { workspace = true }
 image = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
-anyhow = { workspace = true }
-ocrs = "0.13.1"
-rten = "0.26"
-rten-tensor = "0.26"
-sha2 = "0.11"
-serde = { workspace = true }
-reqwest = { workspace = true }
 strsim = { workspace = true }
 futures-util = "0.3"
 
 [dev-dependencies]
+anyhow = { workspace = true }
 tracing-subscriber = { workspace = true }

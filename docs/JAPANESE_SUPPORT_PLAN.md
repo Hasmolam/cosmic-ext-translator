@@ -162,7 +162,7 @@ and deleting the model directory produces a visible error instead of a subtitle.
 ### Phase 1: Working Japanese through Tesseract (defects 2, 3, 4, 10) -- implemented 2026-11-06
 
 Status: implemented. Verified with Tesseract 5.3.4 and the Ubuntu 24.04 `jpn` / `jpn_vert`
-traineddata (4.1.0) on rendered fixtures in `crates/translator-core/tests/fixtures/ja/`:
+traineddata (4.1.0) on rendered fixtures in `crates/translator-ocr/tests/fixtures/ja/`:
 horizontal, vertical, light-on-dark and furigana samples are read exactly in `Auto` mode
 (`tests/tesseract_ja.rs`, ignored by default). A stepwise typewriter reveal fed through the
 orchestrator produced correct prefixes. Not yet tested on captured game footage or inside a
@@ -209,7 +209,7 @@ Original scope:
   - `normalize_cjk_text` table tests.
   - `TextGate` typewriter sequence with spaced Tesseract output (`私 は` -> `私は学生`).
   - Optional `#[ignore]` integration test that runs real Tesseract on PNG fixtures in
-    `crates/translator-core/tests/fixtures/ja/`.
+    `crates/translator-ocr/tests/fixtures/ja/`.
 
 Done when: with `tesseract-ocr-jpn` installed, a Ren'Py or RPG Maker test scene in Japanese
 produces one translation per dialogue line, with furigana removed, and the applet reports a
@@ -232,9 +232,9 @@ Models: official PaddleOCR weights (Apache-2.0) in the ONNX conversion published
 directly; `paddle2onnx`/`rten-convert` are not needed. Operator coverage is complete for
 every model tried.
 
-Implementation: `crates/translator-core/src/ocr/paddle.rs`. DB post-processing uses axis-aligned connected components instead of
+Implementation: `crates/translator-ocr/src/paddle.rs`. DB post-processing uses axis-aligned connected components instead of
 minimum-area rectangles. Benchmark tool:
-`cargo run --release -p translator-core --example paddle_bench -- <det> <rec> <dict> <image>...`.
+`cargo run --release -p translator-ocr --example paddle_bench -- <det> <rec> <dict> <image>...`.
 
 Accuracy on rendered fixtures (Noto Sans CJK JP; `tests/fixtures/ja` plus a 1280x200 single
 line, light and dark-tinted, at 100%, 60% and 45% scale):
@@ -296,7 +296,7 @@ Findings:
 
 Verification:
 
-- `cargo test --release -p translator-core --test paddle_ja -- --ignored` with the model set
+- `cargo test --release -p translator-ocr --test paddle_ja -- --ignored` with the model set
   in `$XDG_DATA_HOME`: all four fixtures exact.
 - `tesseract_ja` ignored tests still pass with `OcrEngineChoice::Tesseract`.
 - `models-v1` published 2026-11-06 with `--latest=false`, so `releases/latest` (used by

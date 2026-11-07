@@ -1,4 +1,4 @@
-use crate::ocr::layout::{horizontal_overlap, vertical_overlap, DetectedTextBox, TextOrientation};
+use crate::layout::{horizontal_overlap, vertical_overlap, DetectedTextBox, TextOrientation};
 use translator_protocol::Roi;
 
 /// Returns true if a character is a recognized punctuation symbol that must be protected

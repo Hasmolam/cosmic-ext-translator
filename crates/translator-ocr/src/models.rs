@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use rten::Model;
 use tracing::{info, warn};
 
-use crate::error::OcrInitError;
+use crate::OcrInitError;
 
 /// Read-only model directory populated by system packages.
 pub const SYSTEM_MODELS_DIR: &str = "/usr/share/cosmic-ext-translator/models";

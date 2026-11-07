@@ -1,0 +1,25 @@
+[package]
+name = "translator-ocr"
+description = "OCR backends (ocrs, PaddleOCR, Tesseract), CJK layout and furigana filtering for cosmic-ext-translator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+translator-protocol = { workspace = true }
+anyhow = { workspace = true }
+image = { workspace = true }
+ocrs = "0.13.1"
+reqwest = { workspace = true }
+rten = "0.26"
+rten-tensor = "0.26"
+serde = { workspace = true }
+sha2 = "0.11"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }

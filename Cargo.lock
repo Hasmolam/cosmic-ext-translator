@@ -6245,20 +6245,32 @@ dependencies = [
  "ashpd 0.13.13",
  "futures-util",
  "image",
+ "strsim",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "translator-capture",
+ "translator-ocr",
+ "translator-protocol",
+ "translator-translate",
+]
+
+[[package]]
+name = "translator-ocr"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "image",
  "ocrs",
  "reqwest",
  "rten",
  "rten-tensor",
  "serde",
  "sha2",
- "strsim",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "tracing-subscriber",
- "translator-capture",
  "translator-protocol",
- "translator-translate",
 ]
 
 [[package]]

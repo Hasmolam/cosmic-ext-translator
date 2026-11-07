@@ -263,7 +263,7 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   `HudCleared`, `RoiSelected`, `IgnoreRoiSelected`, `SelectIgnoreRoiRequested`,
   `ClearIgnoreRoi`, `ClearHistory`, `CopyHistoryEntry`.
 
-**A4. Extract crates.** In progress.
+**A4. Extract crates.** Done.
 - `translator-protocol` done. It holds `hud.rs` (messages, socket path, config ID),
   `selector.rs`, `region.rs` (`Roi`, `RoiPreset`, `CaptureRegion`) and `logging.rs`.
   The socket client/server is behind the `ipc` feature, log setup behind `logging`.
@@ -292,7 +292,16 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   `CapturedFrame` moved to `pipeline/debouncer.rs`, which owns the trait. Only
   `translator-capture` depends on `pipewire` now; core still uses `ashpd` for global
   shortcuts.
-- Then `translator-ocr` (with features).
+- `translator-ocr` done. It holds the former `ocr/` module, `OcrInitError`, the Japanese
+  fixtures, their tests and the `paddle_bench` example. `language.rs` moved to
+  `translator-protocol` instead, because it is std-only and both the OCR and the target
+  language dropdown use it.
+- No cargo features were added to `translator-ocr`. PaddleOCR and `ocrs` share `rten`,
+  and Tesseract is a subprocess, so a `paddle` or `tesseract` feature would remove only
+  `rten-tensor` and a few hundred lines. Revisit if a backend brings its own heavy
+  dependency.
+- `translator-core` now depends on `ashpd` only for global shortcuts and keeps the
+  pipeline, orchestrator and shortcuts.
 - `translator-core` keeps the orchestrator and pipeline.
 
 **A5. Library crates.**

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/translator-protocol",
     "crates/translator-capture",
+    "crates/translator-ocr",
     "crates/translator-translate",
     "crates/translator-core",
     "crates/cosmic-applet-translator",
@@ -18,6 +19,7 @@ repository = "https://github.com/Hasmolam/cosmic-ext-translator"
 [workspace.dependencies]
 translator-protocol = { path = "crates/translator-protocol" }
 translator-capture = { path = "crates/translator-capture" }
+translator-ocr = { path = "crates/translator-ocr" }
 translator-translate = { path = "crates/translator-translate" }
 tokio = { version = "1.43", features = ["full"] }
 tracing = "0.1"

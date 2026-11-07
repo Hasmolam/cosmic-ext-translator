@@ -5,8 +5,8 @@
 use std::path::Path;
 use std::time::Instant;
 
-use translator_core::ocr::paddle::PaddleOcrBackend;
-use translator_core::ocr::OcrBackend;
+use translator_ocr::paddle::PaddleOcrBackend;
+use translator_ocr::OcrBackend;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

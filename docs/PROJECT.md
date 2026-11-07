@@ -2,12 +2,12 @@
 
 ## Architecture
 Multi-crate workspace under GPL-3.0-or-later:
-- `crates/translator-protocol`: Shared types: HUD messages and socket, selector output, `Roi`, `CaptureRegion`, log setup.
+- `crates/translator-protocol`: Shared types: HUD messages and socket, selector output, `Roi`, `CaptureRegion`, source/target languages (`language.rs`), log setup.
 - `crates/translator-capture`: Screencast portal (`ashpd`), restore token negotiation, PipeWire OS loop, cropping and `ignore_roi` masking (`RoiPixels`), `CaptureError`. Re-exported as `translator_core::capture`.
+- `crates/translator-ocr`: `OcrBackend` trait, `layout.rs` (aspect ratio detection, vertical CJK topological sorter), `furigana.rs` (geometric ruby pruning), `OcrsBackend`, `PaddleOcrBackend`, `TesseractBackend`, `MockOcrBackend`, model download, `OcrInitError`. Re-exported as `translator_core::ocr`.
 - `crates/translator-translate`: `TranslationBackend` trait, `context.rs` (sliding dialogue turns), `speaker.rs` (bracket parser & glossary), `rate_limit.rs` (HTTP 429 exponential backoff), fuzzy cache, remote backends. Re-exported as `translator_core::translation`.
 - `crates/translator-core`: Core library (headless).
   - `pipeline/`: Frame debouncer (`dhash_256`), high-pass blur subtraction, `preprocess.rs`, two-stage `TextGate`.
-  - `ocr/`: `OcrBackend` trait, `layout.rs` (aspect ratio detection, vertical CJK topological sorter), `furigana.rs` (geometric ruby pruning), `OcrsBackend`, `TesseractBackend`, `MockOcrBackend`.
   - `orchestrator/`: Async main loop coordinating debouncer, text gate, OCR, speaker parsing, translation, rate limiting, and IPC.
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary.
   - `--selector`: Interactive screen region & ignore area picker.
@@ -87,7 +87,7 @@ pub struct PreprocessConfig {
 pub fn subtract_blur(gray: &image::GrayImage, sigma: f32) -> image::GrayImage;
 ```
 
-### `crates/translator-core/src/ocr/mod.rs` & `layout.rs` & `furigana.rs`
+### `crates/translator-ocr/src/lib.rs` & `layout.rs` & `furigana.rs`
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextOrientation {
@@ -140,14 +140,15 @@ pub struct RateLimitManager {
 
 ## Code Layout
 - `crates/translator-protocol`:
-  - `src/hud.rs`, `src/selector.rs`, `src/region.rs`, `src/logging.rs`
+  - `src/hud.rs`, `src/selector.rs`, `src/region.rs`, `src/language.rs`, `src/logging.rs`
+- `crates/translator-ocr`:
+  - `src/lib.rs`, `src/layout.rs`, `src/furigana.rs`, `src/paddle.rs`, `src/tesseract.rs`, `src/models.rs`, `src/error.rs`
 - `crates/translator-capture`:
   - `src/crop.rs`, `src/pipewire_thread.rs`, `src/screencast.rs`, `src/error.rs`, `src/lib.rs`
 - `crates/translator-translate`:
   - `src/context.rs`, `src/speaker.rs`, `src/rate_limit.rs`, `src/fuzzy_cache.rs`, `src/lib.rs`
 - `crates/translator-core`:
   - `src/pipeline/debouncer.rs`, `src/pipeline/preprocess.rs`, `src/pipeline/mod.rs`
-  - `src/ocr/layout.rs`, `src/ocr/furigana.rs`, `src/ocr/mod.rs`
   - `src/orchestrator/mod.rs`
 - `crates/cosmic-translator-overlay`:
   - `src/main.rs`, `src/hud.rs`, `src/selector.rs`

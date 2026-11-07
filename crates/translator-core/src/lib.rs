@@ -1,7 +1,7 @@
 pub use translator_capture as capture;
 pub mod error;
-pub mod language;
-pub mod ocr;
+pub use translator_ocr as ocr;
+pub use translator_protocol::language;
 pub mod orchestrator;
 pub mod pipeline;
 pub mod shortcuts;

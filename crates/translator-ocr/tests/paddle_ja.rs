@@ -3,11 +3,11 @@
 //! Ignored by default: requires the PP-OCRv5 model set in
 //! `$XDG_DATA_HOME/cosmic-ext-translator/models/ppocrv5/` (or network access to download
 //! it from the project's `models-v1` release).
-//! Run with `cargo test --release -p translator-core --test paddle_ja -- --ignored`.
+//! Run with `cargo test --release -p translator-ocr --test paddle_ja -- --ignored`.
 
 use std::path::PathBuf;
 
-use translator_core::ocr::{create_ocr_backend, OcrEngineChoice, OrientationMode, TextOrientation};
+use translator_ocr::{create_ocr_backend, OcrEngineChoice, OrientationMode, TextOrientation};
 
 fn fixture(name: &str) -> image::DynamicImage {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

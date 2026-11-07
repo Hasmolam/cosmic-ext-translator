@@ -267,10 +267,11 @@ The version lives in `[workspace.package]` of `Cargo.toml`; `just version` print
 
 | Crate | Contents |
 | :--- | :--- |
-| `crates/translator-protocol` | Types shared by all processes: HUD messages and socket, selector output, regions, log setup. |
+| `crates/translator-protocol` | Types shared by all processes: HUD messages and socket, selector output, regions, language codes, log setup. |
 | `crates/translator-capture` | Screen-sharing portal, PipeWire capture thread, region crop and masking. |
+| `crates/translator-ocr` | OCR engines (ocrs, PaddleOCR, Tesseract), model download, CJK layout, furigana filter. |
 | `crates/translator-translate` | Translation engines, dialogue context, speaker tags, fuzzy cache, rate limiting. |
-| `crates/translator-core` | Library without GUI: debouncing, pre-processing, OCR, and the main loop. |
+| `crates/translator-core` | Library without GUI: debouncing, pre-processing, the main loop and global shortcuts. Re-exports the crates above. |
 | `crates/cosmic-translator-overlay` | Depends only on `translator-protocol`. `--hud`: subtitle overlay. `--selector`: region picker, prints `ROI_SELECTED:{"x":..,"y":..,"width":..,"height":..}` to stdout. |
 | `crates/cosmic-applet-translator` | Panel applet and settings window. |
 

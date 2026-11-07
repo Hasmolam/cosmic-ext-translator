@@ -24,6 +24,9 @@ the section of the released version.
   `translator_core::translation`, so existing paths keep working.
 - New crate `translator-capture` with the screen-sharing portal, the PipeWire capture
   thread, region cropping and `CaptureError`. Re-exported as `translator_core::capture`.
+- New crate `translator-ocr` with the OCR engines, model download, CJK layout and
+  furigana filter. Re-exported as `translator_core::ocr`. Language codes moved to
+  `translator_protocol::language`.
 - `just install-user` builds the release binaries first and restarts only the panel
   applet (SIGHUP, exit code 75, restarted by cosmic-panel) instead of killing
   cosmic-panel. Repeated installs killed the panel often enough for cosmic-session to

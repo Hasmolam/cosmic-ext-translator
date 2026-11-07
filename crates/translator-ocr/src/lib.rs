@@ -6,10 +6,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::error::OcrInitError;
-use crate::language::{normalize_source_code, script_for_code};
+pub use error::OcrInitError;
+use translator_protocol::language::{normalize_source_code, script_for_code};
 
 pub mod engine;
+pub mod error;
 pub mod furigana;
 pub mod layout;
 pub mod models;
@@ -365,7 +366,7 @@ pub async fn create_ocr_backend(
 }
 
 async fn create_paddle_backend(
-    script: crate::language::Script,
+    script: translator_protocol::language::Script,
     orientation: OrientationMode,
 ) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
     let backend = PaddleOcrBackend::load_default_or_download().await?;
@@ -378,7 +379,7 @@ async fn create_paddle_backend(
 }
 
 async fn create_tesseract_backend(
-    script: crate::language::Script,
+    script: translator_protocol::language::Script,
     orientation: OrientationMode,
 ) -> std::result::Result<Arc<dyn OcrBackend>, OcrInitError> {
     let language = script.name();

@@ -1,9 +1,9 @@
 use image::{DynamicImage, RgbaImage};
-use translator_core::ocr::{
+use translator_ocr::{
     detect_dominant_orientation, is_cjk_text, join_cjk_or_latin_tokens, sort_cjk_reading_order,
     DetectedTextBox, MockOcrBackend, OcrBackend, TextOrientation,
 };
-use translator_core::Roi;
+use translator_protocol::Roi;
 
 #[test]
 fn test_adversarial_layout_vertical_tategaki_6_columns_staggered_jitter() {
@@ -242,7 +242,7 @@ fn test_adversarial_layout_mixed_orientation_line_absorption_anomaly() {
 #[test]
 fn test_adversarial_layout_integer_overflow_panic_near_u32_max() {
     // Verified fix:
-    // In `crates/translator-core/src/ocr/layout.rs`:
+    // In `crates/translator-ocr/src/layout.rs`:
     // Coordinate additions use `saturating_add` instead of raw `+`.
     // Coordinates near u32::MAX succeed without panic.
     let b1 = DetectedTextBox::new(Roi::new(u32::MAX - 5, 10, 10, 20), "Panic1", 0.9);

@@ -1,11 +1,11 @@
 //! Japanese recognition through the real Tesseract binary.
 //!
 //! Ignored by default: requires `tesseract` with `jpn` and `jpn_vert` language data.
-//! Run with `cargo test -p translator-core --test tesseract_ja -- --ignored`.
+//! Run with `cargo test -p translator-ocr --test tesseract_ja -- --ignored`.
 
 use std::path::PathBuf;
 
-use translator_core::ocr::{create_ocr_backend, OcrEngineChoice, OrientationMode, TextOrientation};
+use translator_ocr::{create_ocr_backend, OcrEngineChoice, OrientationMode, TextOrientation};
 
 fn fixture(name: &str) -> image::DynamicImage {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

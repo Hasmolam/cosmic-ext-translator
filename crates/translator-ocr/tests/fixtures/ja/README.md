@@ -13,5 +13,5 @@ Used by `tests/tesseract_ja.rs`, which is ignored by default because it needs th
 `tesseract` binary with `jpn` and `jpn_vert` language data:
 
 ```sh
-cargo test -p translator-core --test tesseract_ja -- --ignored
+cargo test -p translator-ocr --test tesseract_ja -- --ignored
 ```
