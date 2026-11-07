@@ -2,12 +2,13 @@
 
 ## Architecture
 Multi-crate workspace under GPL-3.0-or-later:
+- `crates/screen-text-settle`: `FrameDebouncer` (`dhash_256`), two-stage `TextGate`. `MIT OR Apache-2.0`, no workspace dependencies. Re-exported as `translator_core::pipeline::debouncer`.
 - `crates/translator-protocol`: Shared types: HUD messages and socket, selector output, `Roi`, `CaptureRegion`, source/target languages (`language.rs`), log setup.
 - `crates/translator-capture`: Screencast portal (`ashpd`), restore token negotiation, PipeWire OS loop, cropping and `ignore_roi` masking (`RoiPixels`), `CaptureError`. Re-exported as `translator_core::capture`.
 - `crates/translator-ocr`: `OcrBackend` trait, `layout.rs` (aspect ratio detection, vertical CJK topological sorter), `furigana.rs` (geometric ruby pruning), `OcrsBackend`, `PaddleOcrBackend`, `TesseractBackend`, `MockOcrBackend`, model download, `OcrInitError`. Re-exported as `translator_core::ocr`.
 - `crates/translator-translate`: `TranslationBackend` trait, `context.rs` (sliding dialogue turns), `speaker.rs` (bracket parser & glossary), `rate_limit.rs` (HTTP 429 exponential backoff), fuzzy cache, remote backends. Re-exported as `translator_core::translation`.
 - `crates/translator-core`: Core library (headless).
-  - `pipeline/`: Frame debouncer (`dhash_256`), high-pass blur subtraction, `preprocess.rs`, two-stage `TextGate`.
+  - `pipeline/`: High-pass blur subtraction, `preprocess.rs`, recognition pipeline.
   - `orchestrator/`: Async main loop coordinating debouncer, text gate, OCR, speaker parsing, translation, rate limiting, and IPC.
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary.
   - `--selector`: Interactive screen region & ignore area picker.
@@ -139,6 +140,8 @@ pub struct RateLimitManager {
 ```
 
 ## Code Layout
+- `crates/screen-text-settle`:
+  - `src/frame.rs`, `src/text.rs`, `src/hash.rs`, `src/lib.rs`
 - `crates/translator-protocol`:
   - `src/hud.rs`, `src/selector.rs`, `src/region.rs`, `src/language.rs`, `src/logging.rs`
 - `crates/translator-ocr`:
@@ -148,7 +151,7 @@ pub struct RateLimitManager {
 - `crates/translator-translate`:
   - `src/context.rs`, `src/speaker.rs`, `src/rate_limit.rs`, `src/fuzzy_cache.rs`, `src/lib.rs`
 - `crates/translator-core`:
-  - `src/pipeline/debouncer.rs`, `src/pipeline/preprocess.rs`, `src/pipeline/mod.rs`
+  - `src/pipeline/preprocess.rs`, `src/pipeline/mod.rs`
   - `src/orchestrator/mod.rs`
 - `crates/cosmic-translator-overlay`:
   - `src/main.rs`, `src/hud.rs`, `src/selector.rs`

@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 translator-protocol = { workspace = true }
+screen-text-settle = { workspace = true }
 ashpd = { workspace = true }
 image = { workspace = true }
 pipewire = { workspace = true }

@@ -2,13 +2,14 @@
 
 ## Workspace Structure & Entrypoints
 
-Multi-crate workspace under GPL-3.0-or-later:
+Multi-crate workspace under GPL-3.0-or-later. `screen-text-settle` is `MIT OR Apache-2.0` and meant for crates.io:
 
+- `crates/screen-text-settle`: `FrameDebouncer` (256-bit dHash settle detection, generic over `FrameImage`), `TextGate` (typewriter expansion and jitter suppression on recognised text). Depends only on `image` (no default features), `strsim` and `tracing`; no workspace crates. Public API: keep fields private, document every item, and treat changes as semver changes.
 - `crates/translator-protocol`: Types shared by all processes: `HudMessage`/`HudStatus`/`HudPosition`, the HUD Unix socket client/server (feature `ipc`), `SelectorOutput`, `Roi`/`RoiPreset`/`CaptureRegion`, `language` (source/target language codes, script mapping), and log setup (feature `logging`). Depends only on `serde` plus optional `tokio`/`tracing-subscriber`; keep it that way, the overlay links nothing else from the workspace.
-- `crates/translator-capture`: Screencast portal (`ashpd`), dedicated PipeWire loop (`pipewire`), ROI crop (`crop.rs`, `RoiPixels`), `CaptureError`. `translator-core` re-exports it as `translator_core::capture` and implements its `FrameImage` trait for `CapturedFrame`.
+- `crates/translator-capture`: Screencast portal (`ashpd`), dedicated PipeWire loop (`pipewire`), ROI crop (`crop.rs`, `RoiPixels`), `CaptureError`. `translator-core` re-exports it as `translator_core::capture`. Implements `screen_text_settle::FrameImage` for `CapturedFrame`.
 - `crates/translator-ocr`: Pure-Rust OCR (`ocrs` + `rten`), PaddleOCR (`paddle.rs`), Tesseract CLI (`tesseract.rs`), model download and checksum (`models.rs`), CJK layout and furigana filtering, `OcrInitError`. Re-exported as `translator_core::ocr`.
 - `crates/translator-translate`: Translation engines (Google, DeepL, OpenAI-compatible, Ollama), dialogue context, speaker tags, fuzzy LRU cache (`strsim`), rate limiting. No tokio, image or OCR dependencies. `translator-core` re-exports it as `translator_core::translation`.
-- `crates/translator-core`: Core library (no GUI). Handles dHash/typewriter debouncing (`debouncer.rs`), image pre-processing (`preprocess.rs`), recognition pipeline, orchestrator loop and global shortcuts. Re-exports the capture, OCR and translation crates as modules.
+- `crates/translator-core`: Core library (no GUI). Handles image pre-processing (`preprocess.rs`), recognition pipeline, orchestrator loop and global shortcuts. Re-exports the capture, OCR and translation crates as modules, and `screen-text-settle` as `pipeline::debouncer` / `pipeline::phash`.
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary (`cosmic-translator-overlay`). Depends on `translator-protocol` only, not on `translator-core`.
   - `--selector`: Interactive screen region picker (`Layer::Overlay`, `KeyboardInteractivity::Exclusive`). Emits `ROI_SELECTED:{"x":...,"y":...,"width":...,"height":...}` to stdout on release and exits 0.
   - `--hud`: Click-through subtitle overlay (`Layer::Overlay`, `input_zone: Some(vec![])`). Listens on Unix domain socket for `HudMessage` payloads.
@@ -67,7 +68,7 @@ sudo just install
    - Models are stored in `$XDG_DATA_HOME/cosmic-ext-translator/models`. Tests must use `MockOcrBackend` to avoid mandatory network access during CI.
 
 5. **Typewriter Debouncing:**
-   - Dialogue streams in RPGs/VNs letter-by-letter. `FrameDebouncer` uses 64-bit dHash and Hamming distance.
+   - Dialogue streams in RPGs/VNs letter-by-letter. `FrameDebouncer` (`screen-text-settle`) uses a 256-bit dHash and Hamming distance.
    - Only frames that remain stable for `settle_duration` (default 250ms) transition from `Animating` to `Settled` and trigger OCR.
 
 6. **Rust Quality Standards:**

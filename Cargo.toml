@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/translator-protocol",
+    "crates/screen-text-settle",
     "crates/translator-capture",
     "crates/translator-ocr",
     "crates/translator-translate",
@@ -18,6 +19,7 @@ repository = "https://github.com/Hasmolam/cosmic-ext-translator"
 
 [workspace.dependencies]
 translator-protocol = { path = "crates/translator-protocol" }
+screen-text-settle = { path = "crates/screen-text-settle", version = "0.1.0" }
 translator-capture = { path = "crates/translator-capture" }
 translator-ocr = { path = "crates/translator-ocr" }
 translator-translate = { path = "crates/translator-translate" }

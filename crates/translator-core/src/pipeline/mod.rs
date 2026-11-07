@@ -1,5 +1,5 @@
-pub mod debouncer;
-pub mod phash;
+pub use screen_text_settle as debouncer;
+pub use screen_text_settle::hash as phash;
 pub mod preprocess;
 
 use image::DynamicImage;
@@ -74,7 +74,7 @@ pub fn spawn_recognition_pipeline(
                         };
                         debouncer.process_frame(captured)
                     }
-                    _ = tokio::time::sleep(debouncer.settle_duration) => {
+                    _ = tokio::time::sleep(debouncer.settle_duration()) => {
                         debug!("Pipeline: zero-FPS static screen timeout reached, forcing settle");
                         debouncer.force_settle()
                     }

@@ -1,0 +1,20 @@
+[package]
+name = "screen-text-settle"
+version = "0.1.0"
+description = "Detect when animated on-screen text (typewriter dialogue, fades) has stopped changing, then emit it once"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+repository.workspace = true
+readme = "README.md"
+keywords = ["ocr", "screen-capture", "dhash", "debounce", "typewriter"]
+categories = ["multimedia::images", "text-processing", "accessibility"]
+include = ["src/**", "examples/**", "tests/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
+
+[dependencies]
+image = { version = "0.25", default-features = false }
+strsim = "0.11"
+tracing = "0.1"
+
+[package.metadata.docs.rs]
+all-features = true

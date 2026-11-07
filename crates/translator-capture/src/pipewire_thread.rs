@@ -9,6 +9,7 @@ use std::time::Instant;
 use tracing::{debug, info, warn};
 
 use crate::{CaptureError, Result};
+use screen_text_settle::FrameImage;
 use translator_protocol::{CaptureRegion, Roi, RoiPreset};
 
 #[derive(Clone, Debug)]
@@ -17,6 +18,12 @@ pub struct CapturedFrame {
     pub timestamp: Instant,
     pub original_width: u32,
     pub original_height: u32,
+}
+
+impl FrameImage for CapturedFrame {
+    fn image(&self) -> &RgbaImage {
+        &self.image
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

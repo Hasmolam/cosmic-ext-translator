@@ -115,7 +115,7 @@ pub fn spawn_orchestrator(
             None
         };
 
-        let mut text_gate = TextGate::new(config.typewriter_settle_duration, 0.92, 0.60);
+        let mut text_gate = TextGate::new(0.92);
         let mut typewriter_deadline: Option<tokio::time::Instant> = None;
 
         loop {

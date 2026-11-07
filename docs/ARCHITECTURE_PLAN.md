@@ -304,10 +304,20 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   pipeline, orchestrator and shortcuts.
 - `translator-core` keeps the orchestrator and pipeline.
 
-**A5. Library crates.**
+**A5. Library crates.** In progress.
+- License: `MIT OR Apache-2.0` for the published crates (maintainer decision,
+  2026-11-07). Applications and internal crates stay `GPL-3.0-or-later`.
+- `screen-text-settle` done: `FrameDebouncer`, `TextGate`, dHash, with a README, a
+  crate-level doctest, `examples/typewriter.rs` and the text gate tests. `image` without
+  default features, `strsim`, `tracing`; `rust-version = "1.88"` from `image` 0.25.10.
+  `cargo publish --dry-run` passes. API changes before 0.1.0: private fields with
+  getters; `TextGate::new(jitter_threshold)` and no `evaluate_at`, since the gate never
+  read its clock, the typewriter duration or the turn threshold. `translator-capture`
+  implements `FrameImage` for `CapturedFrame`; the CJK normalisation test moved to
+  `translator-core/tests/text_gate_cjk.rs`.
 - Give `cjk-ocr-layout` its own rectangle type with `From` conversions to and from `Roi`.
-- Extract `screen-text-settle` and `cjk-ocr-layout`, write docs and examples, decide the
-  license, add publish dry-run and semver checks to CI, publish 0.1.0.
+- Extract `cjk-ocr-layout`, write docs and examples, add publish dry-run and semver
+  checks to CI, publish 0.1.0.
 
 **A6. Distribution.**
 - Demo media, AUR package, Flatpak manifest.

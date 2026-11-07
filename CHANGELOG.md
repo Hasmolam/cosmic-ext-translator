@@ -16,6 +16,10 @@ the section of the released version.
 
 ### Changed
 
+- New crate `screen-text-settle` (`MIT OR Apache-2.0`) with the frame debouncer and
+  the text gate, prepared for crates.io. `TextGate::new` takes only the jitter
+  threshold: the typewriter duration and turn threshold were stored but never read.
+  The fields of `TextGate` and `FrameDebouncer` are private, with getters.
 - `target/` is limited to `TARGET_LIMIT_GB` (default 30) by the `just` build, check
   and test recipes: incremental caches are removed first, then `cargo clean` runs.
   Debug builds keep only line tables for workspace crates and no debug info for

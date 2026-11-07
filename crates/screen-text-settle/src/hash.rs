@@ -1,3 +1,5 @@
+//! Perceptual difference hashes.
+
 use image::{imageops::FilterType, RgbaImage};
 
 /// Computes a 64-bit difference hash (dHash) for an image.

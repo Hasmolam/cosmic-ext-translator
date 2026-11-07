@@ -1,10 +1,8 @@
-use std::time::{Duration, Instant};
-use translator_core::pipeline::debouncer::{TextDiffAction, TextGate};
+use screen_text_settle::{TextDiffAction, TextGate};
 
 #[test]
 fn test_adversarial_typewriter_1000_char_stream() {
-    let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
-    let start_time = Instant::now();
+    let mut gate = TextGate::new(0.92);
 
     // Generate a 1000-character sentence
     let mut text_chars = Vec::new();
@@ -21,7 +19,7 @@ fn test_adversarial_typewriter_1000_char_stream() {
     // Step 0: Initial character
     let mut current = String::new();
     current.push(full_string.chars().next().unwrap());
-    let action0 = gate.evaluate_at(&current, start_time);
+    let action0 = gate.evaluate(&current);
     assert_eq!(
         action0,
         TextDiffAction::EmitTranslation,
@@ -33,8 +31,7 @@ fn test_adversarial_typewriter_1000_char_stream() {
     let chars: Vec<char> = full_string.chars().collect();
     for (i, &ch) in chars.iter().enumerate().skip(1) {
         current.push(ch);
-        let now = start_time + Duration::from_millis(i as u64 * 10);
-        let action = gate.evaluate_at(&current, now);
+        let action = gate.evaluate(&current);
 
         // Verification requirement: 1-character typewriter steps on long sentences
         // (sim > 0.98) are NEVER falsely suppressed as jitter!
@@ -66,44 +63,34 @@ fn test_adversarial_typewriter_1000_char_stream() {
 
 #[test]
 fn test_adversarial_typewriter_variable_pauses_and_duplicates() {
-    let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
-    let t0 = Instant::now();
+    let mut gate = TextGate::new(0.92);
 
     // Character typing with variable pauses
-    assert_eq!(
-        gate.evaluate_at("Hold", t0),
-        TextDiffAction::EmitTranslation
-    );
+    assert_eq!(gate.evaluate("Hold"), TextDiffAction::EmitTranslation);
 
     // Quick typing (15ms)
-    assert_eq!(
-        gate.evaluate_at("Hold on", t0 + Duration::from_millis(15)),
-        TextDiffAction::TypewriterWait
-    );
+    assert_eq!(gate.evaluate("Hold on"), TextDiffAction::TypewriterWait);
 
     // Exact duplicate frame while waiting on typewriter (game render cycle, no new letter yet)
     // Must return SuppressJitter WITHOUT modifying candidate text
-    assert_eq!(
-        gate.evaluate_at("Hold on", t0 + Duration::from_millis(30)),
-        TextDiffAction::SuppressJitter
-    );
+    assert_eq!(gate.evaluate("Hold on"), TextDiffAction::SuppressJitter);
     assert_eq!(gate.last_candidate_text(), "Hold on");
 
     // Medium pause (150ms < 250ms settle)
     assert_eq!(
-        gate.evaluate_at("Hold on, wait", t0 + Duration::from_millis(180)),
+        gate.evaluate("Hold on, wait"),
         TextDiffAction::TypewriterWait
     );
 
     // Another duplicate
     assert_eq!(
-        gate.evaluate_at("Hold on, wait", t0 + Duration::from_millis(220)),
+        gate.evaluate("Hold on, wait"),
         TextDiffAction::SuppressJitter
     );
 
     // Final punctuation added
     assert_eq!(
-        gate.evaluate_at("Hold on, wait!", t0 + Duration::from_millis(350)),
+        gate.evaluate("Hold on, wait!"),
         TextDiffAction::TypewriterWait
     );
 
@@ -113,8 +100,7 @@ fn test_adversarial_typewriter_variable_pauses_and_duplicates() {
 
 #[test]
 fn test_adversarial_typewriter_japanese_multibyte_stream() {
-    let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
-    let t0 = Instant::now();
+    let mut gate = TextGate::new(0.92);
 
     // 1. Incremental progressive typing stream with multi-byte Japanese characters:
     // 「あ」 -> 「ありがとう」 -> 「ありがとうございます」
@@ -135,14 +121,13 @@ fn test_adversarial_typewriter_japanese_multibyte_stream() {
 
     // Initial character
     assert_eq!(
-        gate.evaluate_at(japanese_steps[0], t0),
+        gate.evaluate(japanese_steps[0]),
         TextDiffAction::EmitTranslation
     );
 
     // All subsequent characters must be TypewriterWait
     for (idx, step) in japanese_steps[1..].iter().enumerate() {
-        let t = t0 + Duration::from_millis((idx as u64 + 1) * 30);
-        let action = gate.evaluate_at(step, t);
+        let action = gate.evaluate(step);
         assert_eq!(
             action,
             TextDiffAction::TypewriterWait,
@@ -160,7 +145,7 @@ fn test_adversarial_typewriter_japanese_multibyte_stream() {
     // 「あ」 -> 「ありがとう」 -> 「ありがとうございます」
     // Note: 「あ」ends with closing bracket '」', so 「ありがとう」 is NOT a prefix expansion of 「あ」.
     // It should cleanly trigger as distinct dialogue turns or updates without jitter suppression!
-    let mut coarse_gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
+    let mut coarse_gate = TextGate::new(0.92);
     assert_eq!(
         coarse_gate.evaluate("「あ」"),
         TextDiffAction::EmitTranslation,
@@ -190,12 +175,11 @@ fn test_adversarial_typewriter_japanese_multibyte_stream() {
 
 #[test]
 fn test_adversarial_1char_step_long_sentence_sim_above_098() {
-    let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
-    let t0 = Instant::now();
+    let mut gate = TextGate::new(0.92);
 
     // 70-character base sentence
     let base = "In the beginning the Universe was created. This made many very angry.";
-    assert_eq!(gate.evaluate_at(base, t0), TextDiffAction::EmitTranslation);
+    assert_eq!(gate.evaluate(base), TextDiffAction::EmitTranslation);
     assert_eq!(gate.flush_pending(), None);
 
     // 1-character additions (e.g. extending with 'a'):
@@ -206,7 +190,7 @@ fn test_adversarial_1char_step_long_sentence_sim_above_098() {
     let sim1 = strsim::normalized_levenshtein(&ext1, base);
     assert!(sim1 > 0.98, "Similarity must be > 0.98, got {sim1}");
 
-    let action1 = gate.evaluate_at(&ext1, t0 + Duration::from_millis(50));
+    let action1 = gate.evaluate(&ext1);
     assert_eq!(
         action1,
         TextDiffAction::TypewriterWait,
@@ -215,7 +199,7 @@ fn test_adversarial_1char_step_long_sentence_sim_above_098() {
 
     // Next 1-char addition: 'b'
     let ext2 = format!("{base}ab");
-    let action2 = gate.evaluate_at(&ext2, t0 + Duration::from_millis(100));
+    let action2 = gate.evaluate(&ext2);
     assert_eq!(
         action2,
         TextDiffAction::TypewriterWait,
@@ -228,7 +212,7 @@ fn test_adversarial_1char_step_long_sentence_sim_above_098() {
 
 #[test]
 fn test_adversarial_random_mutations_vs_jitter_vs_new_turns() {
-    let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
+    let mut gate = TextGate::new(0.92);
     let base = "The quick brown fox jumps over the lazy dog near the riverbank.";
     assert_eq!(gate.evaluate(base), TextDiffAction::EmitTranslation);
 
@@ -277,7 +261,7 @@ fn test_adversarial_random_mutations_vs_jitter_vs_new_turns() {
 
 #[test]
 fn test_adversarial_text_gate_unicode_and_fuzzing() {
-    let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
+    let mut gate = TextGate::new(0.92);
 
     // Exotic Unicode strings: CJK, Arabic RTL, Emojis, combining diacritics, zero-width chars
     let exotic_strings = [
@@ -295,11 +279,9 @@ fn test_adversarial_text_gate_unicode_and_fuzzing() {
         "Z̸a̷l̶g̶o̶ ̴t̷e̷x̸t̷ ̷t̸e̶s̵t̵ extended",
     ];
 
-    let t0 = Instant::now();
     for (i, s) in exotic_strings.iter().enumerate() {
-        let now = t0 + Duration::from_millis(i as u64 * 50);
         // Must never panic on multibyte slicing or unusual codepoints
-        let action = gate.evaluate_at(s, now);
+        let action = gate.evaluate(s);
         let _ = gate.has_pending_expansion();
         if i.is_multiple_of(3) {
             let _ = gate.flush_pending();
@@ -316,19 +298,15 @@ fn test_adversarial_text_gate_unicode_and_fuzzing() {
 
 #[test]
 fn test_adversarial_typewriter_resume_after_flush() {
-    let mut gate = TextGate::new(Duration::from_millis(250), 0.92, 0.60);
-    let t0 = Instant::now();
+    let mut gate = TextGate::new(0.92);
 
     // Turn 1 starts typing
     assert_eq!(
-        gate.evaluate_at("First sentence part 1", t0),
+        gate.evaluate("First sentence part 1"),
         TextDiffAction::EmitTranslation
     );
     assert_eq!(
-        gate.evaluate_at(
-            "First sentence part 1 and part 2",
-            t0 + Duration::from_millis(50)
-        ),
+        gate.evaluate("First sentence part 1 and part 2"),
         TextDiffAction::TypewriterWait
     );
 
@@ -343,7 +321,7 @@ fn test_adversarial_typewriter_resume_after_flush() {
     // Game appends more text to the SAME dialogue without clearing:
     // (prefix expansion against last_emitted_text!)
     let extended = "First sentence part 1 and part 2 and bonus part 3!";
-    let action_resumed = gate.evaluate_at(extended, t0 + Duration::from_millis(400));
+    let action_resumed = gate.evaluate(extended);
     assert_eq!(
         action_resumed,
         TextDiffAction::TypewriterWait,
