@@ -16,6 +16,11 @@ the section of the released version.
 
 ### Changed
 
+- `target/` is limited to `TARGET_LIMIT_GB` (default 30) by the `just` build, check
+  and test recipes: incremental caches are removed first, then `cargo clean` runs.
+  Debug builds keep only line tables for workspace crates and no debug info for
+  dependencies. `target/` had grown to 129 GB; after a clean clippy and test run it
+  is 4.4 GB.
 - New crate `translator-protocol` with the HUD messages and socket, selector output,
   regions and log setup. The overlay depends only on it instead of `translator-core`:
   clean release build 143 s → 112 s, binary 39.3 MB → 37.6 MB.

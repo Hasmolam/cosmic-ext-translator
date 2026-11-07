@@ -18,24 +18,28 @@ export PKG_CONFIG_PATH := env_var_or_default('PKG_CONFIG_PATH', '') + ':' + home
 # Default recipe: check the workspace
 default: check
 
+# Clean target/ when it is larger than TARGET_LIMIT_GB (default 30)
+target-limit:
+    bash packaging/target-limit.sh
+
 # Check all workspace crates
-check:
+check: target-limit
     cargo check --workspace --all-targets
 
 # Run unit tests across workspace
-test:
+test: target-limit
     cargo test --workspace
 
 # Run clippy on workspace
-lint:
+lint: target-limit
     cargo clippy --workspace --all-targets -- -D warnings
 
 # Build debug binaries
-build *args:
+build *args: target-limit
     cargo build --workspace {{args}}
 
 # Build release binaries with the committed Cargo.lock
-build-release *args:
+build-release *args: target-limit
     cargo build --release --locked --workspace {{args}}
 
 # Print the release version read from Cargo.toml

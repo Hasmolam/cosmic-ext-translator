@@ -35,6 +35,14 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 strsim = "0.11"
 tokio-stream = { version = "0.1", features = ["sync"] }
 
+# Line tables are enough for backtraces; full debug info for every dependency made
+# target/debug several times larger. Dependencies carry no debug info.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.dev.package.ocrs]
 opt-level = 3
 

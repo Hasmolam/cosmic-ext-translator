@@ -253,6 +253,12 @@ just test-capture                                      # capture test (needs Way
 
 Debug builds compile `ocrs`, `rten`, and `rten-vecmath` with `opt-level = 3`. Without this, OCR is too slow to use. Keep that section in `Cargo.toml`.
 
+Debug builds keep line tables for the workspace crates and no debug info for
+dependencies. `just check`, `lint`, `test`, `build` and `build-release` first run
+`packaging/target-limit.sh`, which removes the incremental caches and then runs
+`cargo clean` when `target/` is larger than `TARGET_LIMIT_GB` (default 30). Plain
+`cargo` commands do not run the check; use `just target-limit` after them.
+
 ### Releasing
 
 The version lives in `[workspace.package]` of `Cargo.toml`; `just version` prints it and the `.deb`, tarball and AppStream metadata use the same value.
