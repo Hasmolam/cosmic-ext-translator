@@ -26,6 +26,7 @@ the section of the released version.
   serde support is behind the `serde` feature.
 - CI runs `cargo publish --dry-run`, a build of the packaged crate with its minimum
   Rust version and `cargo semver-checks` for both library crates.
+- `cjk-ocr-layout` 0.1.0 and `screen-text-settle` 0.1.0 are published on crates.io.
 - `target/` is limited to `TARGET_LIMIT_GB` (default 30) by the `just` build, check
   and test recipes: incremental caches are removed first, then `cargo clean` runs.
   Debug builds keep only line tables for workspace crates and no debug info for

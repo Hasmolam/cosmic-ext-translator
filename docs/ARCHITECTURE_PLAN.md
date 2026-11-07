@@ -304,7 +304,7 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   pipeline, orchestrator and shortcuts.
 - `translator-core` keeps the orchestrator and pipeline.
 
-**A5. Library crates.** In progress.
+**A5. Library crates.** Done.
 - License: `MIT OR Apache-2.0` for the published crates (maintainer decision,
   2026-11-07). Applications and internal crates stay `GPL-3.0-or-later`.
 - `screen-text-settle` done: `FrameDebouncer`, `TextGate`, dHash, with a README, a
@@ -334,7 +334,8 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   `serde_derive` 1.0.229, which needs Rust 1.71. `serde` itself declares 1.56 and pins
   `serde_derive` exactly, so MSRV-aware resolution does not avoid it. All features are
   tested on stable.
-- Remaining: publish 0.1.0 of both crates. Needs the maintainer's crates.io token.
+- Published on 2026-11-07: `cjk-ocr-layout` 0.1.0 and `screen-text-settle` 0.1.0.
+  Later releases of either crate are checked by `cargo semver-checks` in CI.
 
 **A6. Distribution.**
 - Demo media, AUR package, Flatpak manifest.
