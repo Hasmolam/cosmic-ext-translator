@@ -12,11 +12,11 @@ use image::DynamicImage;
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, warn};
 
-use super::layout::{DetectedTextBox, OrientationMode, TextOrientation};
 use super::{
     assemble_result, is_cjk_text, join_cjk_or_latin_tokens, BoxFuture, OcrBackend, OcrResult,
 };
-use translator_protocol::Roi;
+use crate::Rect;
+use crate::{OrientationMode, TextBox, TextOrientation};
 
 /// Page segmentation mode: a single uniform block of horizontal text (dialogue boxes).
 const PSM_HORIZONTAL: &str = "6";
@@ -150,7 +150,7 @@ impl OcrBackend for TesseractBackend {
 #[derive(Debug)]
 struct Pass {
     orientation: TextOrientation,
-    lines: Vec<DetectedTextBox>,
+    lines: Vec<TextBox>,
     /// Mean word confidence (0-100), weighted by character count.
     confidence: f32,
 }
@@ -194,7 +194,7 @@ fn choose_pass(horizontal: Pass, vertical: Pass) -> Pass {
 
 /// A horizontal pass over vertical text yields many one-character lines stacked on top
 /// of each other.
-fn looks_like_stacked_columns(lines: &[DetectedTextBox]) -> bool {
+fn looks_like_stacked_columns(lines: &[TextBox]) -> bool {
     if lines.len() < 3 {
         return false;
     }
@@ -203,7 +203,7 @@ fn looks_like_stacked_columns(lines: &[DetectedTextBox]) -> bool {
 }
 
 /// True if the union of all line boxes is taller than it is wide.
-fn is_taller_than_wide(lines: &[DetectedTextBox]) -> bool {
+fn is_taller_than_wide(lines: &[TextBox]) -> bool {
     let left = lines.iter().map(|l| l.rect.x).min().unwrap_or(0);
     let top = lines.iter().map(|l| l.rect.y).min().unwrap_or(0);
     let right = lines
@@ -225,7 +225,7 @@ pub struct TsvWord {
     pub block: u32,
     pub paragraph: u32,
     pub line: u32,
-    pub rect: Roi,
+    pub rect: Rect,
     /// Confidence in percent (0-100).
     pub confidence: f32,
     pub text: String,
@@ -263,7 +263,7 @@ pub fn parse_tsv(tsv: &str) -> Vec<TsvWord> {
             block,
             paragraph,
             line,
-            rect: Roi::new(x, y, width, height),
+            rect: Rect::new(x, y, width, height),
             confidence,
             text,
         });
@@ -273,7 +273,7 @@ pub fn parse_tsv(tsv: &str) -> Vec<TsvWord> {
 
 /// Groups consecutive words that share block, paragraph and line numbers into one box.
 #[must_use]
-pub fn group_lines(words: &[TsvWord]) -> Vec<DetectedTextBox> {
+pub fn group_lines(words: &[TsvWord]) -> Vec<TextBox> {
     let mut lines = Vec::new();
     let mut start = 0;
     while start < words.len() {
@@ -292,7 +292,7 @@ pub fn group_lines(words: &[TsvWord]) -> Vec<DetectedTextBox> {
     lines
 }
 
-fn merge_words(words: &[TsvWord]) -> DetectedTextBox {
+fn merge_words(words: &[TsvWord]) -> TextBox {
     let tokens: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
     let is_cjk = tokens.iter().any(|t| is_cjk_text(t));
     let text = join_cjk_or_latin_tokens(&tokens, is_cjk);
@@ -309,9 +309,9 @@ fn merge_words(words: &[TsvWord]) -> DetectedTextBox {
         .map(|w| w.rect.y.saturating_add(w.rect.height))
         .max()
         .unwrap_or(0);
-    let rect = Roi::new(left, top, right - left, bottom - top);
+    let rect = Rect::new(left, top, right - left, bottom - top);
 
-    DetectedTextBox::new(rect, text, mean_confidence(words) / 100.0)
+    TextBox::new(rect, text, mean_confidence(words) / 100.0)
 }
 
 /// Mean confidence weighted by character count, so one long word outweighs stray marks.
@@ -434,7 +434,7 @@ mod tests {
         let words = parse_tsv(&horizontal_fixture());
         assert_eq!(words.len(), 7);
         assert_eq!(words[0].text, "明日");
-        assert_eq!(words[0].rect, Roi::new(27, 53, 178, 92));
+        assert_eq!(words[0].rect, Rect::new(27, 53, 178, 92));
         assert!((words[0].confidence - 96.026924).abs() < 1e-3);
         assert_eq!(words[4].line, 2);
     }
@@ -458,7 +458,7 @@ mod tests {
         let lines = group_lines(&parse_tsv(&horizontal_fixture()));
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].text, "明日は学校に");
-        assert_eq!(lines[0].rect, Roi::new(27, 46, 780, 133));
+        assert_eq!(lines[0].rect, Rect::new(27, 46, 780, 133));
         assert_eq!(lines[1].text, "行きます。");
     }
 

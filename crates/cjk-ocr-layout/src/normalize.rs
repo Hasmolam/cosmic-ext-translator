@@ -5,7 +5,7 @@
 //! full-width characters. Without normalisation the typewriter prefix check and the fuzzy
 //! cache treat these variants as different strings.
 
-use super::is_cjk_char;
+use crate::is_cjk_char;
 
 /// Normalises OCR output:
 ///
@@ -84,7 +84,7 @@ fn halfwidth_to_fullwidth(c: char) -> char {
 /// Combines a full-width katakana with a (semi-)voiced sound mark, e.g. `カ` + `ﾞ` = `ガ`.
 fn apply_sound_mark(base: char, semi_voiced: bool) -> Option<char> {
     let code = base as u32;
-    let is_ha_row = (0x30CF..=0x30DD).contains(&code) && (code - 0x30CF).is_multiple_of(3);
+    let is_ha_row = (0x30CF..=0x30DD).contains(&code) && (code - 0x30CF) % 3 == 0;
     if semi_voiced {
         return is_ha_row.then(|| char::from_u32(code + 2)).flatten();
     }

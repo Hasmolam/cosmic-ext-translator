@@ -11,20 +11,18 @@ use translator_protocol::language::{normalize_source_code, script_for_code};
 
 pub mod engine;
 pub mod error;
-pub mod furigana;
-pub mod layout;
 pub mod models;
-pub mod normalize;
+pub mod orientation;
 pub mod paddle;
 pub mod tesseract;
 
-pub use engine::OcrEngineChoice;
-pub use furigana::{filter_furigana, is_punctuation_char};
-pub use layout::{
-    detect_dominant_orientation, sort_cjk_reading_order, DetectedTextBox, OrientationMode,
+pub use cjk_ocr_layout::{
+    detect_dominant_orientation, filter_furigana, is_cjk_char, is_cjk_text, is_punctuation_char,
+    join_cjk_or_latin_tokens, normalize_cjk_text, sort_cjk_reading_order, Rect, TextBox,
     TextOrientation,
 };
-pub use normalize::normalize_cjk_text;
+pub use engine::OcrEngineChoice;
+pub use orientation::OrientationMode;
 pub use paddle::PaddleOcrBackend;
 pub use tesseract::{parse_tesseract_lang_list, TesseractBackend};
 
@@ -34,68 +32,8 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OcrResult {
     pub text: String,
-    pub boxes: Vec<DetectedTextBox>,
+    pub boxes: Vec<TextBox>,
     pub orientation: TextOrientation,
-}
-
-/// Returns true if a character falls within recognized CJK unicode ranges.
-#[must_use]
-pub fn is_cjk_char(c: char) -> bool {
-    matches!(
-        c,
-        '\u{3040}'..='\u{309F}' | // Hiragana
-        '\u{30A0}'..='\u{30FF}' | // Katakana
-        '\u{4E00}'..='\u{9FFF}' | // CJK Unified Ideographs
-        '\u{3400}'..='\u{4DBF}' | // CJK Extension A
-        '\u{F900}'..='\u{FAFF}' | // CJK Compatibility Ideographs
-        '\u{AC00}'..='\u{D7AF}' | // Hangul Syllables
-        '\u{1100}'..='\u{11FF}' | // Hangul Jamo
-        '\u{FF00}'..='\u{FFEF}' | // Halfwidth and Fullwidth Forms
-        '\u{3000}'..='\u{303F}'   // CJK Symbols and Punctuation
-    )
-}
-
-/// Returns true if any character in the text slice is CJK.
-#[must_use]
-pub fn is_cjk_text(s: &str) -> bool {
-    s.chars().any(is_cjk_char)
-}
-
-/// Joins tokens using appropriate typography rules:
-/// - Space-less `""` for CJK scripts (Japanese, Chinese, Korean), with spaces preserved between adjacent ASCII alphanumeric tokens.
-/// - Space `" "` for Latin / alphabetic scripts.
-#[must_use]
-pub fn join_cjk_or_latin_tokens<S: AsRef<str>>(tokens: &[S], is_cjk: bool) -> String {
-    if tokens.is_empty() {
-        return String::new();
-    }
-    if !is_cjk {
-        return tokens
-            .iter()
-            .map(|t| t.as_ref())
-            .collect::<Vec<_>>()
-            .join(" ")
-            .trim()
-            .to_string();
-    }
-
-    let mut result = String::new();
-    for (i, token) in tokens.iter().enumerate() {
-        let t = token.as_ref().trim();
-        if t.is_empty() {
-            continue;
-        }
-        if i > 0 && !result.is_empty() {
-            let prev_char = result.chars().last().unwrap_or(' ');
-            let next_char = t.chars().next().unwrap_or(' ');
-            // Insert space if transitioning between two ASCII alphanumeric tokens
-            if prev_char.is_ascii_alphanumeric() && next_char.is_ascii_alphanumeric() {
-                result.push(' ');
-            }
-        }
-        result.push_str(t);
-    }
-    result
 }
 
 pub trait OcrBackend: std::fmt::Debug + Send + Sync {
@@ -122,7 +60,7 @@ pub trait OcrBackend: std::fmt::Debug + Send + Sync {
 #[derive(Debug, Clone)]
 pub struct MockOcrBackend {
     pub mocked_text: String,
-    pub mocked_boxes: Vec<DetectedTextBox>,
+    pub mocked_boxes: Vec<TextBox>,
     pub mocked_orientation: TextOrientation,
 }
 
@@ -136,7 +74,7 @@ impl MockOcrBackend {
     }
 
     #[must_use]
-    pub fn with_boxes(mut self, boxes: Vec<DetectedTextBox>) -> Self {
+    pub fn with_boxes(mut self, boxes: Vec<TextBox>) -> Self {
         self.mocked_boxes = boxes;
         self
     }
@@ -149,7 +87,7 @@ impl MockOcrBackend {
 
     pub fn new_detailed(
         text: impl Into<String>,
-        boxes: Vec<DetectedTextBox>,
+        boxes: Vec<TextBox>,
         orientation: TextOrientation,
     ) -> Self {
         Self {
@@ -421,7 +359,7 @@ async fn create_tesseract_backend(
 /// Shared post-processing for line boxes from any backend: furigana pruning, reading-order
 /// sorting, CJK-aware joining and text normalisation.
 pub(crate) fn assemble_result(
-    raw_boxes: Vec<DetectedTextBox>,
+    raw_boxes: Vec<TextBox>,
     orientation: Option<TextOrientation>,
     force_cjk: bool,
 ) -> OcrResult {
@@ -451,7 +389,7 @@ impl OcrBackend for OcrsBackend {
         image: &'a DynamicImage,
         orientation: Option<TextOrientation>,
     ) -> BoxFuture<'a, Result<OcrResult>> {
-        use translator_protocol::Roi;
+        use crate::Rect;
 
         let rgb = image.to_rgb8();
         let (width, height) = rgb.dimensions();
@@ -484,13 +422,13 @@ impl OcrBackend for OcrsBackend {
                     let trimmed = text.trim();
                     if !trimmed.is_empty() {
                         let rect = line.bounding_rect();
-                        let roi = Roi {
+                        let roi = Rect {
                             x: rect.left().max(0) as u32,
                             y: rect.top().max(0) as u32,
                             width: rect.width().max(0) as u32,
                             height: rect.height().max(0) as u32,
                         };
-                        raw_boxes.push(DetectedTextBox::new(roi, trimmed, 1.0));
+                        raw_boxes.push(TextBox::new(roi, trimmed, 1.0));
                     }
                 }
 
@@ -505,8 +443,8 @@ impl OcrBackend for OcrsBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Rect;
     use image::RgbaImage;
-    use translator_protocol::Roi;
 
     #[tokio::test]
     async fn test_mock_ocr_backend() {
@@ -519,8 +457,8 @@ mod tests {
     #[tokio::test]
     async fn test_mock_ocr_detailed_and_builder() {
         let boxes = vec![
-            DetectedTextBox::new(Roi::new(0, 0, 100, 30), "Hello", 0.99),
-            DetectedTextBox::new(Roi::new(110, 0, 100, 30), "World", 0.98),
+            TextBox::new(Rect::new(0, 0, 100, 30), "Hello", 0.99),
+            TextBox::new(Rect::new(110, 0, 100, 30), "World", 0.98),
         ];
         let backend = MockOcrBackend::new("Hello World")
             .with_boxes(boxes.clone())
@@ -532,44 +470,6 @@ mod tests {
         assert_eq!(detailed.text, "Hello World");
         assert_eq!(detailed.boxes.len(), 2);
         assert_eq!(detailed.orientation, TextOrientation::Horizontal);
-    }
-
-    #[test]
-    fn test_cjk_character_join_without_ascii_spaces() {
-        // Japanese tokens: must be joined without spaces ("")
-        let ja_tokens = vec!["私", "は", "学生", "です", "。"];
-        let ja_joined = join_cjk_or_latin_tokens(&ja_tokens, true);
-        assert_eq!(ja_joined, "私は学生です。");
-
-        // Chinese tokens: must be joined without spaces ("")
-        let zh_tokens = vec!["你好", "世界"];
-        let zh_joined = join_cjk_or_latin_tokens(&zh_tokens, true);
-        assert_eq!(zh_joined, "你好世界");
-
-        // Latin / English tokens: must be joined with ASCII space (" ")
-        let en_tokens = vec!["The", "hero", "entered", "the", "dungeon."];
-        let en_joined = join_cjk_or_latin_tokens(&en_tokens, false);
-        assert_eq!(en_joined, "The hero entered the dungeon.");
-
-        // Mixed CJK + Western tokens: ASCII words retain word space, transition to CJK without space
-        let mixed = vec!["Level", "10", "へ"];
-        let mixed_joined = join_cjk_or_latin_tokens(&mixed, true);
-        assert_eq!(mixed_joined, "Level 10へ");
-    }
-
-    #[test]
-    fn test_cjk_char_detection() {
-        assert!(is_cjk_char('あ')); // Hiragana
-        assert!(is_cjk_char('ア')); // Katakana
-        assert!(is_cjk_char('漢')); // Kanji
-        assert!(is_cjk_char('한')); // Hangul
-        assert!(is_cjk_char('。')); // CJK punctuation
-        assert!(!is_cjk_char('A')); // Latin
-        assert!(!is_cjk_char('1')); // Digit
-        assert!(!is_cjk_char('?')); // ASCII punctuation
-
-        assert!(is_cjk_text("レベルアップ!"));
-        assert!(!is_cjk_text("Level Up!"));
     }
 
     #[tokio::test]

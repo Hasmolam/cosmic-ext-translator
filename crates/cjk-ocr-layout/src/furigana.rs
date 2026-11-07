@@ -1,5 +1,7 @@
-use crate::layout::{horizontal_overlap, vertical_overlap, DetectedTextBox, TextOrientation};
-use translator_protocol::Roi;
+//! Removal of ruby (furigana) annotations from recognised boxes.
+
+use crate::layout::{horizontal_overlap, vertical_overlap, TextBox, TextOrientation};
+use crate::Rect;
 
 /// Returns true if a character is a recognized punctuation symbol that must be protected
 /// from furigana / ruby text pruning.
@@ -20,10 +22,7 @@ pub fn is_punctuation_char(c: char) -> bool {
 /// 4. Filters out candidate ruby boxes with $\text{area} < 0.35 \times \text{median\_area}$
 ///    that are positioned in the ruby lane adjacent to a primary text line (above) or column (to the right).
 #[must_use]
-pub fn filter_furigana(
-    boxes: Vec<DetectedTextBox>,
-    orientation: TextOrientation,
-) -> Vec<DetectedTextBox> {
+pub fn filter_furigana(boxes: Vec<TextBox>, orientation: TextOrientation) -> Vec<TextBox> {
     if boxes.len() < 2 {
         return boxes;
     }
@@ -45,7 +44,7 @@ pub fn filter_furigana(
 
     let area_threshold = (median_area as f64 * 0.35) as u64;
 
-    let primary_rects: Vec<Roi> = boxes
+    let primary_rects: Vec<Rect> = boxes
         .iter()
         .filter_map(|b| {
             let area = (b.rect.width as u64) * (b.rect.height as u64);
@@ -133,7 +132,6 @@ pub fn filter_furigana(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use translator_protocol::Roi;
 
     #[test]
     fn test_punctuation_protection() {
@@ -154,13 +152,13 @@ mod tests {
     #[test]
     fn test_vertical_furigana_pruning_with_punctuation_retained() {
         // Main kanji column 1: "日本語" (X=100..140, Y=50..170, W=40, H=120, area=4800)
-        let main1 = DetectedTextBox::new(Roi::new(100, 50, 40, 120), "日本語", 0.95);
+        let main1 = TextBox::new(Rect::new(100, 50, 40, 120), "日本語", 0.95);
         // Main kanji column 2: "学習" (X=40..80, Y=50..130, W=40, H=80, area=3200)
-        let main2 = DetectedTextBox::new(Roi::new(40, 50, 40, 80), "学習", 0.95);
+        let main2 = TextBox::new(Rect::new(40, 50, 40, 80), "学習", 0.95);
         // Ruby furigana on right flank of main1: "にほんご" (X=142..154, Y=55..145, W=12, H=90, area=1080)
-        let ruby = DetectedTextBox::new(Roi::new(142, 55, 12, 90), "にほんご", 0.85);
+        let ruby = TextBox::new(Rect::new(142, 55, 12, 90), "にほんご", 0.85);
         // Punctuation at bottom of main2: "。" (X=55..65, Y=135..145, W=10, H=10, area=100)
-        let punct = DetectedTextBox::new(Roi::new(55, 135, 10, 10), "。", 0.90);
+        let punct = TextBox::new(Rect::new(55, 135, 10, 10), "。", 0.90);
 
         let boxes = vec![main1.clone(), ruby, main2.clone(), punct.clone()];
         let filtered = filter_furigana(boxes, TextOrientation::Vertical);
@@ -173,13 +171,13 @@ mod tests {
     #[test]
     fn test_horizontal_furigana_pruning_retains_punctuation() {
         // Main horizontal line: "東京タワー" (X=100..260, Y=50..90, W=160, H=40, area=6400)
-        let main = DetectedTextBox::new(Roi::new(100, 50, 160, 40), "東京タワー", 0.95);
+        let main = TextBox::new(Rect::new(100, 50, 160, 40), "東京タワー", 0.95);
         // Second line: "見物" (X=100..180, Y=110..150, W=80, H=40, area=3200)
-        let main2 = DetectedTextBox::new(Roi::new(100, 110, 80, 40), "見物", 0.95);
+        let main2 = TextBox::new(Rect::new(100, 110, 80, 40), "見物", 0.95);
         // Ruby furigana above main line: "とうきょう" (X=100..180, Y=32..44, W=80, H=12, area=960)
-        let ruby = DetectedTextBox::new(Roi::new(100, 32, 80, 12), "とうきょう", 0.85);
+        let ruby = TextBox::new(Rect::new(100, 32, 80, 12), "とうきょう", 0.85);
         // Punctuation comma: "、" (X=185..195, Y=135..145, W=10, H=10, area=100)
-        let punct = DetectedTextBox::new(Roi::new(185, 135, 10, 10), "、", 0.90);
+        let punct = TextBox::new(Rect::new(185, 135, 10, 10), "、", 0.90);
 
         let boxes = vec![main.clone(), ruby, main2.clone(), punct.clone()];
         let filtered = filter_furigana(boxes, TextOrientation::Horizontal);

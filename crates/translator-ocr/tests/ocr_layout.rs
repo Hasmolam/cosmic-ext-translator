@@ -1,9 +1,8 @@
 use image::{DynamicImage, RgbaImage};
 use translator_ocr::{
     detect_dominant_orientation, is_cjk_text, join_cjk_or_latin_tokens, sort_cjk_reading_order,
-    DetectedTextBox, MockOcrBackend, OcrBackend, TextOrientation,
+    MockOcrBackend, OcrBackend, Rect, TextBox, TextOrientation,
 };
-use translator_protocol::Roi;
 
 #[test]
 fn test_adversarial_layout_vertical_tategaki_6_columns_staggered_jitter() {
@@ -20,55 +19,55 @@ fn test_adversarial_layout_vertical_tategaki_6_columns_staggered_jitter() {
 
     // Column 1 (Rightmost): nominal X = 500, width = 30. 4 tokens.
     let col1 = vec![
-        DetectedTextBox::new(Roi::new(499, 10, 30, 24), "C1_T1", 0.95),
-        DetectedTextBox::new(Roi::new(501, 38, 30, 30), "C1_T2", 0.95),
-        DetectedTextBox::new(Roi::new(500, 72, 30, 18), "C1_T3", 0.95),
-        DetectedTextBox::new(Roi::new(498, 94, 30, 36), "C1_T4", 0.95),
+        TextBox::new(Rect::new(499, 10, 30, 24), "C1_T1", 0.95),
+        TextBox::new(Rect::new(501, 38, 30, 30), "C1_T2", 0.95),
+        TextBox::new(Rect::new(500, 72, 30, 18), "C1_T3", 0.95),
+        TextBox::new(Rect::new(498, 94, 30, 36), "C1_T4", 0.95),
     ];
 
     // Column 2: nominal X = 420, width = 28. 7 tokens.
     let col2 = vec![
-        DetectedTextBox::new(Roi::new(420, 12, 28, 20), "C2_T1", 0.95),
-        DetectedTextBox::new(Roi::new(421, 36, 28, 28), "C2_T2", 0.95),
-        DetectedTextBox::new(Roi::new(419, 68, 28, 22), "C2_T3", 0.95),
-        DetectedTextBox::new(Roi::new(420, 94, 28, 30), "C2_T4", 0.95),
-        DetectedTextBox::new(Roi::new(422, 128, 28, 18), "C2_T5", 0.95),
-        DetectedTextBox::new(Roi::new(419, 150, 28, 24), "C2_T6", 0.95),
-        DetectedTextBox::new(Roi::new(420, 178, 28, 26), "C2_T7", 0.95),
+        TextBox::new(Rect::new(420, 12, 28, 20), "C2_T1", 0.95),
+        TextBox::new(Rect::new(421, 36, 28, 28), "C2_T2", 0.95),
+        TextBox::new(Rect::new(419, 68, 28, 22), "C2_T3", 0.95),
+        TextBox::new(Rect::new(420, 94, 28, 30), "C2_T4", 0.95),
+        TextBox::new(Rect::new(422, 128, 28, 18), "C2_T5", 0.95),
+        TextBox::new(Rect::new(419, 150, 28, 24), "C2_T6", 0.95),
+        TextBox::new(Rect::new(420, 178, 28, 26), "C2_T7", 0.95),
     ];
 
     // Column 3: nominal X = 340, width = 32. 2 tokens.
     let col3 = vec![
-        DetectedTextBox::new(Roi::new(339, 15, 32, 35), "C3_T1", 0.95),
-        DetectedTextBox::new(Roi::new(341, 55, 32, 35), "C3_T2", 0.95),
+        TextBox::new(Rect::new(339, 15, 32, 35), "C3_T1", 0.95),
+        TextBox::new(Rect::new(341, 55, 32, 35), "C3_T2", 0.95),
     ];
 
     // Column 4: nominal X = 260, width = 30. 8 tokens.
     let col4 = vec![
-        DetectedTextBox::new(Roi::new(260, 5, 30, 25), "C4_T1", 0.95),
-        DetectedTextBox::new(Roi::new(259, 34, 30, 25), "C4_T2", 0.95),
-        DetectedTextBox::new(Roi::new(261, 63, 30, 30), "C4_T3", 0.95),
-        DetectedTextBox::new(Roi::new(260, 97, 30, 20), "C4_T4", 0.95),
-        DetectedTextBox::new(Roi::new(258, 121, 30, 28), "C4_T5", 0.95),
-        DetectedTextBox::new(Roi::new(261, 153, 30, 32), "C4_T6", 0.95),
-        DetectedTextBox::new(Roi::new(260, 189, 30, 22), "C4_T7", 0.95),
-        DetectedTextBox::new(Roi::new(259, 215, 30, 25), "C4_T8", 0.95),
+        TextBox::new(Rect::new(260, 5, 30, 25), "C4_T1", 0.95),
+        TextBox::new(Rect::new(259, 34, 30, 25), "C4_T2", 0.95),
+        TextBox::new(Rect::new(261, 63, 30, 30), "C4_T3", 0.95),
+        TextBox::new(Rect::new(260, 97, 30, 20), "C4_T4", 0.95),
+        TextBox::new(Rect::new(258, 121, 30, 28), "C4_T5", 0.95),
+        TextBox::new(Rect::new(261, 153, 30, 32), "C4_T6", 0.95),
+        TextBox::new(Rect::new(260, 189, 30, 22), "C4_T7", 0.95),
+        TextBox::new(Rect::new(259, 215, 30, 25), "C4_T8", 0.95),
     ];
 
     // Column 5: nominal X = 180, width = 29. 3 tokens.
     let col5 = vec![
-        DetectedTextBox::new(Roi::new(181, 20, 29, 30), "C5_T1", 0.95),
-        DetectedTextBox::new(Roi::new(179, 54, 29, 30), "C5_T2", 0.95),
-        DetectedTextBox::new(Roi::new(180, 88, 29, 30), "C5_T3", 0.95),
+        TextBox::new(Rect::new(181, 20, 29, 30), "C5_T1", 0.95),
+        TextBox::new(Rect::new(179, 54, 29, 30), "C5_T2", 0.95),
+        TextBox::new(Rect::new(180, 88, 29, 30), "C5_T3", 0.95),
     ];
 
     // Column 6 (Leftmost): nominal X = 100, width = 31. 5 tokens.
     let col6 = vec![
-        DetectedTextBox::new(Roi::new(100, 8, 31, 26), "C6_T1", 0.95),
-        DetectedTextBox::new(Roi::new(99, 38, 31, 28), "C6_T2", 0.95),
-        DetectedTextBox::new(Roi::new(101, 70, 31, 24), "C6_T3", 0.95),
-        DetectedTextBox::new(Roi::new(100, 98, 31, 32), "C6_T4", 0.95),
-        DetectedTextBox::new(Roi::new(99, 134, 31, 30), "C6_T5", 0.95),
+        TextBox::new(Rect::new(100, 8, 31, 26), "C6_T1", 0.95),
+        TextBox::new(Rect::new(99, 38, 31, 28), "C6_T2", 0.95),
+        TextBox::new(Rect::new(101, 70, 31, 24), "C6_T3", 0.95),
+        TextBox::new(Rect::new(100, 98, 31, 32), "C6_T4", 0.95),
+        TextBox::new(Rect::new(99, 134, 31, 30), "C6_T5", 0.95),
     ];
 
     for col in [&col1, &col2, &col3, &col4, &col5, &col6] {
@@ -101,10 +100,10 @@ fn test_adversarial_layout_vertical_tategaki_6_columns_staggered_jitter() {
 
 #[test]
 fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
-    let base = DetectedTextBox::new(Roi::new(100, 10, 100, 20), "Base", 0.9);
+    let base = TextBox::new(Rect::new(100, 10, 100, 20), "Base", 0.9);
 
     // Case 1: 49% overlap (< 50%) -> Must NOT cluster into the same column
-    let box_49 = DetectedTextBox::new(Roi::new(151, 40, 100, 20), "Box_49", 0.9);
+    let box_49 = TextBox::new(Rect::new(151, 40, 100, 20), "Box_49", 0.9);
     let sorted_49 = sort_cjk_reading_order(
         vec![base.clone(), box_49.clone()],
         TextOrientation::Vertical,
@@ -117,7 +116,7 @@ fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
     );
 
     // Case 2: 50% overlap (exact threshold >= 50%) -> MUST cluster into the same column
-    let box_50 = DetectedTextBox::new(Roi::new(150, 40, 100, 20), "Box_50", 0.9);
+    let box_50 = TextBox::new(Rect::new(150, 40, 100, 20), "Box_50", 0.9);
     let sorted_50 = sort_cjk_reading_order(
         vec![base.clone(), box_50.clone()],
         TextOrientation::Vertical,
@@ -130,7 +129,7 @@ fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
     );
 
     // Case 3: 51% overlap (> 50%) -> MUST cluster into the same column
-    let box_51 = DetectedTextBox::new(Roi::new(149, 40, 100, 20), "Box_51", 0.9);
+    let box_51 = TextBox::new(Rect::new(149, 40, 100, 20), "Box_51", 0.9);
     let sorted_51 = sort_cjk_reading_order(
         vec![base.clone(), box_51.clone()],
         TextOrientation::Vertical,
@@ -145,10 +144,10 @@ fn test_adversarial_layout_boundary_overlaps_vertical_mode() {
 
 #[test]
 fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
-    let base = DetectedTextBox::new(Roi::new(10, 100, 20, 100), "Base", 0.9);
+    let base = TextBox::new(Rect::new(10, 100, 20, 100), "Base", 0.9);
 
     // Case 1: 49% overlap (< 50%) -> Must NOT cluster into the same line
-    let box_49 = DetectedTextBox::new(Roi::new(40, 151, 20, 100), "Box_49", 0.9);
+    let box_49 = TextBox::new(Rect::new(40, 151, 20, 100), "Box_49", 0.9);
     let sorted_49 = sort_cjk_reading_order(
         vec![base.clone(), box_49.clone()],
         TextOrientation::Horizontal,
@@ -161,7 +160,7 @@ fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
     );
 
     // Case 2: 50% overlap (exact threshold >= 50%) -> MUST cluster into same line
-    let box_50 = DetectedTextBox::new(Roi::new(40, 150, 20, 100), "Box_50", 0.9);
+    let box_50 = TextBox::new(Rect::new(40, 150, 20, 100), "Box_50", 0.9);
     let sorted_50 = sort_cjk_reading_order(
         vec![base.clone(), box_50.clone()],
         TextOrientation::Horizontal,
@@ -174,7 +173,7 @@ fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
     );
 
     // Case 3: 51% overlap (> 50%) -> MUST cluster into same line
-    let box_51 = DetectedTextBox::new(Roi::new(40, 149, 20, 100), "Box_51", 0.9);
+    let box_51 = TextBox::new(Rect::new(40, 149, 20, 100), "Box_51", 0.9);
     let sorted_51 = sort_cjk_reading_order(
         vec![base.clone(), box_51.clone()],
         TextOrientation::Horizontal,
@@ -189,10 +188,10 @@ fn test_adversarial_layout_boundary_overlaps_horizontal_mode() {
 
 #[test]
 fn test_adversarial_layout_mixed_orientations_voting() {
-    let title = DetectedTextBox::new(Roi::new(50, 10, 400, 20), "Title", 0.95);
-    let v_col1 = DetectedTextBox::new(Roi::new(350, 50, 30, 200), "V1", 0.95);
-    let v_col2 = DetectedTextBox::new(Roi::new(250, 50, 30, 200), "V2", 0.95);
-    let v_col3 = DetectedTextBox::new(Roi::new(150, 50, 30, 200), "V3", 0.95);
+    let title = TextBox::new(Rect::new(50, 10, 400, 20), "Title", 0.95);
+    let v_col1 = TextBox::new(Rect::new(350, 50, 30, 200), "V1", 0.95);
+    let v_col2 = TextBox::new(Rect::new(250, 50, 30, 200), "V2", 0.95);
+    let v_col3 = TextBox::new(Rect::new(150, 50, 30, 200), "V3", 0.95);
 
     let boxes = vec![title, v_col1, v_col2, v_col3];
     assert_eq!(
@@ -200,10 +199,10 @@ fn test_adversarial_layout_mixed_orientations_voting() {
         TextOrientation::Vertical
     );
 
-    let h1 = DetectedTextBox::new(Roi::new(50, 10, 300, 25), "H1", 0.95);
-    let h2 = DetectedTextBox::new(Roi::new(50, 50, 300, 25), "H2", 0.95);
-    let h3 = DetectedTextBox::new(Roi::new(50, 90, 300, 25), "H3", 0.95);
-    let v_sidebar = DetectedTextBox::new(Roi::new(400, 10, 30, 200), "VSide", 0.95);
+    let h1 = TextBox::new(Rect::new(50, 10, 300, 25), "H1", 0.95);
+    let h2 = TextBox::new(Rect::new(50, 50, 300, 25), "H2", 0.95);
+    let h3 = TextBox::new(Rect::new(50, 90, 300, 25), "H3", 0.95);
+    let v_sidebar = TextBox::new(Rect::new(400, 10, 30, 200), "VSide", 0.95);
 
     let boxes_h = vec![h1, h2, h3, v_sidebar];
     assert_eq!(
@@ -218,14 +217,14 @@ fn test_adversarial_layout_mixed_orientation_line_absorption_anomaly() {
     // When a tall vertical box (e.g. sidebar or VN character label) is present in
     // horizontal reading mode, `overlap / min(h1, h2) >= 0.5` causes the tall box
     // to absorb multiple horizontal lines into a single line.
-    let l1_w1 = DetectedTextBox::new(Roi::new(10, 20, 40, 20), "L1_W1", 0.9);
-    let l1_w2 = DetectedTextBox::new(Roi::new(60, 20, 40, 20), "L1_W2", 0.9);
-    let l2_w1 = DetectedTextBox::new(Roi::new(10, 60, 40, 20), "L2_W1", 0.9);
-    let l2_w2 = DetectedTextBox::new(Roi::new(60, 60, 40, 20), "L2_W2", 0.9);
-    let l3_w1 = DetectedTextBox::new(Roi::new(10, 100, 40, 20), "L3_W1", 0.9);
-    let l3_w2 = DetectedTextBox::new(Roi::new(60, 100, 40, 20), "L3_W2", 0.9);
+    let l1_w1 = TextBox::new(Rect::new(10, 20, 40, 20), "L1_W1", 0.9);
+    let l1_w2 = TextBox::new(Rect::new(60, 20, 40, 20), "L1_W2", 0.9);
+    let l2_w1 = TextBox::new(Rect::new(10, 60, 40, 20), "L2_W1", 0.9);
+    let l2_w2 = TextBox::new(Rect::new(60, 60, 40, 20), "L2_W2", 0.9);
+    let l3_w1 = TextBox::new(Rect::new(10, 100, 40, 20), "L3_W1", 0.9);
+    let l3_w2 = TextBox::new(Rect::new(60, 100, 40, 20), "L3_W2", 0.9);
 
-    let v1 = DetectedTextBox::new(Roi::new(200, 10, 30, 120), "V1", 0.9);
+    let v1 = TextBox::new(Rect::new(200, 10, 30, 120), "V1", 0.9);
     let boxes = vec![v1, l1_w1, l1_w2, l2_w1, l2_w2, l3_w1, l3_w2];
 
     let sorted = sort_cjk_reading_order(boxes, TextOrientation::Horizontal);
@@ -245,8 +244,8 @@ fn test_adversarial_layout_integer_overflow_panic_near_u32_max() {
     // In `crates/translator-ocr/src/layout.rs`:
     // Coordinate additions use `saturating_add` instead of raw `+`.
     // Coordinates near u32::MAX succeed without panic.
-    let b1 = DetectedTextBox::new(Roi::new(u32::MAX - 5, 10, 10, 20), "Panic1", 0.9);
-    let b2 = DetectedTextBox::new(Roi::new(u32::MAX - 10, 10, 20, 20), "Panic2", 0.9);
+    let b1 = TextBox::new(Rect::new(u32::MAX - 5, 10, 10, 20), "Panic1", 0.9);
+    let b2 = TextBox::new(Rect::new(u32::MAX - 10, 10, 20, 20), "Panic2", 0.9);
 
     let sorted = sort_cjk_reading_order(vec![b1, b2], TextOrientation::Vertical);
     assert_eq!(
@@ -260,10 +259,10 @@ fn test_adversarial_layout_integer_overflow_panic_near_u32_max() {
 fn test_adversarial_layout_vertical_sorting_non_idempotence_flaw() {
     // Verified fix:
     // Full tie-breakers in sorting comparators guarantee strict idempotence.
-    let box_a = DetectedTextBox::new(Roi::new(427, 0, 24, 192), "BoxA", 0.97);
-    let box_b = DetectedTextBox::new(Roi::new(450, 0, 1, 59), "BoxB", 0.76);
-    let box_c = DetectedTextBox::new(Roi::new(260, 539, 181, 26), "BoxC", 0.75);
-    let box_d = DetectedTextBox::new(Roi::new(370, 310, 1, 16), "BoxD", 0.50);
+    let box_a = TextBox::new(Rect::new(427, 0, 24, 192), "BoxA", 0.97);
+    let box_b = TextBox::new(Rect::new(450, 0, 1, 59), "BoxB", 0.76);
+    let box_c = TextBox::new(Rect::new(260, 539, 181, 26), "BoxC", 0.75);
+    let box_d = TextBox::new(Rect::new(370, 310, 1, 16), "BoxD", 0.50);
 
     let input = vec![box_b.clone(), box_a.clone(), box_c.clone(), box_d.clone()];
     let pass1 = sort_cjk_reading_order(input, TextOrientation::Vertical);
@@ -286,7 +285,7 @@ fn test_adversarial_layout_empty_and_single_box_invariants() {
         vec![]
     );
 
-    let single = DetectedTextBox::new(Roi::new(50, 50, 100, 25), "only", 0.99);
+    let single = TextBox::new(Rect::new(50, 50, 100, 25), "only", 0.99);
     assert_eq!(
         sort_cjk_reading_order(vec![single.clone()], TextOrientation::Horizontal),
         vec![single.clone()]
@@ -299,9 +298,9 @@ fn test_adversarial_layout_empty_and_single_box_invariants() {
 
 #[test]
 fn test_adversarial_layout_zero_dimension_boxes() {
-    let z1 = DetectedTextBox::new(Roi::new(10, 10, 0, 0), "zero_both", 0.9);
-    let z2 = DetectedTextBox::new(Roi::new(10, 20, 0, 50), "zero_w", 0.9);
-    let z3 = DetectedTextBox::new(Roi::new(20, 10, 50, 0), "zero_h", 0.9);
+    let z1 = TextBox::new(Rect::new(10, 10, 0, 0), "zero_both", 0.9);
+    let z2 = TextBox::new(Rect::new(10, 20, 0, 50), "zero_w", 0.9);
+    let z3 = TextBox::new(Rect::new(20, 10, 50, 0), "zero_h", 0.9);
 
     let boxes = vec![z1, z2, z3];
     let sorted_h = sort_cjk_reading_order(boxes.clone(), TextOrientation::Horizontal);
@@ -313,8 +312,8 @@ fn test_adversarial_layout_zero_dimension_boxes() {
 
 #[test]
 fn test_adversarial_layout_identical_and_fully_overlapping_boxes() {
-    let b1 = DetectedTextBox::new(Roi::new(100, 100, 50, 50), "same_1", 0.9);
-    let b2 = DetectedTextBox::new(Roi::new(100, 100, 50, 50), "same_2", 0.9);
+    let b1 = TextBox::new(Rect::new(100, 100, 50, 50), "same_1", 0.9);
+    let b2 = TextBox::new(Rect::new(100, 100, 50, 50), "same_2", 0.9);
 
     let sorted_h =
         sort_cjk_reading_order(vec![b1.clone(), b2.clone()], TextOrientation::Horizontal);
@@ -327,17 +326,17 @@ fn test_adversarial_layout_identical_and_fully_overlapping_boxes() {
 #[test]
 fn test_adversarial_layout_extreme_boundary_coordinates_no_panic() {
     // Stress test with boundary coordinates: x = u32::MAX - 1, w = 100, y = u32::MAX - 5, h = 1000
-    let b1 = DetectedTextBox::new(
-        Roi::new(u32::MAX - 1, u32::MAX - 5, 100, 1000),
+    let b1 = TextBox::new(
+        Rect::new(u32::MAX - 1, u32::MAX - 5, 100, 1000),
         "Extreme1",
         0.9,
     );
-    let b2 = DetectedTextBox::new(
-        Roi::new(u32::MAX - 50, u32::MAX - 20, 200, 500),
+    let b2 = TextBox::new(
+        Rect::new(u32::MAX - 50, u32::MAX - 20, 200, 500),
         "Extreme2",
         0.9,
     );
-    let b3 = DetectedTextBox::new(Roi::new(100, 200, 50, 50), "Normal", 0.9);
+    let b3 = TextBox::new(Rect::new(100, 200, 50, 50), "Normal", 0.9);
 
     // Horizontal mode verification
     let sorted_h = sort_cjk_reading_order(
@@ -363,9 +362,9 @@ fn test_adversarial_layout_extreme_boundary_coordinates_no_panic() {
 
 #[test]
 fn test_adversarial_layout_saturating_width_idempotence() {
-    let box_a = DetectedTextBox::new(Roi::new(u32::MAX - 10, 10, 10, 10), "A", 0.9);
-    let box_b = DetectedTextBox::new(Roi::new(u32::MAX - 10, 10, 20, 10), "A", 0.9);
-    let box_c = DetectedTextBox::new(Roi::new(u32::MAX - 17, 10, 13, 10), "C", 0.9);
+    let box_a = TextBox::new(Rect::new(u32::MAX - 10, 10, 10, 10), "A", 0.9);
+    let box_b = TextBox::new(Rect::new(u32::MAX - 10, 10, 20, 10), "A", 0.9);
+    let box_c = TextBox::new(Rect::new(u32::MAX - 17, 10, 13, 10), "C", 0.9);
 
     let input = vec![box_b, box_a, box_c];
     let pass1 = sort_cjk_reading_order(input, TextOrientation::Vertical);
@@ -461,8 +460,8 @@ fn test_adversarial_layout_randomized_fuzzing_1000_permutations_idempotence() {
             };
 
             let text_idx = (rng.next_u64() % (sample_texts.len() as u64)) as usize;
-            boxes.push(DetectedTextBox::new(
-                Roi::new(x, y, w, h),
+            boxes.push(TextBox::new(
+                Rect::new(x, y, w, h),
                 sample_texts[text_idx],
                 0.9,
             ));
@@ -484,27 +483,27 @@ fn test_adversarial_layout_randomized_fuzzing_1000_permutations_idempotence() {
 #[test]
 fn test_aspect_ratio_boundary_and_zero_dimensions() {
     // Zero width should produce aspect ratio 1.0 without dividing by zero
-    let zero_w = DetectedTextBox::new(Roi::new(10, 10, 0, 50), "zero_w", 0.9);
+    let zero_w = TextBox::new(Rect::new(10, 10, 0, 50), "zero_w", 0.9);
     assert_eq!(zero_w.aspect_ratio(), 1.0);
 
     // Exact threshold boundary tests:
     // H=14, W=10 -> H/W = 1.4 (not strictly > 1.4, treated as neutral)
-    let b14 = DetectedTextBox::new(Roi::new(0, 0, 10, 14), "1.4", 0.9);
+    let b14 = TextBox::new(Rect::new(0, 0, 10, 14), "1.4", 0.9);
     assert!((b14.aspect_ratio() - 1.4).abs() < 1e-5);
 
     // H=15, W=10 -> H/W = 1.5 > 1.4 (strictly vertical candidate)
-    let b15 = DetectedTextBox::new(Roi::new(0, 0, 10, 15), "1.5", 0.9);
+    let b15 = TextBox::new(Rect::new(0, 0, 10, 15), "1.5", 0.9);
     assert_eq!(
         detect_dominant_orientation(&[b15]),
         TextOrientation::Vertical
     );
 
     // H=8, W=10 -> H/W = 0.8 (not strictly < 0.8, treated as neutral)
-    let b08 = DetectedTextBox::new(Roi::new(0, 0, 10, 8), "0.8", 0.9);
+    let b08 = TextBox::new(Rect::new(0, 0, 10, 8), "0.8", 0.9);
     assert!((b08.aspect_ratio() - 0.8).abs() < 1e-5);
 
     // H=7, W=10 -> H/W = 0.7 < 0.8 (strictly horizontal candidate)
-    let b07 = DetectedTextBox::new(Roi::new(0, 0, 10, 7), "0.7", 0.9);
+    let b07 = TextBox::new(Rect::new(0, 0, 10, 7), "0.7", 0.9);
     assert_eq!(
         detect_dominant_orientation(&[b07]),
         TextOrientation::Horizontal
@@ -517,17 +516,17 @@ fn test_complex_multi_column_vertical_reading_order() {
     // Column 1 (Right): X=200..230, Y=10, Y=50, Y=90
     // Column 2 (Center): X=120..150, Y=10, Y=50
     // Column 3 (Left): X=40..70, Y=10, Y=50, Y=90, Y=130
-    let c1_1 = DetectedTextBox::new(Roi::new(200, 10, 30, 35), "C1_Top", 0.95);
-    let c1_2 = DetectedTextBox::new(Roi::new(200, 50, 30, 35), "C1_Mid", 0.95);
-    let c1_3 = DetectedTextBox::new(Roi::new(200, 90, 30, 35), "C1_Bot", 0.95);
+    let c1_1 = TextBox::new(Rect::new(200, 10, 30, 35), "C1_Top", 0.95);
+    let c1_2 = TextBox::new(Rect::new(200, 50, 30, 35), "C1_Mid", 0.95);
+    let c1_3 = TextBox::new(Rect::new(200, 90, 30, 35), "C1_Bot", 0.95);
 
-    let c2_1 = DetectedTextBox::new(Roi::new(120, 10, 30, 35), "C2_Top", 0.95);
-    let c2_2 = DetectedTextBox::new(Roi::new(120, 50, 30, 35), "C2_Bot", 0.95);
+    let c2_1 = TextBox::new(Rect::new(120, 10, 30, 35), "C2_Top", 0.95);
+    let c2_2 = TextBox::new(Rect::new(120, 50, 30, 35), "C2_Bot", 0.95);
 
-    let c3_1 = DetectedTextBox::new(Roi::new(40, 10, 30, 35), "C3_1", 0.95);
-    let c3_2 = DetectedTextBox::new(Roi::new(40, 50, 30, 35), "C3_2", 0.95);
-    let c3_3 = DetectedTextBox::new(Roi::new(40, 90, 30, 35), "C3_3", 0.95);
-    let c3_4 = DetectedTextBox::new(Roi::new(40, 130, 30, 35), "C3_4", 0.95);
+    let c3_1 = TextBox::new(Rect::new(40, 10, 30, 35), "C3_1", 0.95);
+    let c3_2 = TextBox::new(Rect::new(40, 50, 30, 35), "C3_2", 0.95);
+    let c3_3 = TextBox::new(Rect::new(40, 90, 30, 35), "C3_3", 0.95);
+    let c3_4 = TextBox::new(Rect::new(40, 130, 30, 35), "C3_4", 0.95);
 
     // Scramble input boxes
     let scrambled = vec![
@@ -557,16 +556,16 @@ fn test_complex_multi_line_horizontal_reading_order() {
     // Line 1: Y=20..40, X=10, X=80, X=150
     // Line 2: Y=60..80, X=10, X=100
     // Line 3: Y=100..120, X=10, X=90, X=170
-    let l1_1 = DetectedTextBox::new(Roi::new(10, 20, 60, 20), "L1_W1", 0.9);
-    let l1_2 = DetectedTextBox::new(Roi::new(80, 20, 60, 20), "L1_W2", 0.9);
-    let l1_3 = DetectedTextBox::new(Roi::new(150, 20, 60, 20), "L1_W3", 0.9);
+    let l1_1 = TextBox::new(Rect::new(10, 20, 60, 20), "L1_W1", 0.9);
+    let l1_2 = TextBox::new(Rect::new(80, 20, 60, 20), "L1_W2", 0.9);
+    let l1_3 = TextBox::new(Rect::new(150, 20, 60, 20), "L1_W3", 0.9);
 
-    let l2_1 = DetectedTextBox::new(Roi::new(10, 60, 80, 20), "L2_W1", 0.9);
-    let l2_2 = DetectedTextBox::new(Roi::new(100, 60, 80, 20), "L2_W2", 0.9);
+    let l2_1 = TextBox::new(Rect::new(10, 60, 80, 20), "L2_W1", 0.9);
+    let l2_2 = TextBox::new(Rect::new(100, 60, 80, 20), "L2_W2", 0.9);
 
-    let l3_1 = DetectedTextBox::new(Roi::new(10, 100, 70, 20), "L3_W1", 0.9);
-    let l3_2 = DetectedTextBox::new(Roi::new(90, 100, 70, 20), "L3_W2", 0.9);
-    let l3_3 = DetectedTextBox::new(Roi::new(170, 100, 70, 20), "L3_W3", 0.9);
+    let l3_1 = TextBox::new(Rect::new(10, 100, 70, 20), "L3_W1", 0.9);
+    let l3_2 = TextBox::new(Rect::new(90, 100, 70, 20), "L3_W2", 0.9);
+    let l3_3 = TextBox::new(Rect::new(170, 100, 70, 20), "L3_W3", 0.9);
 
     let scrambled = vec![
         l3_2.clone(),
@@ -605,8 +604,8 @@ fn test_cjk_joining_mixed_tokens() {
 #[tokio::test]
 async fn test_mock_backend_recognize_detailed_orientation_override() {
     let boxes = vec![
-        DetectedTextBox::new(Roi::new(100, 20, 30, 80), "縦1", 0.9),
-        DetectedTextBox::new(Roi::new(50, 20, 30, 80), "縦2", 0.9),
+        TextBox::new(Rect::new(100, 20, 30, 80), "縦1", 0.9),
+        TextBox::new(Rect::new(50, 20, 30, 80), "縦2", 0.9),
     ];
     let mock = MockOcrBackend::new_detailed("縦1縦2", boxes.clone(), TextOrientation::Vertical);
 

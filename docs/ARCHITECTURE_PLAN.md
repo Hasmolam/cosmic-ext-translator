@@ -315,9 +315,22 @@ incremental build after touching `app.rs`, test time, and binary sizes.
   read its clock, the typewriter duration or the turn threshold. `translator-capture`
   implements `FrameImage` for `CapturedFrame`; the CJK normalisation test moved to
   `translator-core/tests/text_gate_cjk.rs`.
-- Give `cjk-ocr-layout` its own rectangle type with `From` conversions to and from `Roi`.
-- Extract `cjk-ocr-layout`, write docs and examples, add publish dry-run and semver
-  checks to CI, publish 0.1.0.
+- `cjk-ocr-layout` done: orientation detection, reading order, furigana filter,
+  `normalize_cjk_text`, `is_cjk_char`/`is_cjk_text`/`join_cjk_or_latin_tokens`, with a
+  README, a crate-level doctest, `examples/vertical_page.rs` and the furigana tests. No
+  dependencies; `serde` is an optional feature that `translator-ocr` enables.
+  `rust-version = "1.70"` (`is_some_and`); clippy's `incompatible_msrv` caught one
+  `is_multiple_of` call. `DetectedTextBox` became `TextBox`. `OrientationMode` (a
+  stored setting with dropdown helpers) stayed in `translator-ocr`.
+- Own `Rect` type instead of `Roi`, but without `From` conversions: the orphan rule
+  allows them only in a crate that depends on both, and neither `translator-protocol`
+  (linked by the overlay) nor `cjk-ocr-layout` (published) should depend on the other.
+  The only `Roi` uses in the OCR code built boxes and were switched to `Rect`.
+- CI job `library-crates`: `cargo publish --dry-run`, then the packaged crate is built
+  outside the workspace with dependencies resolved for its `rust-version`
+  (`CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback`) and tested on that toolchain.
+  `cargo semver-checks` runs once a version is on crates.io.
+- Remaining: publish 0.1.0 of both crates. Needs the maintainer's crates.io token.
 
 **A6. Distribution.**
 - Demo media, AUR package, Flatpak manifest.

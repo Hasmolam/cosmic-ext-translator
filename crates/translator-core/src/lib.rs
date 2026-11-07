@@ -28,8 +28,8 @@ pub use language::{
 pub use ocr::{
     create_ocr_backend, create_ocr_backend_for_lang, detect_dominant_orientation, filter_furigana,
     is_cjk_char, is_cjk_text, join_cjk_or_latin_tokens, normalize_cjk_text, sort_cjk_reading_order,
-    DetectedTextBox, MockOcrBackend, OcrBackend, OcrResult, OcrsBackend, OrientationMode,
-    TesseractBackend, TextOrientation,
+    MockOcrBackend, OcrBackend, OcrResult, OcrsBackend, OrientationMode, TesseractBackend, TextBox,
+    TextOrientation,
 };
 pub use orchestrator::{
     spawn_orchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,

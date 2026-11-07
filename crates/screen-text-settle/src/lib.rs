@@ -58,6 +58,8 @@
 //! [`TextDiffAction::TypewriterWait`], wait for the line to finish and call
 //! [`TextGate::flush_pending`].
 
+#![warn(missing_docs)]
+
 pub mod frame;
 pub mod hash;
 pub mod text;

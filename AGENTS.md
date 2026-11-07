@@ -2,12 +2,13 @@
 
 ## Workspace Structure & Entrypoints
 
-Multi-crate workspace under GPL-3.0-or-later. `screen-text-settle` is `MIT OR Apache-2.0` and meant for crates.io:
+Multi-crate workspace under GPL-3.0-or-later. `screen-text-settle` and `cjk-ocr-layout` are `MIT OR Apache-2.0` and meant for crates.io; CI runs `cargo publish --dry-run`, an MSRV build of the packaged crate and `cargo semver-checks` on them:
 
 - `crates/screen-text-settle`: `FrameDebouncer` (256-bit dHash settle detection, generic over `FrameImage`), `TextGate` (typewriter expansion and jitter suppression on recognised text). Depends only on `image` (no default features), `strsim` and `tracing`; no workspace crates. Public API: keep fields private, document every item, and treat changes as semver changes.
+- `crates/cjk-ocr-layout`: `Rect`, `TextBox`, `TextOrientation`, orientation detection, vertical reading order, furigana filter, `normalize_cjk_text`, CJK token joining. No dependencies (optional `serde` feature) and no workspace crates; `rust-version = "1.70"`. Same public API rules as `screen-text-settle`.
 - `crates/translator-protocol`: Types shared by all processes: `HudMessage`/`HudStatus`/`HudPosition`, the HUD Unix socket client/server (feature `ipc`), `SelectorOutput`, `Roi`/`RoiPreset`/`CaptureRegion`, `language` (source/target language codes, script mapping), and log setup (feature `logging`). Depends only on `serde` plus optional `tokio`/`tracing-subscriber`; keep it that way, the overlay links nothing else from the workspace.
 - `crates/translator-capture`: Screencast portal (`ashpd`), dedicated PipeWire loop (`pipewire`), ROI crop (`crop.rs`, `RoiPixels`), `CaptureError`. `translator-core` re-exports it as `translator_core::capture`. Implements `screen_text_settle::FrameImage` for `CapturedFrame`.
-- `crates/translator-ocr`: Pure-Rust OCR (`ocrs` + `rten`), PaddleOCR (`paddle.rs`), Tesseract CLI (`tesseract.rs`), model download and checksum (`models.rs`), CJK layout and furigana filtering, `OcrInitError`. Re-exported as `translator_core::ocr`.
+- `crates/translator-ocr`: Pure-Rust OCR (`ocrs` + `rten`), PaddleOCR (`paddle.rs`), Tesseract CLI (`tesseract.rs`), model download and checksum (`models.rs`), `OrientationMode` setting, `OcrInitError`. Re-exports the `cjk-ocr-layout` API. Re-exported as `translator_core::ocr`.
 - `crates/translator-translate`: Translation engines (Google, DeepL, OpenAI-compatible, Ollama), dialogue context, speaker tags, fuzzy LRU cache (`strsim`), rate limiting. No tokio, image or OCR dependencies. `translator-core` re-exports it as `translator_core::translation`.
 - `crates/translator-core`: Core library (no GUI). Handles image pre-processing (`preprocess.rs`), recognition pipeline, orchestrator loop and global shortcuts. Re-exports the capture, OCR and translation crates as modules, and `screen-text-settle` as `pipeline::debouncer` / `pipeline::phash`.
 - `crates/cosmic-translator-overlay`: Layer-shell overlay binary (`cosmic-translator-overlay`). Depends on `translator-protocol` only, not on `translator-core`.

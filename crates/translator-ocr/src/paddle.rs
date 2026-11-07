@@ -27,12 +27,11 @@ use rten_tensor::{NdTensor, Tensor};
 
 use super::models::{self, ModelSource};
 use super::{
-    assemble_result, BoxFuture, DetectedTextBox, OcrBackend, OcrResult, OrientationMode,
-    TextOrientation,
+    assemble_result, BoxFuture, OcrBackend, OcrResult, OrientationMode, TextBox, TextOrientation,
 };
 use crate::OcrInitError;
+use crate::Rect;
 use translator_protocol::language::Script;
-use translator_protocol::Roi;
 
 /// Download URL of a file in the `models-v1` release of this project.
 macro_rules! release_url {
@@ -420,7 +419,7 @@ impl PaddleOcrBackend {
     }
 
     /// Detects and recognises text lines. Blocking; runs inference on the calling thread.
-    pub fn detect_and_recognize(&self, image: &RgbImage) -> Result<Vec<DetectedTextBox>> {
+    pub fn detect_and_recognize(&self, image: &RgbImage) -> Result<Vec<TextBox>> {
         let prob = run_f32(&self.det, det_input(image))?;
         let shape = prob.shape().to_vec();
         let (map_h, map_w) = match shape.as_slice() {
@@ -457,13 +456,13 @@ impl PaddleOcrBackend {
             if text.is_empty() {
                 continue;
             }
-            let rect = Roi {
+            let rect = Rect {
                 x: x0,
                 y: y0,
                 width: w,
                 height: h,
             };
-            results.push(DetectedTextBox::new(rect, text, confidence));
+            results.push(TextBox::new(rect, text, confidence));
         }
         Ok(results)
     }

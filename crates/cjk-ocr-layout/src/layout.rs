@@ -1,80 +1,34 @@
-use serde::{Deserialize, Serialize};
-use translator_protocol::Roi;
+//! Text direction and reading order of recognised boxes.
 
-/// Represents text layout orientation (horizontal or vertical CJK).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+use crate::Rect;
+
+/// Direction in which lines of text run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TextOrientation {
+    /// Lines run left to right and follow each other top to bottom (yokogaki).
     #[default]
     Horizontal,
+    /// Columns run top to bottom and follow each other right to left (tategaki).
     Vertical,
 }
 
-/// User-selected text direction for OCR engines that need it up front (Tesseract).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum OrientationMode {
-    /// Try horizontal first; fall back to vertical when the result looks wrong.
-    #[default]
-    Auto,
-    Horizontal,
-    Vertical,
-}
-
-impl OrientationMode {
-    /// All modes, in settings dropdown order.
-    pub const ALL: [Self; 3] = [Self::Auto, Self::Horizontal, Self::Vertical];
-
-    /// Code stored in config.
-    #[must_use]
-    pub fn code(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Horizontal => "horizontal",
-            Self::Vertical => "vertical",
-        }
-    }
-
-    /// Parses a stored code; unknown or empty values fall back to `Auto`.
-    #[must_use]
-    pub fn from_code(raw: &str) -> Self {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "horizontal" | "yokogaki" => Self::Horizontal,
-            "vertical" | "tategaki" => Self::Vertical,
-            _ => Self::Auto,
-        }
-    }
-
-    /// Fixed orientation, or `None` for automatic detection.
-    #[must_use]
-    pub fn forced(self) -> Option<TextOrientation> {
-        match self {
-            Self::Auto => None,
-            Self::Horizontal => Some(TextOrientation::Horizontal),
-            Self::Vertical => Some(TextOrientation::Vertical),
-        }
-    }
-
-    /// Position in [`OrientationMode::ALL`].
-    #[must_use]
-    pub fn index(self) -> usize {
-        match self {
-            Self::Auto => 0,
-            Self::Horizontal => 1,
-            Self::Vertical => 2,
-        }
-    }
-}
-
-/// A recognized text token/box with its geometric bounding rectangle and confidence score.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DetectedTextBox {
-    pub rect: Roi,
+/// A recognised token: its bounding box, text and recogniser confidence.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TextBox {
+    /// Bounding box in image pixels.
+    pub rect: Rect,
+    /// Recognised text.
     pub text: String,
+    /// Recogniser confidence, usually 0.0 to 1.0. Not used by this crate.
     pub confidence: f32,
 }
 
-impl DetectedTextBox {
+impl TextBox {
+    /// Creates a box.
     #[must_use]
-    pub fn new(rect: Roi, text: impl Into<String>, confidence: f32) -> Self {
+    pub fn new(rect: Rect, text: impl Into<String>, confidence: f32) -> Self {
         Self {
             rect,
             text: text.into(),
@@ -96,7 +50,7 @@ impl DetectedTextBox {
 
 /// Computes the 1D intersection span of two intervals along the vertical axis.
 #[must_use]
-pub(crate) fn vertical_overlap(a: &Roi, b: &Roi) -> u32 {
+pub(crate) fn vertical_overlap(a: &Rect, b: &Rect) -> u32 {
     let top = a.y.max(b.y);
     let bottom = (a.y.saturating_add(a.height)).min(b.y.saturating_add(b.height));
     bottom.saturating_sub(top)
@@ -104,7 +58,7 @@ pub(crate) fn vertical_overlap(a: &Roi, b: &Roi) -> u32 {
 
 /// Computes the 1D intersection span of two intervals along the horizontal axis.
 #[must_use]
-pub(crate) fn horizontal_overlap(a: &Roi, b: &Roi) -> u32 {
+pub(crate) fn horizontal_overlap(a: &Rect, b: &Rect) -> u32 {
     let left = a.x.max(b.x);
     let right = (a.x.saturating_add(a.width)).min(b.x.saturating_add(b.width));
     right.saturating_sub(left)
@@ -118,7 +72,7 @@ pub(crate) fn horizontal_overlap(a: &Roi, b: &Roi) -> u32 {
 /// Returns `TextOrientation::Vertical` if vertical weight exceeds horizontal weight;
 /// otherwise returns `TextOrientation::Horizontal`.
 #[must_use]
-pub fn detect_dominant_orientation(boxes: &[DetectedTextBox]) -> TextOrientation {
+pub fn detect_dominant_orientation(boxes: &[TextBox]) -> TextOrientation {
     let mut vertical_weight = 0.0f32;
     let mut horizontal_weight = 0.0f32;
 
@@ -145,10 +99,7 @@ pub fn detect_dominant_orientation(boxes: &[DetectedTextBox]) -> TextOrientation
 /// - **Vertical**: Clusters columns by horizontal overlap $\ge 50\%$. Sorts columns right-to-left
 ///   ($X_{\text{right}} \downarrow$), and tokens within each column top-to-bottom ($Y \uparrow$).
 #[must_use]
-pub fn sort_cjk_reading_order(
-    boxes: Vec<DetectedTextBox>,
-    orientation: TextOrientation,
-) -> Vec<DetectedTextBox> {
+pub fn sort_cjk_reading_order(boxes: Vec<TextBox>, orientation: TextOrientation) -> Vec<TextBox> {
     if boxes.len() <= 1 {
         return boxes;
     }
@@ -159,7 +110,7 @@ pub fn sort_cjk_reading_order(
     }
 }
 
-fn sort_horizontal_reading_order(mut boxes: Vec<DetectedTextBox>) -> Vec<DetectedTextBox> {
+fn sort_horizontal_reading_order(mut boxes: Vec<TextBox>) -> Vec<TextBox> {
     // Sort initially by Y ascending, then X ascending
     boxes.sort_by(|a, b| {
         a.rect
@@ -170,7 +121,7 @@ fn sort_horizontal_reading_order(mut boxes: Vec<DetectedTextBox>) -> Vec<Detecte
             .then_with(|| a.rect.width.cmp(&b.rect.width))
             .then_with(|| a.text.cmp(&b.text))
     });
-    let mut lines: Vec<Vec<DetectedTextBox>> = Vec::new();
+    let mut lines: Vec<Vec<TextBox>> = Vec::new();
 
     for b in boxes {
         let mut placed = false;
@@ -217,7 +168,7 @@ fn sort_horizontal_reading_order(mut boxes: Vec<DetectedTextBox>) -> Vec<Detecte
     lines.into_iter().flatten().collect()
 }
 
-fn sort_vertical_reading_order(mut boxes: Vec<DetectedTextBox>) -> Vec<DetectedTextBox> {
+fn sort_vertical_reading_order(mut boxes: Vec<TextBox>) -> Vec<TextBox> {
     // For vertical columns: sort initially by right edge descending (X_right desc)
     boxes.sort_by(|a, b| {
         let a_right = a.rect.x.saturating_add(a.rect.width);
@@ -231,7 +182,7 @@ fn sort_vertical_reading_order(mut boxes: Vec<DetectedTextBox>) -> Vec<DetectedT
             .then_with(|| a.text.cmp(&b.text))
     });
 
-    let mut columns: Vec<Vec<DetectedTextBox>> = Vec::new();
+    let mut columns: Vec<Vec<TextBox>> = Vec::new();
 
     for b in boxes {
         let mut placed = false;
@@ -297,15 +248,15 @@ mod tests {
     #[test]
     fn test_aspect_ratio_classification() {
         // Vertical column: W=20, H=80 -> aspect ratio 4.0 > 1.4
-        let vert_box = DetectedTextBox::new(Roi::new(10, 10, 20, 80), "縦書き", 0.95);
+        let vert_box = TextBox::new(Rect::new(10, 10, 20, 80), "縦書き", 0.95);
         assert!(vert_box.aspect_ratio() > 1.4);
 
         // Horizontal line: W=100, H=25 -> aspect ratio 0.25 < 0.8
-        let horiz_box = DetectedTextBox::new(Roi::new(10, 10, 100, 25), "横書き", 0.95);
+        let horiz_box = TextBox::new(Rect::new(10, 10, 100, 25), "横書き", 0.95);
         assert!(horiz_box.aspect_ratio() < 0.8);
 
         // Square character: W=30, H=30 -> aspect ratio 1.0 (ambiguous)
-        let square_box = DetectedTextBox::new(Roi::new(10, 10, 30, 30), "字", 0.95);
+        let square_box = TextBox::new(Rect::new(10, 10, 30, 30), "字", 0.95);
         assert!((0.8..=1.4).contains(&square_box.aspect_ratio()));
     }
 
@@ -313,9 +264,9 @@ mod tests {
     fn test_dominant_orientation_voting() {
         // 2 tall vertical columns vs 1 short horizontal line
         let boxes = vec![
-            DetectedTextBox::new(Roi::new(100, 20, 20, 100), "列一", 0.9),
-            DetectedTextBox::new(Roi::new(60, 20, 20, 100), "列二", 0.9),
-            DetectedTextBox::new(Roi::new(10, 200, 50, 15), "横", 0.9),
+            TextBox::new(Rect::new(100, 20, 20, 100), "列一", 0.9),
+            TextBox::new(Rect::new(60, 20, 20, 100), "列二", 0.9),
+            TextBox::new(Rect::new(10, 200, 50, 15), "横", 0.9),
         ];
         assert_eq!(
             detect_dominant_orientation(&boxes),
@@ -324,9 +275,9 @@ mod tests {
 
         // 3 wide horizontal lines
         let boxes_horiz = vec![
-            DetectedTextBox::new(Roi::new(10, 20, 120, 25), "Line 1", 0.9),
-            DetectedTextBox::new(Roi::new(10, 50, 120, 25), "Line 2", 0.9),
-            DetectedTextBox::new(Roi::new(10, 80, 120, 25), "Line 3", 0.9),
+            TextBox::new(Rect::new(10, 20, 120, 25), "Line 1", 0.9),
+            TextBox::new(Rect::new(10, 50, 120, 25), "Line 2", 0.9),
+            TextBox::new(Rect::new(10, 80, 120, 25), "Line 3", 0.9),
         ];
         assert_eq!(
             detect_dominant_orientation(&boxes_horiz),
@@ -344,10 +295,10 @@ mod tests {
     fn test_horizontal_reading_order_top_to_bottom() {
         // Line 2 (Y=50) tokens scrambled, Line 1 (Y=20) tokens scrambled
         let boxes = vec![
-            DetectedTextBox::new(Roi::new(80, 50, 30, 20), "line2_word2", 0.9),
-            DetectedTextBox::new(Roi::new(10, 20, 30, 20), "line1_word1", 0.9),
-            DetectedTextBox::new(Roi::new(50, 20, 30, 20), "line1_word2", 0.9),
-            DetectedTextBox::new(Roi::new(10, 50, 30, 20), "line2_word1", 0.9),
+            TextBox::new(Rect::new(80, 50, 30, 20), "line2_word2", 0.9),
+            TextBox::new(Rect::new(10, 20, 30, 20), "line1_word1", 0.9),
+            TextBox::new(Rect::new(50, 20, 30, 20), "line1_word2", 0.9),
+            TextBox::new(Rect::new(10, 50, 30, 20), "line2_word1", 0.9),
         ];
 
         let sorted = sort_cjk_reading_order(boxes, TextOrientation::Horizontal);
@@ -365,11 +316,11 @@ mod tests {
         // Col 2 (Left):  X=50..70,   Y=10, Y=40
         // Shuffled input order
         let boxes = vec![
-            DetectedTextBox::new(Roi::new(50, 40, 20, 25), "左_下", 0.9),
-            DetectedTextBox::new(Roi::new(100, 70, 20, 25), "右_下", 0.9),
-            DetectedTextBox::new(Roi::new(100, 10, 20, 25), "右_上", 0.9),
-            DetectedTextBox::new(Roi::new(50, 10, 20, 25), "左_上", 0.9),
-            DetectedTextBox::new(Roi::new(100, 40, 20, 25), "右_中", 0.9),
+            TextBox::new(Rect::new(50, 40, 20, 25), "左_下", 0.9),
+            TextBox::new(Rect::new(100, 70, 20, 25), "右_下", 0.9),
+            TextBox::new(Rect::new(100, 10, 20, 25), "右_上", 0.9),
+            TextBox::new(Rect::new(50, 10, 20, 25), "左_上", 0.9),
+            TextBox::new(Rect::new(100, 40, 20, 25), "右_中", 0.9),
         ];
 
         let sorted = sort_cjk_reading_order(boxes, TextOrientation::Vertical);

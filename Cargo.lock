@@ -900,6 +900,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cjk-ocr-layout"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6271,6 +6278,7 @@ name = "translator-ocr"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "cjk-ocr-layout",
  "image",
  "ocrs",
  "reqwest",

@@ -1,0 +1,23 @@
+[package]
+name = "cjk-ocr-layout"
+version = "0.1.0"
+description = "Engine-independent post-processing of OCR boxes for Japanese, Chinese and Korean: vertical reading order, furigana removal, text normalisation"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT OR Apache-2.0"
+repository.workspace = true
+readme = "README.md"
+keywords = ["ocr", "cjk", "japanese", "furigana", "vertical-text"]
+categories = ["text-processing", "internationalization", "computer-vision"]
+include = ["src/**", "examples/**", "tests/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
+
+[features]
+default = []
+# Serialize and Deserialize for Rect, TextBox and TextOrientation.
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[package.metadata.docs.rs]
+all-features = true

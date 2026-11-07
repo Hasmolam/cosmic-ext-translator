@@ -52,6 +52,61 @@ jobs:
       - name: shellcheck
         run: shellcheck install.sh uninstall.sh packaging/migrate-panel-entry.sh
 
+  library-crates:
+    name: Publishable crate ${{ matrix.crate }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: screen-text-settle
+            msrv: "1.88"
+          - crate: cjk-ocr-layout
+            msrv: "1.70"
+    env:
+      CRATE: ${{ matrix.crate }}
+      MSRV: ${{ matrix.msrv }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.msrv }}
+
+      - name: cargo publish --dry-run
+        run: cargo +stable publish --dry-run --locked -p "$CRATE"
+
+      - name: cargo package
+        run: cargo +stable package --locked -p "$CRATE"
+
+      # Build the packaged crate outside the workspace, the way a dependent resolves
+      # it, with dependencies chosen for its rust-version and the MSRV toolchain.
+      - name: Test packaged crate on MSRV
+        run: |
+          dir=$(mktemp -d)
+          tar -xzf target/package/"$CRATE"-*.crate -C "$dir"
+          cd "$dir"/"$CRATE"-*
+          rm -f Cargo.lock
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo +stable generate-lockfile
+          cargo +"$MSRV" test --all-features
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+
+      # Skipped until the first version is on crates.io; there is no baseline before.
+      - name: cargo semver-checks
+        run: |
+          if curl -sf -A "cosmic-ext-translator-ci" "https://crates.io/api/v1/crates/$CRATE" >/dev/null; then
+            cargo +stable semver-checks -p "$CRATE"
+          else
+            echo "$CRATE is not published yet, no baseline to compare against"
+          fi
+
   audit:
     name: Dependency advisories
     runs-on: ubuntu-24.04

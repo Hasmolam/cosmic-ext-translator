@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 translator-protocol = { workspace = true }
+cjk-ocr-layout = { workspace = true, features = ["serde"] }
 anyhow = { workspace = true }
 image = { workspace = true }
 ocrs = "0.13.1"

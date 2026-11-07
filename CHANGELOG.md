@@ -20,6 +20,12 @@ the section of the released version.
   the text gate, prepared for crates.io. `TextGate::new` takes only the jitter
   threshold: the typewriter duration and turn threshold were stored but never read.
   The fields of `TextGate` and `FrameDebouncer` are private, with getters.
+- New crate `cjk-ocr-layout` (`MIT OR Apache-2.0`) with orientation detection,
+  vertical reading order, the furigana filter and CJK text normalisation, prepared for
+  crates.io. It has its own `Rect` type; `DetectedTextBox` is renamed to `TextBox`.
+  serde support is behind the `serde` feature.
+- CI runs `cargo publish --dry-run`, a build of the packaged crate with its minimum
+  Rust version and `cargo semver-checks` for both library crates.
 - `target/` is limited to `TARGET_LIMIT_GB` (default 30) by the `just` build, check
   and test recipes: incremental caches are removed first, then `cargo clean` runs.
   Debug builds keep only line tables for workspace crates and no debug info for
