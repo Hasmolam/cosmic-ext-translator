@@ -69,6 +69,11 @@ normalised: 日本語を勉強しています。
 
 - `serde`: `Serialize` and `Deserialize` for `Rect`, `TextBox` and `TextOrientation`.
 
+## Minimum Rust version
+
+1.70 with default features. The `serde` feature needs what the selected `serde_derive`
+release needs: 1.71 for current releases.
+
 ## Limitations
 
 - Furigana detection is geometric: a box under 35 % of the median box area that sits

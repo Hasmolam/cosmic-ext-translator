@@ -85,6 +85,8 @@ jobs:
 
       # Build the packaged crate outside the workspace, the way a dependent resolves
       # it, with dependencies chosen for its rust-version and the MSRV toolchain.
+      # Default features only: optional features follow the MSRV of the dependency
+      # they enable (cjk-ocr-layout/serde pulls serde_derive, which needs 1.71).
       - name: Test packaged crate on MSRV
         run: |
           dir=$(mktemp -d)
@@ -92,7 +94,8 @@ jobs:
           cd "$dir"/"$CRATE"-*
           rm -f Cargo.lock
           CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo +stable generate-lockfile
-          cargo +"$MSRV" test --all-features
+          cargo +"$MSRV" test
+          cargo +stable test --all-features
 
       - uses: taiki-e/install-action@v2
         with:

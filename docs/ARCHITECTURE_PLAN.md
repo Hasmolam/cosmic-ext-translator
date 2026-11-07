@@ -329,7 +329,11 @@ incremental build after touching `app.rs`, test time, and binary sizes.
 - CI job `library-crates`: `cargo publish --dry-run`, then the packaged crate is built
   outside the workspace with dependencies resolved for its `rust-version`
   (`CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback`) and tested on that toolchain.
-  `cargo semver-checks` runs once a version is on crates.io.
+  `cargo semver-checks` runs once a version is on crates.io. The MSRV test uses
+  default features only: the first CI run failed because `cjk-ocr-layout/serde` pulls
+  `serde_derive` 1.0.229, which needs Rust 1.71. `serde` itself declares 1.56 and pins
+  `serde_derive` exactly, so MSRV-aware resolution does not avoid it. All features are
+  tested on stable.
 - Remaining: publish 0.1.0 of both crates. Needs the maintainer's crates.io token.
 
 **A6. Distribution.**
