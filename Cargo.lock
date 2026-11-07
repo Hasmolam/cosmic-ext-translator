@@ -6225,6 +6225,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "translator-capture"
+version = "0.2.0"
+dependencies = [
+ "ashpd 0.13.13",
+ "image",
+ "pipewire",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "translator-protocol",
+]
+
+[[package]]
 name = "translator-core"
 version = "0.2.0"
 dependencies = [
@@ -6233,7 +6246,6 @@ dependencies = [
  "futures-util",
  "image",
  "ocrs",
- "pipewire",
  "reqwest",
  "rten",
  "rten-tensor",
@@ -6244,6 +6256,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "translator-capture",
  "translator-protocol",
  "translator-translate",
 ]

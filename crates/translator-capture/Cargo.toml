@@ -1,0 +1,17 @@
+[package]
+name = "translator-capture"
+description = "Screencast portal session, PipeWire capture thread and region cropping for cosmic-ext-translator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+translator-protocol = { workspace = true }
+ashpd = { workspace = true }
+image = { workspace = true }
+pipewire = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

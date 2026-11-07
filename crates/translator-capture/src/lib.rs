@@ -1,9 +1,10 @@
 mod crop;
+pub mod error;
 pub use crop::RoiPixels;
 pub mod pipewire_thread;
 pub mod screencast;
 
-use crate::error::Result;
+pub use error::{CaptureError, Result};
 use pipewire_thread::{spawn_pipewire_capture_thread, CapturedFrame, PipewireCaptureHandle};
 use screencast::{ScreencastManager, ScreencastStreamInfo};
 use translator_protocol::{CaptureRegion, Roi};
@@ -30,7 +31,7 @@ impl CaptureSession {
             stream_info
                 .pipewire_fd
                 .try_clone()
-                .map_err(|e| crate::error::CaptureError::PipeWire(e.to_string()))?,
+                .map_err(|e| CaptureError::PipeWire(e.to_string()))?,
             stream_info.node_id,
             region,
         )?;

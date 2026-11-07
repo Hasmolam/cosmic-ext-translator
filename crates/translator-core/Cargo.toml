@@ -7,9 +7,9 @@ repository.workspace = true
 
 [dependencies]
 translator-protocol = { workspace = true, features = ["ipc"] }
+translator-capture = { workspace = true }
 translator-translate = { workspace = true }
 ashpd = { workspace = true }
-pipewire = { workspace = true }
 tokio = { workspace = true }
 image = { workspace = true }
 thiserror = { workspace = true }

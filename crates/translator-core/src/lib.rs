@@ -1,4 +1,4 @@
-pub mod capture;
+pub use translator_capture as capture;
 pub mod error;
 pub mod language;
 pub mod ocr;

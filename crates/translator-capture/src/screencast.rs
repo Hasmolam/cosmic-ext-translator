@@ -1,4 +1,4 @@
-use crate::error::{CaptureError, Result};
+use crate::{CaptureError, Result};
 use ashpd::desktop::screencast::{
     CursorMode, OpenPipeWireRemoteOptions, Screencast, SelectSourcesOptions, SourceType,
     StartCastOptions, Stream,

@@ -16,6 +16,12 @@ impl FrameImage for RgbaImage {
     }
 }
 
+impl FrameImage for translator_capture::pipewire_thread::CapturedFrame {
+    fn image(&self) -> &RgbaImage {
+        &self.image
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DebounceState {
     /// Screen is stable, no active text writing detected.

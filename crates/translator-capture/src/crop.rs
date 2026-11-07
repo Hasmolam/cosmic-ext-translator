@@ -1,6 +1,6 @@
 //! Pixel operations on captured frames for a [`Roi`].
 
-use crate::error::CaptureError;
+use crate::CaptureError;
 use image::RgbaImage;
 use translator_protocol::Roi;
 
